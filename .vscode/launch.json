@@ -1,0 +1,40 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "sav2csv",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sav2csv.py",
+            "args": ["${input:savFile}"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "backend",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["main:app", "--port", "8000"],
+            "cwd": "${workspaceFolder}/backend",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ],
+    "inputs": [
+        {
+            "id": "savFile",
+            "type": "promptString",
+            "description": "Path to .sav file"
+        }
+    ]
+}

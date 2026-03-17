@@ -1,0 +1,16 @@
+[project]
+name = "mediavision-backend"
+version = "0.1.0"
+description = "Agentic data analytics backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "asyncpg",
+    "anthropic",
+    "httpx",
+    "python-dotenv",
+]
+
+[tool.uv]
+dev-dependencies = []
