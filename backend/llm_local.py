@@ -19,4 +19,4 @@ async def complete(system_prompt, user_message):
         resp = await client.post(url, json=payload)
         resp.raise_for_status()
         data = resp.json()
-    return data["choices"][0]["message"]["content"]
+    return data

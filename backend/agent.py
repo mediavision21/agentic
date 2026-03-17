@@ -1,7 +1,12 @@
+import os
 import re
+import json
+from datetime import datetime
 from skills import load_skills
 import llm_claude
 import llm_local
+
+LOGS_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
 
 
 SYSTEM_PROMPT_TEMPLATE = """You are a SQL expert assistant. You generate PostgreSQL queries based on the user's natural language request.
@@ -41,13 +46,31 @@ def extract_sql(text):
 async def generate_sql(user_prompt, backend="claude"):
     system_prompt = build_prompt()
 
-    if backend == "local":
-        response = await llm_local.complete(system_prompt, user_prompt)
-    else:
-        response = await llm_claude.complete(system_prompt, user_prompt)
+    # log request to LLM
+    os.makedirs(LOGS_DIR, exist_ok=True)
+    ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    with open(os.path.join(LOGS_DIR, f"{ts}-request.txt"), "w") as f:
+        f.write(f"backend: {backend}\n")
+        f.write(f"prompt: {user_prompt}\n\n")
+        f.write(f"system:\n{system_prompt}\n")
 
-    sql = extract_sql(response)
+    if backend == "local":
+        raw = await llm_local.complete(system_prompt, user_prompt)
+        text = raw["choices"][0]["message"]["content"]
+    else:
+        raw = await llm_claude.complete(system_prompt, user_prompt)
+        text = raw.content[0].text
+
+    # log full response from LLM
+    ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    with open(os.path.join(LOGS_DIR, f"{ts}-response.json"), "w") as f:
+        if backend == "local":
+            json.dump(raw, f, indent=2, ensure_ascii=False)
+        else:
+            json.dump(raw.model_dump(), f, indent=2, ensure_ascii=False, default=str)
+
+    sql = extract_sql(text)
     # extract explanation (text after the code fence)
-    explanation = re.sub(r"```sql.*?```", "", response, flags=re.DOTALL).strip()
+    explanation = re.sub(r"```sql.*?```", "", text, flags=re.DOTALL).strip()
 
     return {"sql": sql, "explanation": explanation}
