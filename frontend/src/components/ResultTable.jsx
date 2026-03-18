@@ -1,9 +1,12 @@
+const MAX_ROWS = 20
+
 function ResultTable(options) {
     const { columns, rows } = options
+    const displayRows = rows.slice(0, MAX_ROWS)
+    const trimmed = rows.length > MAX_ROWS
 
     return (
-        <div className="section">
-            <div className="section-title">Results ({rows.length} rows)</div>
+        <div className="table-wrap">
             <div style={{ overflowX: "auto" }}>
                 <table className="result-table">
                     <thead>
@@ -14,7 +17,7 @@ function ResultTable(options) {
                         </tr>
                     </thead>
                     <tbody>
-                        {rows.map(function (row, i) {
+                        {displayRows.map(function (row, i) {
                             return (
                                 <tr key={i}>
                                     {columns.map(function (col) {
@@ -26,6 +29,9 @@ function ResultTable(options) {
                     </tbody>
                 </table>
             </div>
+            {trimmed && (
+                <div className="table-note">Showing top {MAX_ROWS} of {rows.length} rows</div>
+            )}
         </div>
     )
 }

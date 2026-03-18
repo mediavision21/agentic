@@ -1,25 +1,46 @@
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import PromptInput from "./components/PromptInput.jsx"
-import SqlDisplay from "./components/SqlDisplay.jsx"
-import ResultTable from "./components/ResultTable.jsx"
-import ResultChart from "./components/ResultChart.jsx"
+import ChatMessage from "./components/ChatMessage.jsx"
 
 function App() {
-    const [sql, setSql] = useState("")
-    const [explanation, setExplanation] = useState("")
-    const [columns, setColumns] = useState([])
-    const [rows, setRows] = useState([])
+    const [sessions, setSessions] = useState([{ id: 1, title: "New chat", messages: [] }])
+    const [activeId, setActiveId] = useState(1)
     const [loading, setLoading] = useState(false)
-    const [error, setError] = useState("")
+    const $bottom = useRef(null)
+
+    const currentSession = sessions.find(function (s) { return s.id === activeId })
+
+    useEffect(function () {
+        if ($bottom.current) {
+            $bottom.current.scrollIntoView({ behavior: "smooth" })
+        }
+    }, [sessions, activeId])
+
+    function newChat() {
+        const id = Date.now()
+        setSessions(function (prev) { return [...prev, { id, title: "New chat", messages: [] }] })
+        setActiveId(id)
+    }
 
     async function handleSubmit(options) {
         const { prompt, backend } = options
+
+        const userMsg = { role: "user", text: prompt }
+        const assistantMsg = { role: "assistant", content: { loading: true } }
+
+        // Set title on first message
+        setSessions(function (prev) {
+            return prev.map(function (s) {
+                if (s.id !== activeId) return s
+                const isFirst = s.messages.length === 0
+                return {
+                    ...s,
+                    title: isFirst ? prompt.slice(0, 40) : s.title,
+                    messages: [...s.messages, userMsg, assistantMsg],
+                }
+            })
+        })
         setLoading(true)
-        setError("")
-        setSql("")
-        setExplanation("")
-        setColumns([])
-        setRows([])
 
         try {
             const resp = await fetch("/api/query", {
@@ -28,42 +49,86 @@ function App() {
                 body: JSON.stringify({ prompt, backend }),
             })
             const data = await resp.json()
+            console.log("query response", data)
 
-            if (data.error) setError(data.error)
-            if (data.sql) setSql(data.sql)
-            if (data.explanation) setExplanation(data.explanation)
-            if (data.columns) setColumns(data.columns)
-            if (data.rows) setRows(data.rows)
+            setSessions(function (prev) {
+                return prev.map(function (s) {
+                    if (s.id !== activeId) return s
+                    const msgs = [...s.messages]
+                    msgs[msgs.length - 1] = {
+                        role: "assistant",
+                        content: {
+                            loading: false,
+                            error: data.error || "",
+                            sql: data.sql || "",
+                            explanation: data.explanation || "",
+                            system_prompt: data.system_prompt || "",
+                            columns: data.columns || [],
+                            rows: data.rows || [],
+                        },
+                    }
+                    return { ...s, messages: msgs }
+                })
+            })
         } catch (e) {
-            setError(e.message)
+            console.error("query error", e)
+            setSessions(function (prev) {
+                return prev.map(function (s) {
+                    if (s.id !== activeId) return s
+                    const msgs = [...s.messages]
+                    msgs[msgs.length - 1] = { role: "assistant", content: { loading: false, error: e.message } }
+                    return { ...s, messages: msgs }
+                })
+            })
         } finally {
             setLoading(false)
         }
     }
 
     return (
-        <div>
-            <h1>MediaVision Analytics</h1>
-
-            <PromptInput onSubmit={handleSubmit} loading={loading} />
-
-            {loading && (
-                <div className="section">
-                    <span className="loading">Generating query</span>
+        <div className="app-layout">
+            <aside className="sidebar">
+                <div className="sidebar-top">
+                    <div className="sidebar-logo">
+                        <img src="/symbol-white.svg" height="28" alt="logo" />
+                        <span className="sidebar-title">MediaVision</span>
+                    </div>
+                    <button className="new-chat-btn" onClick={newChat}>+ New chat</button>
                 </div>
-            )}
-
-            {error && (
-                <div className="section">
-                    <p className="error-msg">{error}</p>
+                <div className="sidebar-recents">
+                    {sessions.map(function (s) {
+                        return (
+                            <div
+                                key={s.id}
+                                className={"session-item" + (s.id === activeId ? " active" : "")}
+                                onClick={function () { setActiveId(s.id) }}
+                            >
+                                {s.title}
+                            </div>
+                        )
+                    })}
                 </div>
-            )}
+                <div className="sidebar-bottom">
+                    <div className="account-row">
+                        <div className="account-avatar">A</div>
+                        <span>Account</span>
+                    </div>
+                </div>
+            </aside>
 
-            {sql && <SqlDisplay sql={sql} explanation={explanation} />}
-
-            {rows.length > 0 && <ResultTable columns={columns} rows={rows} />}
-
-            {rows.length > 0 && <ResultChart columns={columns} rows={rows} />}
+            <main className="main-area">
+                <div className="chat-window">
+                    <div className="chat-messages">
+                        {currentSession && currentSession.messages.map(function (msg, i) {
+                            return <ChatMessage key={i} message={msg} />
+                        })}
+                        <div ref={$bottom} />
+                    </div>
+                </div>
+                <div className="chat-input-bar">
+                    <PromptInput onSubmit={handleSubmit} loading={loading} />
+                </div>
+            </main>
         </div>
     )
 }

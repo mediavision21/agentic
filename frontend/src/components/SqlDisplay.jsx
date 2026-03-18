@@ -1,12 +1,15 @@
+// Collapsible code block used for SQL and system prompt
 function SqlDisplay(options) {
-    const { sql, explanation } = options
+    const { label, code, explanation } = options
 
     return (
-        <div className="section">
-            <div className="section-title">Generated SQL</div>
-            <div className="sql-block"><code>{sql}</code></div>
-            {explanation && <div className="explanation">{explanation}</div>}
-        </div>
+        <details className="collapsible">
+            <summary>{label}</summary>
+            <div className="collapsible-body">
+                <div className="sql-block"><code>{code}</code></div>
+                {explanation && <div className="explanation">{explanation}</div>}
+            </div>
+        </details>
     )
 }
 

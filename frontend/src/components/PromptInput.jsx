@@ -1,56 +1,75 @@
-import { useState } from "react"
+import { useState, useRef } from "react"
 
 function PromptInput(options) {
-    const { onSubmit, loading } = options
-    const [prompt, setPrompt] = useState("")
-    const [backend, setBackend] = useState("claude")
+	const { onSubmit, loading } = options
+	const [prompt, setPrompt] = useState("Quartly trend of usage of nordic_long_v2")
+	const [backend, setBackend] = useState("claude")
+	const $textarea = useRef(null)
 
-    function handleSubmit(e) {
-        e.preventDefault()
-        if (prompt.trim() === "") return
-        onSubmit({ prompt, backend })
-    }
+	function handleInput(e) {
+		setPrompt(e.target.value)
+		// Auto-grow height
+		const el = e.target
+		el.style.height = "auto"
+		el.style.height = el.scrollHeight + "px"
+	}
 
-    return (
-        <div className="section">
-            <div className="backend-selector">
-                <label>
-                    <input
-                        type="radio"
-                        value="claude"
-                        checked={backend === "claude"}
-                        onChange={() => setBackend("claude")}
-                    />
-                    <span>Claude API</span>
-                </label>
-                <label>
-                    <input
-                        type="radio"
-                        value="local"
-                        checked={backend === "local"}
-                        onChange={() => setBackend("local")}
-                    />
-                    <span>Local LLM</span>
-                </label>
-            </div>
-            <form className="prompt-form" onSubmit={handleSubmit}>
-                <input
-                    className="prompt-input"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Ask a question about your data..."
-                    disabled={loading}
-                />
-                <button
-                    className="submit-btn"
-                    type="submit"
-                    disabled={loading || !prompt.trim()}
-                >
-                    Query
-                </button>
-            </form>
-        </div>
-    )
+	function handleSubmit(e) {
+		e.preventDefault()
+		if (prompt.trim() === "" || loading) return
+		onSubmit({ prompt, backend })
+		setPrompt("")
+		if ($textarea.current) {
+			$textarea.current.style.height = "auto"
+		}
+	}
+
+	function handleKeyDown(e) {
+		if (e.key === "Enter" && !e.shiftKey) {
+			e.preventDefault()
+			handleSubmit(e)
+		}
+	}
+
+	const canSend = prompt.trim() !== "" && !loading
+
+	return (
+		<form className="prompt-box" onSubmit={handleSubmit}>
+			<textarea
+				ref={$textarea}
+				className="prompt-textarea"
+				value={prompt}
+				onInput={handleInput}
+				onChange={function (e) { setPrompt(e.target.value) }}
+				onKeyDown={handleKeyDown}
+				placeholder="Ask a question about your data..."
+				disabled={loading}
+				rows={1}
+			/>
+			<div className="prompt-footer">
+				<div className="backend-toggle">
+					<label className={"backend-opt" + (backend === "claude" ? " selected" : "")}>
+						<input type="radio" value="claude" checked={backend === "claude"} onChange={function () { setBackend("claude") }} />
+						Claude
+					</label>
+					<label className={"backend-opt" + (backend === "local" ? " selected" : "")}>
+						<input type="radio" value="local" checked={backend === "local"} onChange={function () { setBackend("local") }} />
+						Local
+					</label>
+				</div>
+				<button
+					className="send-btn"
+					type="submit"
+					disabled={!canSend}
+					title="Send"
+				>
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+						<path d="M8 13V3M8 3L3 8M8 3L13 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+					</svg>
+				</button>
+			</div>
+		</form>
+	)
 }
 
 export default PromptInput

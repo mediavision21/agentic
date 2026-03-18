@@ -1,6 +1,6 @@
 import os
 import re
-import json
+import yaml
 from datetime import datetime
 from skills import load_skills
 import llm_claude
@@ -63,11 +63,12 @@ async def generate_sql(user_prompt, backend="claude"):
 
     # log full response from LLM
     ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    with open(os.path.join(LOGS_DIR, f"{ts}-response.json"), "w") as f:
+    with open(os.path.join(LOGS_DIR, f"{ts}-response.yaml"), "w") as f:
         if backend == "local":
-            json.dump(raw, f, indent=2, ensure_ascii=False)
+            data = raw
         else:
-            json.dump(raw.model_dump(), f, indent=2, ensure_ascii=False, default=str)
+            data = raw.model_dump()
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
 
     sql = extract_sql(text)
     # extract explanation (text after the code fence)

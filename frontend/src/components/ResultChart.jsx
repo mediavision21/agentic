@@ -66,28 +66,28 @@ function ResultChart(options) {
         let marks = []
         if (chartInfo.type === "bar") {
             marks = [
-                Plot.barY(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--nano-popout)" }),
+                Plot.barY(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-forest)" }),
                 Plot.ruleY([0]),
             ]
         }
         if (chartInfo.type === "line") {
             marks = [
-                Plot.lineY(data, { x: chartInfo.x, y: chartInfo.y, stroke: "var(--nano-popout)" }),
-                Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--nano-popout)" }),
+                Plot.lineY(data, { x: chartInfo.x, y: chartInfo.y, stroke: "var(--color-forest)" }),
+                Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-forest)" }),
             ]
         }
         if (chartInfo.type === "dot") {
             marks = [
-                Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--nano-popout)" }),
+                Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-forest)" }),
             ]
         }
 
         const chart = Plot.plot({
-            width: 800,
-            height: 400,
+            width: 600,
+            height: 300,
             style: {
-                background: "var(--nano-background)",
-                color: "var(--nano-foreground)",
+                background: "transparent",
+                color: "var(--color-gray-dark)",
                 fontSize: "12px",
             },
             x: { label: chartInfo.x },
@@ -99,10 +99,7 @@ function ResultChart(options) {
     }, [columns, rows])
 
     return (
-        <div className="section">
-            <div className="section-title">Chart</div>
-            <div className="chart-container" ref={$container}></div>
-        </div>
+        <div className="chart-container" ref={$container}></div>
     )
 }
 

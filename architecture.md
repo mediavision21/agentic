@@ -5,7 +5,7 @@ Agentic data analytics tool. User asks natural language questions → LLM genera
 
 ## Stack
 - **Backend**: Python 3.13 / FastAPI / asyncpg / uv
-- **Frontend**: Vite / React 19 (vanilla JS) / Observable Plot
+- **Frontend**: Vite / React 19 (vanilla JS) / Observable Plot / Mediavision brand (Gelasio + Inter, forest green)
 - **LLM**: Claude API (Anthropic) or local llama.cpp (qwen3.5)
 - **Database**: Supabase (PostgreSQL)
 
@@ -26,12 +26,13 @@ mediavision/
 │   ├── src/
 │   │   ├── main.jsx                  # react root mount
 │   │   ├── App.jsx                   # root: state management, API calls
-│   │   ├── style.css                 # nano color theme, global styles
+│   │   ├── style.css                 # Mediavision brand tokens, chat layout, bubble styles
 │   │   └── components/
-│   │       ├── PromptInput.jsx       # text input + backend radio selector
-│   │       ├── SqlDisplay.jsx        # generated SQL + explanation
-│   │       ├── ResultTable.jsx       # tabular results
-│   │       └── ResultChart.jsx       # Observable Plot (auto bar/line/scatter)
+│   │       ├── ChatMessage.jsx       # iMessage-style bubble (user right, assistant left)
+│   │       ├── PromptInput.jsx       # text input + backend radio selector (bottom bar)
+│   │       ├── SqlDisplay.jsx        # collapsible <details> for SQL / system prompt
+│   │       ├── ResultTable.jsx       # tabular results, capped at top 20 rows
+│   │       └── ResultChart.jsx       # Observable Plot inline in assistant bubble
 └── skills/                           # auto-generated at startup (gitignored)
     ├── _overview.md                  # all tables summary
     └── {table_name}.md               # columns + 3 sample rows per table
@@ -45,7 +46,8 @@ User prompt
     → LLM generates SQL (SELECT only)
     → db.py executes in read-only transaction
     → {sql, explanation, columns, rows} returned
-    → frontend renders SqlDisplay + ResultTable + ResultChart
+    → frontend renders chat messages: user bubble (right) + assistant bubble (left)
+    → assistant bubble: SQL collapsed, table (top 20), chart inline
 ```
 
 ## API Endpoints

@@ -104,21 +104,27 @@ async def get_sample_rows(table, n=3):
 
 async def execute_query(sql):
 	# execute a read-only query, returns {columns, rows}
-	async with pool.acquire() as conn:
-		async with conn.transaction():
-			await conn.execute("SET TRANSACTION READ ONLY")
+	try:
+		async with pool.acquire() as conn:
+			# async with conn.transaction():
+			# 	await conn.execute("SET TRANSACTION READ ONLY")
+			await conn.execute(f"SET search_path TO {schema}, public")
 			rows = await conn.fetch(sql)
-	if not rows:
+		if not rows:
+			return {"columns": [], "rows": []}
+		columns = list(rows[0].keys())
+		data = []
+		for r in rows:
+			row = {}
+			for k, v in dict(r).items():
+				# convert non-serializable types to string
+				if isinstance(v, (int, float, str, bool, type(None))):
+					row[k] = v
+				else:
+					row[k] = str(v)
+			data.append(row)
+		return {"columns": columns, "rows": data}
+	except Exception as e:
+		print("Error running SQL:", sql)
+		print("Exception:", e)
 		return {"columns": [], "rows": []}
-	columns = list(rows[0].keys())
-	data = []
-	for r in rows:
-		row = {}
-		for k, v in dict(r).items():
-			# convert non-serializable types to string
-			if isinstance(v, (int, float, str, bool, type(None))):
-				row[k] = v
-			else:
-				row[k] = str(v)
-		data.append(row)
-	return {"columns": columns, "rows": data}

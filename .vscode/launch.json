@@ -22,6 +22,42 @@
             "envFile": "${workspaceFolder}/.env"
         },
         {
+            "name": "backend (local llm)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["main:app", "--port", "8000"],
+            "cwd": "${workspaceFolder}/backend",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "LLM_BACKEND": "local"
+            }
+        },
+        {
+            "name": "cli (claude)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/cli.py",
+            "args": ["${input:prompt}"],
+            "cwd": "${workspaceFolder}/backend",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "name": "cli (local llm)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/cli.py",
+            "args": ["${input:prompt}", "--backend", "local"],
+            "cwd": "${workspaceFolder}/backend",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
             "name": "Python: Current File",
             "type": "debugpy",
             "request": "launch",
@@ -35,6 +71,11 @@
             "id": "savFile",
             "type": "promptString",
             "description": "Path to .sav file"
+        },
+        {
+            "id": "prompt",
+            "type": "promptString",
+            "description": "Query prompt (e.g. show all countries)"
         }
     ]
 }

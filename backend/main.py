@@ -10,14 +10,19 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 from db import create_pool, close_pool, execute_query
 from skills import generate_skills, load_skills
 from agent import generate_sql
+import llm_local
 
 
 @asynccontextmanager
 async def lifespan(app):
 	await create_pool()
 	await generate_skills()
+	if os.getenv("LLM_BACKEND") == "local" and os.getenv("START_LLAMA", "1") != "0":
+		llm_local.start_server()
 	print("[startup] database connected, skills generated")
 	yield
+	if os.getenv("START_LLAMA", "1") != "0":
+		llm_local.stop_server()
 	await close_pool()
 
 
@@ -58,7 +63,7 @@ async def query(req: QueryRequest):
 
 	try:
 		sql_with_path = f"SET search_path TO macro, public; {sql}"
-		data = await execute_query(sql_with_path)
+		data = await execute_query(sql)
 	except Exception as e:
 		return {"error": f"SQL error: {str(e)}", "sql": sql, "explanation": explanation, "columns": [], "rows": []}
 
