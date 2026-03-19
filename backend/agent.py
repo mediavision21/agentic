@@ -102,18 +102,30 @@ async def generate_sql_stream(user_prompt, backend="claude"):
 
     os.makedirs(LOGS_DIR, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    with open(os.path.join(LOGS_DIR, f"{ts}-request.txt"), "w") as f:
+    with open(os.path.join(LOGS_DIR, f"{ts}-request.md"), "w") as f:
         f.write(f"backend: {backend}\nprompt: {user_prompt}\n\nsystem:\n{system_prompt}\n")
 
     full_text = ""
+    meta = {}
     stream_fn = llm_local.complete_stream if backend == "local" else llm_claude.complete_stream
     async for chunk in stream_fn(system_prompt, user_prompt):
+        if isinstance(chunk, dict):
+            meta = chunk.get("__meta__", {})
+            break
         full_text += chunk
+        print(chunk, end="", flush=True)
         yield {"type": "token", "text": chunk}
+    print()  # newline after stream ends
 
     ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    with open(os.path.join(LOGS_DIR, f"{ts}-response.txt"), "w") as f:
-        f.write(full_text)
+    with open(os.path.join(LOGS_DIR, f"{ts}-response.yaml"), "w") as f:
+        yaml.dump({
+            "backend": backend,
+            "prompt": user_prompt,
+            "model": meta.get("model", ""),
+            "usage": meta.get("usage", {}),
+            "response": full_text,
+        }, f, default_flow_style=False, allow_unicode=True)
 
     sql = extract_sql(full_text)
     plot_config = extract_plot_config(full_text)

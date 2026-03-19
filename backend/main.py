@@ -56,7 +56,7 @@ async def health():
 async def create_pivot():
 	from create_pivot import main as run_pivot
 	try:
-		await run_pivot()
+		# await run_pivot()
 		await generate_skills()
 		return {"ok": True}
 	except Exception as e:

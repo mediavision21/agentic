@@ -22,7 +22,11 @@ function ChatMessage(options) {
         <div className="bubble-row assistant">
             <div className="bubble bubble-assistant">
                 {loading && !streaming_text && <span className="loading-dots">Thinking</span>}
-                {loading && streaming_text && <pre className="streaming-text">{streaming_text}</pre>}
+                {streaming_text && (
+                    loading
+                        ? <pre className="streaming-text">{streaming_text}</pre>
+                        : <details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streaming_text}</pre></details>
+                )}
 
                 {error && <p className="error-msg">{error}</p>}
 

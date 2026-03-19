@@ -22,7 +22,6 @@ def start_server():
 	cmd = f"{LLAMA_SERVER_BIN} --model {LLAMA_MODEL} --port 8081 --ctx-size 8192 --n-gpu-layers 99"
 	print(f"[llama] starting: {cmd}")
 	_process = subprocess.Popen(cmd, shell=True, stdout=None, stderr=None)
-	# wait for server to be ready, 27B models can take 60s+
 	for i in range(90):
 		if _process.poll() is not None:
 			raise RuntimeError(f"[llama] server exited with code {_process.returncode}")
@@ -48,7 +47,7 @@ def stop_server():
 
 
 async def complete_stream(system_prompt, user_message):
-	# async generator yielding text chunks
+	# yields text chunks, then a final {"__meta__": {...}} dict with usage info
 	url = f"{LLAMA_SERVER_URL}/v1/chat/completions"
 	payload = {
 		"messages": [
@@ -59,6 +58,7 @@ async def complete_stream(system_prompt, user_message):
 		"max_tokens": 2048,
 		"stream": True,
 	}
+	meta = {}
 	async with httpx.AsyncClient(timeout=120) as client:
 		async with client.stream("POST", url, json=payload) as resp:
 			resp.raise_for_status()
@@ -70,15 +70,19 @@ async def complete_stream(system_prompt, user_message):
 					break
 				try:
 					chunk = json.loads(data)
+					if chunk.get("model"):
+						meta["model"] = chunk["model"]
+					if chunk.get("usage"):
+						meta["usage"] = chunk["usage"]
 					text = chunk["choices"][0]["delta"].get("content", "")
 					if text:
 						yield text
 				except Exception:
 					pass
+	yield {"__meta__": meta}
 
 
 async def complete(system_prompt, user_message):
-	# non-streaming, used for summary generation
 	url = f"{LLAMA_SERVER_URL}/v1/chat/completions"
 	payload = {
 		"messages": [

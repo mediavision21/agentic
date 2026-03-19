@@ -361,6 +361,10 @@ body {
 	white-space: pre-wrap;
 }
 
+.streaming-text-done {
+	opacity: 0.5;
+}
+
 .loading-dots {
 	color: var(--color-gray-mid);
 	font-size: 13px;
