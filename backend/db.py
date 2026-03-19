@@ -102,29 +102,71 @@ async def get_sample_rows(table, n=3):
 		return [], []
 
 
+NUMERIC_TYPES = ('int', 'float', 'numeric', 'real', 'double', 'decimal', 'date', 'timestamp')
+
+
+async def get_kpi_type_dimensions(table):
+    # returns dict: {kpi_type: [dim1, dim2, ...]} for tables with kpi_type + kpi_dimension columns
+    sql = f"""
+        SELECT kpi_type, kpi_dimension
+        FROM {schema}."{table}"
+        WHERE kpi_type IS NOT NULL AND kpi_type != ''
+        GROUP BY kpi_type, kpi_dimension
+        ORDER BY kpi_type, kpi_dimension
+    """
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(sql)
+        result = {}
+        for r in rows:
+            kt = r['kpi_type']
+            kd = r['kpi_dimension'] or ''
+            if kt not in result:
+                result[kt] = []
+            result[kt].append(kd)
+        return result
+    except Exception as e:
+        print(f"[db] get_kpi_type_dimensions error {table}: {e}")
+        return {}
+
+async def get_column_stats(table, col_name, col_type, threshold=20):
+    # returns a stats string: "values:[a,b]" or "range:[min-max]" or "N distinct"
+    quoted = f'"{col_name}"'
+    try:
+        async with pool.acquire() as conn:
+            count_row = await conn.fetchrow(f'SELECT COUNT(DISTINCT {quoted}) FROM {schema}."{table}"')
+            count = count_row[0]
+        if count <= threshold:
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(f'SELECT DISTINCT {quoted} FROM {schema}."{table}" ORDER BY {quoted}')
+            vals = [str(r[0]) for r in rows if r[0] is not None]
+            return f"values:[{','.join(vals)}]"
+        is_numeric = any(t in col_type.lower() for t in NUMERIC_TYPES)
+        if is_numeric:
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(f'SELECT MIN({quoted}), MAX({quoted}) FROM {schema}."{table}"')
+            return f"range:[{row[0]}-{row[1]}]"
+        return f"{count} distinct"
+    except Exception as e:
+        print(f"[db] get_column_stats error {table}.{col_name}: {e}")
+        return "?"
+
+
 async def execute_query(sql):
-	# execute a read-only query, returns {columns, rows}
-	try:
-		async with pool.acquire() as conn:
-			# async with conn.transaction():
-			# 	await conn.execute("SET TRANSACTION READ ONLY")
-			await conn.execute(f"SET search_path TO {schema}, public")
-			rows = await conn.fetch(sql)
-		if not rows:
-			return {"columns": [], "rows": []}
-		columns = list(rows[0].keys())
-		data = []
-		for r in rows:
-			row = {}
-			for k, v in dict(r).items():
-				# convert non-serializable types to string
-				if isinstance(v, (int, float, str, bool, type(None))):
-					row[k] = v
-				else:
-					row[k] = str(v)
-			data.append(row)
-		return {"columns": columns, "rows": data}
-	except Exception as e:
-		print("Error running SQL:", sql)
-		print("Exception:", e)
+	# execute a read-only query, returns {columns, rows} — raises on error
+	async with pool.acquire() as conn:
+		await conn.execute(f"SET search_path TO {schema}, public")
+		rows = await conn.fetch(sql)
+	if not rows:
 		return {"columns": [], "rows": []}
+	columns = list(rows[0].keys())
+	data = []
+	for r in rows:
+		row = {}
+		for k, v in dict(r).items():
+			if isinstance(v, (int, float, str, bool, type(None))):
+				row[k] = v
+			else:
+				row[k] = str(v)
+		data.append(row)
+	return {"columns": columns, "rows": data}

@@ -333,6 +333,15 @@ body {
 	font-family: var(--font-body);
 }
 
+/* ── result summary ── */
+
+.result-summary {
+    color: var(--color-gray-mid);
+    font-size: 13px;
+    line-height: 1.6;
+    margin-top: 12px;
+}
+
 /* ── error ── */
 
 .error-msg {
@@ -341,6 +350,16 @@ body {
 }
 
 /* ── loading ── */
+
+.streaming-text {
+	color: var(--color-gray-mid);
+	font-family: inherit;
+	font-size: 13px;
+	margin: 0;
+	opacity: 0.7;
+	overflow-wrap: break-word;
+	white-space: pre-wrap;
+}
 
 .loading-dots {
 	color: var(--color-gray-mid);

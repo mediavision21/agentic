@@ -34,8 +34,7 @@ mediavision/
 │   │       ├── ResultTable.jsx       # tabular results, capped at top 20 rows
 │   │       └── ResultChart.jsx       # Observable Plot inline in assistant bubble
 └── skills/                           # auto-generated at startup (gitignored)
-    ├── _overview.md                  # all tables summary
-    └── {table_name}.md               # columns + 3 sample rows per table
+    └── {table_name}.txt              # columns with distinct values or range stats per column
 ```
 
 ## Data Flow
@@ -60,9 +59,20 @@ User prompt
 
 ## Startup Flow
 1. FastAPI lifespan creates asyncpg pool from DATABASE_URL
-2. skills.py queries information_schema for all public tables
-3. For each table: fetches columns + 3 sample rows → writes skills/{table}.md
+2. skills.py iterates `SKILL_TABLES` whitelist (user-defined in skills.py)
+3. For each table: fetches columns + per-column distinct values or range → writes skills/{table}.txt
 4. Server ready to accept queries
+
+## Skill File Format
+```
+# macro.tablename
+
+columns:
+col_a,integer,range:[1-100]
+col_b,character varying,values:[dk,sw,no]
+col_c,character varying,54 distinct
+```
+Threshold: ≤20 distinct → list values; numeric/date high-card → `range:[min-max]`; string high-card → `N distinct`
 
 ## Running
 ```bash

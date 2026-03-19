@@ -22,16 +22,28 @@ function App() {
         setActiveId(id)
     }
 
-    async function handleSubmit(options) {
-        const { prompt, backend } = options
-
-        const userMsg = { role: "user", text: prompt }
-        const assistantMsg = { role: "assistant", content: { loading: true } }
-
-        // Set title on first message
+    function patchLastMsg(sessionId, updater) {
         setSessions(function (prev) {
             return prev.map(function (s) {
-                if (s.id !== activeId) return s
+                if (s.id !== sessionId) return s
+                const msgs = [...s.messages]
+                const last = msgs[msgs.length - 1]
+                msgs[msgs.length - 1] = { ...last, content: updater(last.content) }
+                return { ...s, messages: msgs }
+            })
+        })
+    }
+
+    async function handleSubmit(options) {
+        const { prompt, backend } = options
+        const sessionId = activeId
+
+        const userMsg = { role: "user", text: prompt }
+        const assistantMsg = { role: "assistant", content: { loading: true, streaming_text: "" } }
+
+        setSessions(function (prev) {
+            return prev.map(function (s) {
+                if (s.id !== sessionId) return s
                 const isFirst = s.messages.length === 0
                 return {
                     ...s,
@@ -43,42 +55,80 @@ function App() {
         setLoading(true)
 
         try {
-            const resp = await fetch("/api/query", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt, backend }),
-            })
-            const data = await resp.json()
-            console.log("query response", data)
+            const sqlMatch = prompt.match(/^\/sql\s+([\s\S]+)/i)
 
-            setSessions(function (prev) {
-                return prev.map(function (s) {
-                    if (s.id !== activeId) return s
-                    const msgs = [...s.messages]
-                    msgs[msgs.length - 1] = {
-                        role: "assistant",
-                        content: {
-                            loading: false,
-                            error: data.error || "",
-                            sql: data.sql || "",
-                            explanation: data.explanation || "",
-                            system_prompt: data.system_prompt || "",
-                            columns: data.columns || [],
-                            rows: data.rows || [],
-                        },
-                    }
-                    return { ...s, messages: msgs }
+            if (sqlMatch) {
+                // /sql command: run SQL directly, no LLM
+                const resp = await fetch("/api/sql", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sql: sqlMatch[1].trim() }),
                 })
-            })
+                const data = await resp.json()
+                console.log("[/sql] response", data)
+                patchLastMsg(sessionId, function () {
+                    return {
+                        loading: false,
+                        error: data.error || "",
+                        sql: data.sql || "",
+                        explanation: "",
+                        plot_config: null,
+                        columns: data.columns || [],
+                        rows: data.rows || [],
+                        summary: "",
+                    }
+                })
+            } else {
+                // streaming LLM query
+                const resp = await fetch("/api/query", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ prompt, backend }),
+                })
+                const reader = resp.body.getReader()
+                const decoder = new TextDecoder()
+                let buffer = ""
+
+                while (true) {
+                    const { done, value } = await reader.read()
+                    if (done) break
+                    buffer += decoder.decode(value, { stream: true })
+                    const lines = buffer.split("\n")
+                    buffer = lines.pop() // keep incomplete line
+
+                    for (const line of lines) {
+                        if (!line.startsWith("data: ")) continue
+                        const event = JSON.parse(line.slice(6))
+                        console.log("[sse]", event.type, event)
+
+                        if (event.type === "token") {
+                            patchLastMsg(sessionId, function (c) {
+                                return { ...c, streaming_text: (c.streaming_text || "") + event.text }
+                            })
+                        } else if (event.type === "sql") {
+                            patchLastMsg(sessionId, function (c) {
+                                return { ...c, sql: event.sql, plot_config: event.plot_config, explanation: event.explanation }
+                            })
+                        } else if (event.type === "rows") {
+                            patchLastMsg(sessionId, function (c) {
+                                return { ...c, loading: false, columns: event.columns, rows: event.rows }
+                            })
+                        } else if (event.type === "summary") {
+                            patchLastMsg(sessionId, function (c) {
+                                return { ...c, summary: event.text }
+                            })
+                        } else if (event.type === "error") {
+                            patchLastMsg(sessionId, function (c) {
+                                return { ...c, loading: false, error: event.error }
+                            })
+                        }
+                    }
+                }
+            }
         } catch (e) {
             console.error("query error", e)
-            setSessions(function (prev) {
-                return prev.map(function (s) {
-                    if (s.id !== activeId) return s
-                    const msgs = [...s.messages]
-                    msgs[msgs.length - 1] = { role: "assistant", content: { loading: false, error: e.message } }
-                    return { ...s, messages: msgs }
-                })
+            patchLastMsg(sessionId, function () {
+                return { loading: false, error: e.message }
             })
         } finally {
             setLoading(false)

@@ -16,12 +16,13 @@ function ChatMessage(options) {
     }
 
     // assistant
-    const { loading, error, sql, explanation, system_prompt, columns, rows } = message.content
+    const { loading, error, sql, explanation, system_prompt, columns, rows, summary, plot_config, streaming_text } = message.content
 
     return (
         <div className="bubble-row assistant">
             <div className="bubble bubble-assistant">
-                {loading && <span className="loading-dots">Thinking</span>}
+                {loading && !streaming_text && <span className="loading-dots">Thinking</span>}
+                {loading && streaming_text && <pre className="streaming-text">{streaming_text}</pre>}
 
                 {error && <p className="error-msg">{error}</p>}
 
@@ -38,8 +39,10 @@ function ChatMessage(options) {
                 )}
 
                 {rows && rows.length > 0 && (
-                    <ResultChart columns={columns} rows={rows} />
+                    <ResultChart columns={columns} rows={rows} plot_config={plot_config} />
                 )}
+
+                {summary && <p className="result-summary">{summary}</p>}
             </div>
         </div>
     )

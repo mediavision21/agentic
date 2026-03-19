@@ -1,4 +1,5 @@
 import os
+import json
 import subprocess
 import time
 import httpx
@@ -46,7 +47,38 @@ def stop_server():
 		_process = None
 
 
+async def complete_stream(system_prompt, user_message):
+	# async generator yielding text chunks
+	url = f"{LLAMA_SERVER_URL}/v1/chat/completions"
+	payload = {
+		"messages": [
+			{"role": "system", "content": system_prompt},
+			{"role": "user", "content": user_message},
+		],
+		"temperature": 0.1,
+		"max_tokens": 2048,
+		"stream": True,
+	}
+	async with httpx.AsyncClient(timeout=120) as client:
+		async with client.stream("POST", url, json=payload) as resp:
+			resp.raise_for_status()
+			async for line in resp.aiter_lines():
+				if not line.startswith("data: "):
+					continue
+				data = line[6:]
+				if data == "[DONE]":
+					break
+				try:
+					chunk = json.loads(data)
+					text = chunk["choices"][0]["delta"].get("content", "")
+					if text:
+						yield text
+				except Exception:
+					pass
+
+
 async def complete(system_prompt, user_message):
+	# non-streaming, used for summary generation
 	url = f"{LLAMA_SERVER_URL}/v1/chat/completions"
 	payload = {
 		"messages": [
@@ -59,5 +91,4 @@ async def complete(system_prompt, user_message):
 	async with httpx.AsyncClient(timeout=120) as client:
 		resp = await client.post(url, json=payload)
 		resp.raise_for_status()
-		data = resp.json()
-	return data
+		return resp.json()
