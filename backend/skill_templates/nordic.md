@@ -235,6 +235,37 @@ COALESCE(NULLIF(age_group, ''), 'All ages') AS age_group
 - When the user asks for all age groups, include the 'All ages' total row alongside the buckets.
 - When the user does NOT ask for age groups, add `AND (age_group IS NULL OR age_group = '')` to filter to totals only.
 
+## Choosing the right chart type — time series vs bar
+
+**When period_date is in the SELECT, always use lineY — never barY.**
+
+If the query returns `(country, period_date, value)` or `(period_date, category, value)`, the x-axis is time. Using barY here squashes multiple countries/categories into stacked/overlapping bars that are unreadable.
+
+Correct plot config for `(country, period_date, value)`:
+```json
+{
+  "marks": [{"type": "lineY", "x": "period_date", "y": "value", "stroke": "country"}],
+  "color": {"legend": true}
+}
+```
+
+barY is only appropriate when:
+- x-axis is a non-time categorical column (e.g. country, service, category) AND there is no period_date in the result
+- The intent is a snapshot comparison, not a trend over time
+
+## Multiple category series in a single chart
+When the result has a string/categorical column alongside period_date and value (e.g. `category`, `kpi_dimension`, `service`), each distinct value must become its own series — never aggregate or collapse them.
+
+Set `stroke` to that column so Observable Plot draws one line per value:
+```json
+{
+  "marks": [{"type": "lineY", "x": "period_date", "y": "value", "stroke": "category"}],
+  "color": {"legend": true}
+}
+```
+
+Rule: if the SELECT contains any non-date, non-numeric, non-country column (e.g. `category`, `kpi_dimension`, `service`, `age_group`), that column MUST appear as `stroke` (for lineY) or `fill` (for barY) in the plot config. Never omit it — doing so squashes all series into one.
+
 ## Multi-dimension time series (period_date × country × age_group)
 When a query returns period_date as x-axis and has both country and age_group as dimensions, create a composite series label:
 ```sql
@@ -321,6 +352,30 @@ Count metrics (keep 2 decimals):
 | `fact_population`       | population 15–74 per country/year by `population_type` (`individuals` or `households`) — use for cross-country weighting |
 | `fact_fx_rate_quarterly`| FX rates per quarter — join on `period_key` and `currency_code`, multiply `value * rate_to_eur`          |
 | `insight_text`          | editorial commentary rows — use as context alongside numeric KPI data                                     |
+
+## Cross-country quarter normalization
+Sweden has data for all 4 quarters; Norway, Denmark, Finland have Q1 and Q3 only.
+
+**Never use a global MAX(period_date) across countries** — Sweden's Q4 will shadow other countries that only have Q3.
+
+When querying the "latest available" data per country, always get the max per country:
+```sql
+WITH latest AS (
+    SELECT country, MAX(period_date) AS period_date
+    FROM macro.nordic
+    WHERE kpi_type = '<kpi_type>'
+    GROUP BY country
+)
+SELECT n.country, n.period_date, ROUND(AVG(n.value) * 100) AS value
+FROM macro.nordic n
+JOIN latest l USING (country, period_date)
+WHERE n.kpi_type = '<kpi_type>'
+  AND n.kpi_dimension = '<dim>'
+GROUP BY n.country, n.period_date
+ORDER BY n.country
+```
+
+For time series across all countries: just SELECT all periods — the chart will naturally align each country to its own available quarters. Do NOT filter to a single MAX period.
 
 ## Querying guidelines
 1. ALWAYS use table `macro.nordic`.

@@ -77,6 +77,7 @@ Rules for mark type:
 - Multiple countries, no age breakdown → stroke = "country"
 - Multiple age groups, single country → stroke = "age_group"
 - Multiple countries AND age groups → SQL must produce a `series` column (country || ' · ' || age_group), stroke = "series"
+- Any categorical column in SELECT (category, kpi_dimension, service, age_group) → MUST be stroke/fill, never omit it
 - Include "color": {{"legend": true}} whenever stroke is set to a column name
 """
 
@@ -116,13 +117,22 @@ def _remove_empty_string_filters(sql):
 
 
 def _fix_incomplete_is_null_or(sql):
-    # fixes truncated pattern: (col IS NULL OR)  →  (col IS NULL OR col = '')
-    return re.sub(
+    # fixes truncated patterns:
+    #   (col IS NULL OR)         →  (col IS NULL OR col = '')
+    #   (n.col IS NULL OR n.)    →  (n.col IS NULL OR n.col = '')
+    result = re.sub(
         r'\(\s*(\w+)\s+IS\s+NULL\s+OR\s*\)',
         r"(\1 IS NULL OR \1 = '')",
         sql,
         flags=re.IGNORECASE,
     )
+    result = re.sub(
+        r'\(\s*(\w+)\.(\w+)\s+IS\s+NULL\s+OR\s+\1\.\s*\)',
+        r"(\1.\2 IS NULL OR \1.\2 = '')",
+        result,
+        flags=re.IGNORECASE,
+    )
+    return result
 
 
 POST_PROCESSORS = [

@@ -1,5 +1,6 @@
 import { useRef, useEffect } from "react"
 import * as Plot from "@observablehq/plot"
+import { voiTheme, voiColors } from "../voi-theme.js"
 
 // mark type → Plot function map
 const MARK_FN = {
@@ -55,13 +56,13 @@ function buildFromConfig(options) {
         if (m.fill) opts.fill = m.fill
         // default color when no stroke/fill specified
         if (!m.stroke && !m.fill) {
-            opts.fill = m.type === "lineY" ? undefined : "var(--color-voi-primary)"
-            if (m.type === "lineY") opts.stroke = "var(--color-voi-primary)"
+            opts.fill = m.type === "lineY" ? undefined : voiColors.series1
+            if (m.type === "lineY") opts.stroke = voiColors.series1
         }
         marks.push(fn(data, opts))
         if (m.type === "barY") marks.push(Plot.ruleY([0]))
         if (m.type === "lineY") {
-            marks.push(Plot.dot(data, { x: m.x, y: m.y, fill: opts.stroke || "var(--color-voi-primary)", r: 3 }))
+            marks.push(Plot.dot(data, { x: m.x, y: m.y, fill: opts.stroke || voiColors.series1, r: 3 }))
         }
         // hover tip
         const tipChannels = { x: m.x, y: m.y }
@@ -70,23 +71,18 @@ function buildFromConfig(options) {
         marks.push(Plot.tip(data, pointer(tipChannels)))
     }
 
-    marks.unshift(Plot.gridY({ stroke: "rgba(255,255,255,0.07)", strokeWidth: 1 }))
+    marks.unshift(Plot.gridY({ stroke: voiColors.grid, strokeWidth: 1 }))
 
     const plotOpts = {
+        ...voiTheme,
         width: 600,
         height: 300,
-        style: {
-            background: "var(--color-voi-bg)",
-            color: "var(--color-voi-axis)",
-            fontSize: "11px",
-            fontFamily: "var(--font-body)",
-        },
-        x: { tickSize: 3, ...(config.x || {}) },
-        y: { grid: false, tickSize: 3, ...(config.y || {}) },
-        color: { legend: true },
+        x: { ...voiTheme.x, ...(config.x || {}) },
+        y: { ...voiTheme.y, grid: false, ...(config.y || {}) },
+        color: { ...voiTheme.color, legend: true },
         marks,
     }
-    if (config.color) plotOpts.color = config.color
+    if (config.color) plotOpts.color = { ...voiTheme.color, ...config.color }
     return Plot.plot(plotOpts)
 }
 
@@ -130,38 +126,33 @@ function buildFallback(options) {
     let marks = []
     if (chartInfo.type === "bar") {
         marks = [
-            Plot.barY(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-voi-primary)" }),
+            Plot.barY(data, { x: chartInfo.x, y: chartInfo.y, fill: voiColors.series1 }),
             Plot.ruleY([0]),
             Plot.tip(data, Plot.pointer(tipChannels)),
         ]
     }
     if (chartInfo.type === "line") {
         marks = [
-            Plot.lineY(data, { x: chartInfo.x, y: chartInfo.y, stroke: "var(--color-voi-primary)" }),
-            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-voi-primary)", r: 3 }),
+            Plot.lineY(data, { x: chartInfo.x, y: chartInfo.y, stroke: voiColors.series1 }),
+            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: voiColors.series1, r: 3 }),
             Plot.tip(data, Plot.pointerX(tipChannels)),
         ]
     }
     if (chartInfo.type === "dot") {
         marks = [
-            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-voi-secondary)" }),
+            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: voiColors.series2 }),
             Plot.tip(data, Plot.pointer(tipChannels)),
         ]
     }
 
-    marks.unshift(Plot.gridY({ stroke: "rgba(255,255,255,0.07)", strokeWidth: 1 }))
+    marks.unshift(Plot.gridY({ stroke: voiColors.grid, strokeWidth: 1 }))
 
     return Plot.plot({
+        ...voiTheme,
         width: 600,
         height: 300,
-        style: {
-            background: "var(--color-voi-bg)",
-            color: "var(--color-voi-axis)",
-            fontSize: "11px",
-            fontFamily: "var(--font-body)",
-        },
-        x: { label: chartInfo.x, tickSize: 3 },
-        y: { label: chartInfo.y, grid: false, tickSize: 3 },
+        x: { ...voiTheme.x, label: chartInfo.x },
+        y: { ...voiTheme.y, label: chartInfo.y, grid: false },
         marks,
     })
 }
