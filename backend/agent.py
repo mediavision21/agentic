@@ -118,6 +118,8 @@ async def generate_sql_stream(user_prompt, backend="claude"):
     print()  # newline after stream ends
 
     ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    with open(os.path.join(LOGS_DIR, f"{ts}-response.md"), "w") as f:
+        f.write(full_text)
     with open(os.path.join(LOGS_DIR, f"{ts}-response.yaml"), "w") as f:
         yaml.dump({
             "backend": backend,

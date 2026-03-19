@@ -333,14 +333,21 @@ body {
 	font-family: var(--font-body);
 }
 
-/* ── result summary ── */
+/* ── markdown body ── */
 
-.result-summary {
+.md-body {
     color: var(--color-gray-mid);
     font-size: 13px;
     line-height: 1.6;
     margin-top: 12px;
 }
+
+.md-body p { margin: 0 0 6px; }
+.md-body p:last-child { margin-bottom: 0; }
+.md-body strong { color: var(--color-gray-dark); font-weight: 600; }
+.md-body ul, .md-body ol { margin: 4px 0 6px 18px; padding: 0; }
+.md-body li { margin-bottom: 2px; }
+.md-body code { background: var(--color-bg-code, #1e1e1e); border-radius: 3px; font-size: 12px; padding: 1px 4px; }
 
 /* ── error ── */
 

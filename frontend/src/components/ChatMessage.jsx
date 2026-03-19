@@ -1,6 +1,7 @@
 import SqlDisplay from "./SqlDisplay.jsx"
 import ResultTable from "./ResultTable.jsx"
 import ResultChart from "./ResultChart.jsx"
+import Markdown from "./Markdown.jsx"
 
 function ChatMessage(options) {
     const { message } = options
@@ -46,7 +47,7 @@ function ChatMessage(options) {
                     <ResultChart columns={columns} rows={rows} plot_config={plot_config} />
                 )}
 
-                {summary && <p className="result-summary">{summary}</p>}
+                {summary && <Markdown text={summary} />}
             </div>
         </div>
     )

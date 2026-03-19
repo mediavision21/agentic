@@ -63,6 +63,11 @@ function buildFromConfig(options) {
         if (m.type === "lineY") {
             marks.push(Plot.dot(data, { x: m.x, y: m.y, fill: opts.stroke || "var(--color-forest)" }))
         }
+        // hover tip
+        const tipChannels = { x: m.x, y: m.y }
+        if (m.stroke && columns.includes(m.stroke)) tipChannels[m.stroke] = m.stroke
+        const pointer = m.type === "barY" ? Plot.pointer : Plot.pointerX
+        marks.push(Plot.tip(data, pointer(tipChannels)))
     }
 
     const plotOpts = {
@@ -113,18 +118,27 @@ function buildFallback(options) {
         return d
     })
 
+    const tipChannels = { x: chartInfo.x, y: chartInfo.y }
     let marks = []
     if (chartInfo.type === "bar") {
-        marks = [Plot.barY(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-forest)" }), Plot.ruleY([0])]
+        marks = [
+            Plot.barY(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-forest)" }),
+            Plot.ruleY([0]),
+            Plot.tip(data, Plot.pointer(tipChannels)),
+        ]
     }
     if (chartInfo.type === "line") {
         marks = [
             Plot.lineY(data, { x: chartInfo.x, y: chartInfo.y, stroke: "var(--color-forest)" }),
             Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-forest)" }),
+            Plot.tip(data, Plot.pointerX(tipChannels)),
         ]
     }
     if (chartInfo.type === "dot") {
-        marks = [Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-forest)" })]
+        marks = [
+            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-forest)" }),
+            Plot.tip(data, Plot.pointer(tipChannels)),
+        ]
     }
 
     return Plot.plot({
