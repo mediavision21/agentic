@@ -4,7 +4,7 @@ import ResultChart from "./ResultChart.jsx"
 import Markdown from "./Markdown.jsx"
 
 function ChatMessage(options) {
-    const { message } = options
+    const { message, onSuggest } = options
 
     if (message.role === "user") {
         return (
@@ -17,7 +17,7 @@ function ChatMessage(options) {
     }
 
     // assistant
-    const { loading, error, sql, explanation, system_prompt, columns, rows, summary, plot_config, streaming_text } = message.content
+    const { loading, error, sql, explanation, text, columns, rows, summary, plot_config, streaming_text, suggestions } = message.content
 
     return (
         <div className="bubble-row assistant">
@@ -31,9 +31,8 @@ function ChatMessage(options) {
 
                 {error && <p className="error-msg">{error}</p>}
 
-                {system_prompt && (
-                    <SqlDisplay label="System prompt" code={system_prompt} />
-                )}
+                {/* conversational reply — show as markdown, no SQL block */}
+                {text && !sql && <Markdown text={text} />}
 
                 {sql && (
                     <SqlDisplay label="SQL" code={sql} explanation={explanation} />
@@ -48,6 +47,22 @@ function ChatMessage(options) {
                 )}
 
                 {summary && <Markdown text={summary} />}
+
+                {suggestions && suggestions.length > 0 && (
+                    <div className="suggestion-chips">
+                        {suggestions.map(function (s, i) {
+                            return (
+                                <button
+                                    key={i}
+                                    className="suggestion-chip"
+                                    onClick={function () { onSuggest({ prompt: s, backend: "claude" }) }}
+                                >
+                                    {s}
+                                </button>
+                            )
+                        })}
+                    </div>
+                )}
             </div>
         </div>
     )

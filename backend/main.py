@@ -11,7 +11,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 from db import create_pool, close_pool, execute_query
 from skills import generate_skills, load_skills
-from agent import generate_sql_stream
+from agent import generate_agent_stream
 import llm_local
 
 
@@ -41,6 +41,7 @@ app.add_middleware(
 class QueryRequest(BaseModel):
 	prompt: str
 	backend: str = "claude"
+	history: list = []
 
 
 class SqlRequest(BaseModel):
@@ -86,7 +87,7 @@ async def run_sql(req: SqlRequest):
 async def query(req: QueryRequest):
 	async def stream():
 		try:
-			async for event in generate_sql_stream(req.prompt, req.backend):
+			async for event in generate_agent_stream(req.prompt, req.backend, req.history):
 				yield f"data: {json.dumps(event)}\n\n"
 		except Exception as e:
 			yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"

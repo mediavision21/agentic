@@ -224,8 +224,25 @@ kpi_dimension, age_group and population_segment are NULL for most kpi_types.
 - NEVER filter out age_group = '' or population_segment = '' or kpi_dimension = '' unless intentional
 - Only add a filter on these columns when the user explicitly asks for a specific age group or population segment
 - If you must exclude nulls, use IS NOT NULL — but usually just omit the filter entirely
-- return all those rows let observable plot group of filter those columns
-- add logic to observable plot that always group and sum up except value column
+
+## age_group labeling
+When age_group is selected in a query, always convert empty/null to a display label:
+```sql
+COALESCE(NULLIF(age_group, ''), 'All ages') AS age_group
+```
+- Empty age_group = the total/all-ages row. Always label it 'All ages'.
+- Non-empty values are age buckets (e.g. '15-29', '30-49', '50-74').
+- When the user asks for all age groups, include the 'All ages' total row alongside the buckets.
+- When the user does NOT ask for age groups, add `AND (age_group IS NULL OR age_group = '')` to filter to totals only.
+
+## Multi-dimension time series (period_date × country × age_group)
+When a query returns period_date as x-axis and has both country and age_group as dimensions, create a composite series label:
+```sql
+country || ' · ' || COALESCE(NULLIF(age_group, ''), 'All ages') AS series
+```
+Then use `series` as the stroke column in the plot config. This produces one clearly labelled line per country/age combination.
+
+If only country varies (no age_group breakdown), use `country` as stroke directly.
 
 ## Value formatting in SQL
 Apply the correct formula in the SELECT clause when computing the value column:
@@ -312,6 +329,7 @@ Count metrics (keep 2 decimals):
 4. ALWAYS apply the value formula from the Value formatting section above.
 5. Use period_date for time-series x-axis and ORDER BY. Use year/quarter only for WHERE filters.
 6. Use the demographics section and kpi_type+dimension meaning above to pick correct kpi_dimension and category.
-7. Only add WHERE on age_group or population_segment when explicitly asked.
-8. When user asks about age groups, add age_group to both SELECT and GROUP BY.
-9. Check the `comment` column if a time series looks broken — it may flag a method change or service rename.
+7. When NOT asked about age groups: add `AND (age_group IS NULL OR age_group = '')` to get totals only.
+8. When asked about age groups: select `COALESCE(NULLIF(age_group, ''), 'All ages') AS age_group` and GROUP BY it.
+9. When result has period_date × country × age_group: add a `series` composite column and use it as plot stroke.
+10. Check the `comment` column if a time series looks broken — it may flag a method change or service rename.

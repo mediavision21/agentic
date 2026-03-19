@@ -55,13 +55,13 @@ function buildFromConfig(options) {
         if (m.fill) opts.fill = m.fill
         // default color when no stroke/fill specified
         if (!m.stroke && !m.fill) {
-            opts.fill = m.type === "lineY" ? undefined : "var(--color-forest)"
-            if (m.type === "lineY") opts.stroke = "var(--color-forest)"
+            opts.fill = m.type === "lineY" ? undefined : "var(--color-voi-primary)"
+            if (m.type === "lineY") opts.stroke = "var(--color-voi-primary)"
         }
         marks.push(fn(data, opts))
         if (m.type === "barY") marks.push(Plot.ruleY([0]))
         if (m.type === "lineY") {
-            marks.push(Plot.dot(data, { x: m.x, y: m.y, fill: opts.stroke || "var(--color-forest)" }))
+            marks.push(Plot.dot(data, { x: m.x, y: m.y, fill: opts.stroke || "var(--color-voi-primary)", r: 3 }))
         }
         // hover tip
         const tipChannels = { x: m.x, y: m.y }
@@ -70,12 +70,20 @@ function buildFromConfig(options) {
         marks.push(Plot.tip(data, pointer(tipChannels)))
     }
 
+    marks.unshift(Plot.gridY({ stroke: "rgba(255,255,255,0.07)", strokeWidth: 1 }))
+
     const plotOpts = {
         width: 600,
         height: 300,
-        style: { background: "transparent", color: "var(--color-gray-dark)", fontSize: "12px" },
-        x: config.x || {},
-        y: { grid: true, ...(config.y || {}) },
+        style: {
+            background: "var(--color-voi-bg)",
+            color: "var(--color-voi-axis)",
+            fontSize: "11px",
+            fontFamily: "var(--font-body)",
+        },
+        x: { tickSize: 3, ...(config.x || {}) },
+        y: { grid: false, tickSize: 3, ...(config.y || {}) },
+        color: { legend: true },
         marks,
     }
     if (config.color) plotOpts.color = config.color
@@ -122,31 +130,38 @@ function buildFallback(options) {
     let marks = []
     if (chartInfo.type === "bar") {
         marks = [
-            Plot.barY(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-forest)" }),
+            Plot.barY(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-voi-primary)" }),
             Plot.ruleY([0]),
             Plot.tip(data, Plot.pointer(tipChannels)),
         ]
     }
     if (chartInfo.type === "line") {
         marks = [
-            Plot.lineY(data, { x: chartInfo.x, y: chartInfo.y, stroke: "var(--color-forest)" }),
-            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-forest)" }),
+            Plot.lineY(data, { x: chartInfo.x, y: chartInfo.y, stroke: "var(--color-voi-primary)" }),
+            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-voi-primary)", r: 3 }),
             Plot.tip(data, Plot.pointerX(tipChannels)),
         ]
     }
     if (chartInfo.type === "dot") {
         marks = [
-            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-forest)" }),
+            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: "var(--color-voi-secondary)" }),
             Plot.tip(data, Plot.pointer(tipChannels)),
         ]
     }
 
+    marks.unshift(Plot.gridY({ stroke: "rgba(255,255,255,0.07)", strokeWidth: 1 }))
+
     return Plot.plot({
         width: 600,
         height: 300,
-        style: { background: "transparent", color: "var(--color-gray-dark)", fontSize: "12px" },
-        x: { label: chartInfo.x },
-        y: { label: chartInfo.y, grid: true },
+        style: {
+            background: "var(--color-voi-bg)",
+            color: "var(--color-voi-axis)",
+            fontSize: "11px",
+            fontFamily: "var(--font-body)",
+        },
+        x: { label: chartInfo.x, tickSize: 3 },
+        y: { label: chartInfo.y, grid: false, tickSize: 3 },
         marks,
     })
 }

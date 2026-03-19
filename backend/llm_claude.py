@@ -10,13 +10,14 @@ client = anthropic.AsyncAnthropic(api_key=os.getenv("API_KEY"))
 # 5$/25$/M 		claude-opus-4-6
 MODEL = "claude-haiku-4-5-20251001"
 
-async def complete_stream(system_prompt, user_message):
+async def complete_stream(system_prompt, messages):
+    # messages: list of {"role": "user"|"assistant", "content": str}
     # yields text chunks, then a final {"__meta__": {...}} dict with usage info
     async with client.messages.stream(
         model=MODEL,
         max_tokens=2048,
         system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
+        messages=messages,
     ) as stream:
         async for text in stream.text_stream:
             yield text
@@ -29,10 +30,11 @@ async def complete_stream(system_prompt, user_message):
         }
 
 
-async def complete(system_prompt, user_message):
+async def complete(system_prompt, messages):
+    # messages: list of {"role": "user"|"assistant", "content": str}
     return await client.messages.create(
         model=MODEL,
         max_tokens=2048,
         system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
+        messages=messages,
     )

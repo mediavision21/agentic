@@ -30,6 +30,16 @@
 	--color-red-500: #C93333;
 	--color-red-100: #F5D5D5;
 
+	/* VOI brand */
+	--color-voi-primary: #E65D5D;
+	--color-voi-secondary: #7AA0BA;
+	--color-voi-tertiary: #4FB0B0;
+	--color-voi-success: #74C365;
+	--color-voi-temp: #F5A623;
+	--color-voi-bg: #1A1C1E;
+	--color-voi-grid: rgba(255, 255, 255, 0.07);
+	--color-voi-axis: #9a9a9a;
+
 	/* Fonts */
 	--font-headline: 'Gelasio', Georgia, serif;
 	--font-body: 'Inter', Arial, sans-serif;
@@ -322,32 +332,88 @@ body {
 	background: var(--color-green-100);
 }
 
+/* ── suggestion chips ── */
+
+.suggestion-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 10px;
+}
+
+.suggestion-chip {
+	background: transparent;
+	border: 1px solid var(--color-gray-light);
+	border-radius: 16px;
+	color: var(--color-gray-dark);
+	cursor: pointer;
+	font-family: var(--font-body);
+	font-size: 13px;
+	padding: 5px 12px;
+}
+
+.suggestion-chip:hover {
+	background: var(--color-gray-lighter);
+	border-color: var(--color-gray-mid);
+}
+
 /* ── chart ── */
 
 .chart-container {
+	border-radius: 6px;
 	margin-top: 10px;
+	overflow: hidden;
 	overflow-x: auto;
 }
 
 .chart-container svg {
+	display: block;
 	font-family: var(--font-body);
+}
+
+/* VOI dark theme: axis text color */
+.chart-container svg text {
+	fill: var(--color-voi-axis);
 }
 
 /* ── markdown body ── */
 
 .md-body {
-    color: var(--color-gray-mid);
-    font-size: 13px;
-    line-height: 1.6;
-    margin-top: 12px;
+	color: var(--color-gray-mid);
+	font-size: 13px;
+	line-height: 1.6;
+	margin-top: 12px;
 }
 
-.md-body p { margin: 0 0 6px; }
-.md-body p:last-child { margin-bottom: 0; }
-.md-body strong { color: var(--color-gray-dark); font-weight: 600; }
-.md-body ul, .md-body ol { margin: 4px 0 6px 18px; padding: 0; }
-.md-body li { margin-bottom: 2px; }
-.md-body code { background: var(--color-bg-code, #1e1e1e); border-radius: 3px; font-size: 12px; padding: 1px 4px; }
+.md-body p {
+	margin: 0 0 6px;
+}
+
+.md-body p:last-child {
+	margin-bottom: 0;
+}
+
+.md-body strong {
+	color: var(--color-gray-dark);
+	font-weight: 600;
+}
+
+.md-body ul,
+.md-body ol {
+	margin: 4px 0 6px 18px;
+	padding: 0;
+}
+
+.md-body li {
+	margin-bottom: 2px;
+}
+
+.md-body code {
+	background: var(--color-bg-code, #1e1e1e40);
+	border-radius: 3px;
+	font-size: 12px;
+	padding: 1px 4px;
+}
 
 /* ── error ── */
 

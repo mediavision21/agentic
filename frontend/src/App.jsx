@@ -34,9 +34,27 @@ function App() {
         })
     }
 
+    function buildHistory(messages) {
+        // convert completed messages to history for the backend
+        const history = []
+        for (const msg of messages) {
+            if (msg.role === "user") {
+                history.push({ role: "user", text: msg.text })
+            } else if (msg.role === "assistant" && msg.content && !msg.content.loading) {
+                // send the raw LLM response text back as context
+                const raw = msg.content.raw_text || msg.content.streaming_text || ""
+                if (raw) history.push({ role: "assistant", text: raw })
+            }
+        }
+        return history
+    }
+
     async function handleSubmit(options) {
         const { prompt, backend } = options
         const sessionId = activeId
+
+        const currentMessages = sessions.find(function (s) { return s.id === sessionId })?.messages || []
+        const history = buildHistory(currentMessages)
 
         const userMsg = { role: "user", text: prompt }
         const assistantMsg = { role: "assistant", content: { loading: true, streaming_text: "" } }
@@ -79,11 +97,11 @@ function App() {
                     }
                 })
             } else {
-                // streaming LLM query
+                // streaming agent
                 const resp = await fetch("/api/query", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ prompt, backend }),
+                    body: JSON.stringify({ prompt, backend, history }),
                 })
                 const reader = resp.body.getReader()
                 const decoder = new TextDecoder()
@@ -94,7 +112,7 @@ function App() {
                     if (done) break
                     buffer += decoder.decode(value, { stream: true })
                     const lines = buffer.split("\n")
-                    buffer = lines.pop() // keep incomplete line
+                    buffer = lines.pop()
 
                     for (const line of lines) {
                         if (!line.startsWith("data: ")) continue
@@ -105,9 +123,14 @@ function App() {
                             patchLastMsg(sessionId, function (c) {
                                 return { ...c, streaming_text: (c.streaming_text || "") + event.text }
                             })
+                        } else if (event.type === "text") {
+                            // conversational reply — store raw_text, clear loading
+                            patchLastMsg(sessionId, function (c) {
+                                return { ...c, loading: false, text: event.text, raw_text: event.text }
+                            })
                         } else if (event.type === "sql") {
                             patchLastMsg(sessionId, function (c) {
-                                return { ...c, sql: event.sql, plot_config: event.plot_config, explanation: event.explanation }
+                                return { ...c, sql: event.sql, plot_config: event.plot_config, explanation: event.explanation, raw_text: c.streaming_text }
                             })
                         } else if (event.type === "rows") {
                             patchLastMsg(sessionId, function (c) {
@@ -116,6 +139,10 @@ function App() {
                         } else if (event.type === "summary") {
                             patchLastMsg(sessionId, function (c) {
                                 return { ...c, summary: event.text }
+                            })
+                        } else if (event.type === "suggestions") {
+                            patchLastMsg(sessionId, function (c) {
+                                return { ...c, suggestions: event.items }
                             })
                         } else if (event.type === "error") {
                             patchLastMsg(sessionId, function (c) {
@@ -170,7 +197,7 @@ function App() {
                 <div className="chat-window">
                     <div className="chat-messages">
                         {currentSession && currentSession.messages.map(function (msg, i) {
-                            return <ChatMessage key={i} message={msg} />
+                            return <ChatMessage key={i} message={msg} onSuggest={handleSubmit} />
                         })}
                         <div ref={$bottom} />
                     </div>

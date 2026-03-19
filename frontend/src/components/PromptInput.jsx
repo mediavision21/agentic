@@ -2,7 +2,8 @@ import { useState, useRef } from "react"
 
 function PromptInput(options) {
 	const { onSubmit, loading } = options
-	const [prompt, setPrompt] = useState("Quarterly trend of usage of on demand video playing country by country in nordic?")
+	// const [prompt, setPrompt] = useState("Quarterly trend of usage of on demand video playing country by country in nordic?")
+	const [prompt, setPrompt] = useState("Daily reach of online video?")
 	const [backend, setBackend] = useState("claude")
 	const $textarea = useRef(null)
 

@@ -11,30 +11,42 @@ import llm_local
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
 
 
-SYSTEM_PROMPT_TEMPLATE = """You are a SQL expert assistant. You generate PostgreSQL queries based on the user's natural language request.
+SYSTEM_PROMPT_TEMPLATE = """You are a data analyst assistant for MediaVision, a media intelligence platform with a PostgreSQL database of Nordic TV and streaming viewership data.
+
+## Your behaviour
+- If the user asks a question that requires data, generate SQL and a plot config.
+- If the question is conversational, asks for clarification, or can be answered without data, reply in plain text (markdown supported). Do NOT generate SQL in that case.
+- If the request is ambiguous, ask a clarifying question instead of guessing.
+- When offering the user a list of options to choose from, append this exact block at the very end of your response (after all other text):
+
+<!--suggestions
+Option text 1
+Option text 2
+-->
+
+Each line inside the block becomes a clickable button the user can tap instead of typing.
 
 ## Database Schema
 {schema}
 
-## Rules
-- Generate ONLY SELECT queries. Never generate INSERT, UPDATE, DELETE, DROP, or any mutating SQL.
-- Use the column names and types from the schema exactly.
-- If the user's request is ambiguous, make a reasonable assumption and note it in the explanation.
+## SQL rules
+- Generate ONLY SELECT queries. Never INSERT, UPDATE, DELETE, DROP.
+- Use column names and types from the schema exactly.
 
 ## For tables with kpi_type
-Before writing any SQL, think step by step:
+Before writing SQL, think step by step:
 1. Which kpi_type does this question map to? (pick exactly one from the valid values)
-2. Which kpi_dimension narrows the market segment? (pick one, or '' for total)
+2. Which kpi_dimension narrows the market segment?
 3. Does the question ask about a specific service? If yes, use a _service kpi_type.
-4. Is a genre breakdown needed? If yes, filter kpi_dimension='genre' and set kpi_detail.
+4. Is a genre breakdown needed? Filter kpi_dimension='genre' and set kpi_detail.
 
-Then write SQL that ALWAYS includes:
+SQL MUST always include:
   WHERE kpi_type = '<single value>' AND kpi_dimension = '<single value>'
 
-NEVER select or aggregate across multiple kpi_type values — value column units differ per kpi_type and mixing them produces meaningless numbers.
+NEVER aggregate across multiple kpi_type values.
 NEVER use OR on kpi_type. NEVER omit the kpi_type filter.
 
-## Response format
+## Response format when generating SQL
 Output in this exact order:
 
 1. ```sql
@@ -57,17 +69,19 @@ Output in this exact order:
   "color": {{"legend": true}}
 }}
 
-Rules for choosing mark type and options:
-- Time series (x = period_key, year, quarter) → lineY
+Rules for mark type:
+- Time series (x = period_date, year, quarter) → lineY
 - Categorical comparison (x = country, service_id, category) → barY
 - Scatter / two numeric axes → dot
-- Multiple series (multiple countries, services, dimensions) → set stroke to the grouping column
-- Include "color": {{"legend": true}} only when stroke is set to a column name
-- Omit "color" key when stroke is null or a literal color string
+- Single country, no age breakdown → no stroke
+- Multiple countries, no age breakdown → stroke = "country"
+- Multiple age groups, single country → stroke = "age_group"
+- Multiple countries AND age groups → SQL must produce a `series` column (country || ' · ' || age_group), stroke = "series"
+- Include "color": {{"legend": true}} whenever stroke is set to a column name
 """
 
 
-def build_prompt():
+def build_system_prompt():
     skills = load_skills()
     schema_parts = []
     for name, content in skills["files"].items():
@@ -82,36 +96,38 @@ def extract_sql(text):
     match = re.search(r"(SELECT\s+.+?;)", text, re.DOTALL | re.IGNORECASE)
     if match:
         return match.group(1).strip()
-    return text.strip()
+    return None
 
 
 # --- SQL post-processors ---
-# Each entry is (name, fn) where fn(sql) -> sql.
-# Add new rules here as needed.
 
 def _remove_empty_string_filters(sql):
-    # removes conditions like: col = '' / col = "" with any spacing/quotes
-    # matches the whole line (including leading whitespace + newline) to preserve indentation elsewhere
     cols = ['age_group', 'population_segment', 'kpi_dimension']
     result = sql
     for col in cols:
-        empty = r"""(?:'{2}|"{2})"""  # '' or ""
+        empty = r"""(?:'{2}|"{2})"""
         cond  = rf"""{col}\s*=\s*{empty}"""
-        # whole line: AND <cond>  (newline + indent + AND + cond)
         result = re.sub(rf'\n[ \t]*AND[ \t]+{cond}[ \t]*', '', result, flags=re.IGNORECASE)
-        # whole line: <cond> AND  (cond at start of WHERE block, followed by AND on same or next line)
         result = re.sub(rf'[ \t]*{cond}[ \t]+AND[ \t]*\n?', '', result, flags=re.IGNORECASE)
-        # standalone cond (only condition, no AND neighbour)
         result = re.sub(rf'[ \t]*{cond}[ \t]*', '', result, flags=re.IGNORECASE)
-    # drop WHERE with no remaining conditions
     result = re.sub(r'\bWHERE\s*(?=GROUP\b|ORDER\b|LIMIT\b)', '', result, flags=re.IGNORECASE)
-    # remove lines that are now blank / whitespace-only
     result = re.sub(r'\n[ \t]*\n', '\n', result)
     return result.strip()
 
 
+def _fix_incomplete_is_null_or(sql):
+    # fixes truncated pattern: (col IS NULL OR)  →  (col IS NULL OR col = '')
+    return re.sub(
+        r'\(\s*(\w+)\s+IS\s+NULL\s+OR\s*\)',
+        r"(\1 IS NULL OR \1 = '')",
+        sql,
+        flags=re.IGNORECASE,
+    )
+
+
 POST_PROCESSORS = [
     ("remove_empty_string_filters", _remove_empty_string_filters),
+    ("fix_incomplete_is_null_or", _fix_incomplete_is_null_or),
 ]
 
 
@@ -136,26 +152,38 @@ def extract_plot_config(text):
         return None
 
 
-async def generate_sql_stream(user_prompt, backend="claude"):
-    # async generator yielding SSE event dicts
-    system_prompt = build_prompt()
+def build_llm_messages(history, prompt):
+    # history: list of {"role": "user"|"assistant", "text": str}
+    messages = []
+    for h in history:
+        messages.append({"role": h["role"], "content": h["text"]})
+    messages.append({"role": "user", "content": prompt})
+    return messages
+
+
+async def generate_agent_stream(prompt, backend="claude", history=None):
+    if history is None:
+        history = []
+
+    system_prompt = build_system_prompt()
+    messages = build_llm_messages(history, prompt)
 
     os.makedirs(LOGS_DIR, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
     with open(os.path.join(LOGS_DIR, f"{ts}-request.md"), "w") as f:
-        f.write(f"backend: {backend}\nprompt: {user_prompt}\n\nsystem:\n{system_prompt}\n")
+        f.write(f"backend: {backend}\nprompt: {prompt}\n\nsystem:\n{system_prompt}\n")
 
     full_text = ""
     meta = {}
     stream_fn = llm_local.complete_stream if backend == "local" else llm_claude.complete_stream
-    async for chunk in stream_fn(system_prompt, user_prompt):
+    async for chunk in stream_fn(system_prompt, messages):
         if isinstance(chunk, dict):
             meta = chunk.get("__meta__", {})
             break
         full_text += chunk
         print(chunk, end="", flush=True)
         yield {"type": "token", "text": chunk}
-    print()  # newline after stream ends
+    print()
 
     ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
     with open(os.path.join(LOGS_DIR, f"{ts}-response.md"), "w") as f:
@@ -163,13 +191,26 @@ async def generate_sql_stream(user_prompt, backend="claude"):
     with open(os.path.join(LOGS_DIR, f"{ts}-response.yaml"), "w") as f:
         yaml.dump({
             "backend": backend,
-            "prompt": user_prompt,
+            "prompt": prompt,
             "model": meta.get("model", ""),
             "usage": meta.get("usage", {}),
             "response": full_text,
         }, f, default_flow_style=False, allow_unicode=True)
 
     sql_raw = extract_sql(full_text)
+
+    if sql_raw is None:
+        # parse and strip suggestions block
+        suggestions = []
+        sugg_match = re.search(r"<!--suggestions\s*(.*?)\s*-->", full_text, re.DOTALL)
+        if sugg_match:
+            suggestions = [line.strip() for line in sugg_match.group(1).splitlines() if line.strip()]
+        display_text = re.sub(r"\s*<!--suggestions.*?-->", "", full_text, flags=re.DOTALL).strip()
+        yield {"type": "text", "text": display_text}
+        if suggestions:
+            yield {"type": "suggestions", "items": suggestions}
+        return
+
     sql = postprocess_sql(sql_raw)
     plot_config = extract_plot_config(full_text)
     explanation = re.sub(r"```(?:sql|json).*?```", "", full_text, flags=re.DOTALL).strip()
@@ -188,7 +229,7 @@ async def generate_sql_stream(user_prompt, backend="claude"):
         return
 
     try:
-        summary = await generate_summary(user_prompt, data["columns"], data["rows"], backend)
+        summary = await generate_summary(prompt, data["columns"], data["rows"], backend)
         yield {"type": "summary", "text": summary}
     except Exception as e:
         print(f"[agent] summary error: {e}")
@@ -207,5 +248,5 @@ async def generate_summary(user_prompt, columns, rows, backend="claude"):
         raw = await llm_local.complete(SUMMARY_SYSTEM_PROMPT, user_msg)
         return raw["choices"][0]["message"]["content"].strip()
     else:
-        raw = await llm_claude.complete(SUMMARY_SYSTEM_PROMPT, user_msg)
+        raw = await llm_claude.complete(SUMMARY_SYSTEM_PROMPT, [{"role": "user", "content": user_msg}])
         return raw.content[0].text.strip()

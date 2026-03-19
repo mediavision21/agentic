@@ -46,14 +46,12 @@ def stop_server():
 		_process = None
 
 
-async def complete_stream(system_prompt, user_message):
+async def complete_stream(system_prompt, messages):
+	# messages: list of {"role": "user"|"assistant", "content": str}
 	# yields text chunks, then a final {"__meta__": {...}} dict with usage info
 	url = f"{LLAMA_SERVER_URL}/v1/chat/completions"
 	payload = {
-		"messages": [
-			{"role": "system", "content": system_prompt},
-			{"role": "user", "content": user_message},
-		],
+		"messages": [{"role": "system", "content": system_prompt}] + messages,
 		"temperature": 0.1,
 		"max_tokens": 2048,
 		"stream": True,
@@ -82,13 +80,11 @@ async def complete_stream(system_prompt, user_message):
 	yield {"__meta__": meta}
 
 
-async def complete(system_prompt, user_message):
+async def complete(system_prompt, messages):
+	# messages: list of {"role": "user"|"assistant", "content": str}
 	url = f"{LLAMA_SERVER_URL}/v1/chat/completions"
 	payload = {
-		"messages": [
-			{"role": "system", "content": system_prompt},
-			{"role": "user", "content": user_message},
-		],
+		"messages": [{"role": "system", "content": system_prompt}] + messages,
 		"temperature": 0.1,
 		"max_tokens": 2048,
 	}
