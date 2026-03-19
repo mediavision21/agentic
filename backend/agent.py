@@ -85,6 +85,46 @@ def extract_sql(text):
     return text.strip()
 
 
+# --- SQL post-processors ---
+# Each entry is (name, fn) where fn(sql) -> sql.
+# Add new rules here as needed.
+
+def _remove_empty_string_filters(sql):
+    # removes conditions like: col = '' / col = "" with any spacing/quotes
+    # matches the whole line (including leading whitespace + newline) to preserve indentation elsewhere
+    cols = ['age_group', 'population_segment', 'kpi_dimension']
+    result = sql
+    for col in cols:
+        empty = r"""(?:'{2}|"{2})"""  # '' or ""
+        cond  = rf"""{col}\s*=\s*{empty}"""
+        # whole line: AND <cond>  (newline + indent + AND + cond)
+        result = re.sub(rf'\n[ \t]*AND[ \t]+{cond}[ \t]*', '', result, flags=re.IGNORECASE)
+        # whole line: <cond> AND  (cond at start of WHERE block, followed by AND on same or next line)
+        result = re.sub(rf'[ \t]*{cond}[ \t]+AND[ \t]*\n?', '', result, flags=re.IGNORECASE)
+        # standalone cond (only condition, no AND neighbour)
+        result = re.sub(rf'[ \t]*{cond}[ \t]*', '', result, flags=re.IGNORECASE)
+    # drop WHERE with no remaining conditions
+    result = re.sub(r'\bWHERE\s*(?=GROUP\b|ORDER\b|LIMIT\b)', '', result, flags=re.IGNORECASE)
+    # remove lines that are now blank / whitespace-only
+    result = re.sub(r'\n[ \t]*\n', '\n', result)
+    return result.strip()
+
+
+POST_PROCESSORS = [
+    ("remove_empty_string_filters", _remove_empty_string_filters),
+]
+
+
+def postprocess_sql(sql):
+    result = sql
+    for name, fn in POST_PROCESSORS:
+        before = result
+        result = fn(result)
+        if result != before:
+            print(f"[postprocess] {name} changed sql")
+    return result
+
+
 def extract_plot_config(text):
     match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
     if not match:
@@ -129,9 +169,14 @@ async def generate_sql_stream(user_prompt, backend="claude"):
             "response": full_text,
         }, f, default_flow_style=False, allow_unicode=True)
 
-    sql = extract_sql(full_text)
+    sql_raw = extract_sql(full_text)
+    sql = postprocess_sql(sql_raw)
     plot_config = extract_plot_config(full_text)
     explanation = re.sub(r"```(?:sql|json).*?```", "", full_text, flags=re.DOTALL).strip()
+
+    with open(os.path.join(LOGS_DIR, f"{ts}-sql.md"), "w") as f:
+        f.write(f"## raw\n```sql\n{sql_raw}\n```\n\n## post-processed\n```sql\n{sql}\n```\n")
+
     yield {"type": "sql", "sql": sql, "plot_config": plot_config, "explanation": explanation}
 
     try:
