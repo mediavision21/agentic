@@ -66,6 +66,85 @@ body {
 	height: 100dvh;
 }
 
+/* ── sidebar drag handle ── */
+
+.sidebar-handle {
+	cursor: col-resize;
+	display: flex;
+	flex-direction: column;
+	flex-shrink: 0;
+	/* padding-top: 10px; */
+	background: #111;
+	width: 0px;
+	z-index: 20;
+	overflow: visible;
+}
+
+.sidebar-handle .handle {
+	width: 10px;
+	height: 100%;
+	position: absolute;
+}
+
+.sidebar-handle::after,
+.sidebar-handle::before {
+	content: "";
+	transform: translateX(-50%);
+	position: absolute;
+	height: 100%;
+}
+
+.sidebar-handle::after {
+	width: 5px;
+}
+
+.sidebar-handle::before {
+	width: 2px;
+	background: var(--color-green-500);
+	opacity: 0;
+}
+
+.sidebar-handle:hover::before {
+	opacity: 1;
+}
+
+/* left handle: chevron on the right side (towards main area) */
+.left-handle {
+	align-items: flex-end;
+}
+
+
+/* right handle: chevron on the left side (towards main area) */
+.right-handle {
+	align-items: flex-start;
+	transform: translateX(50%);
+}
+
+.sidebar-chevron {
+	position: relative;
+	background: none;
+	border: none;
+	color: rgba(200, 200, 200, 0.45);
+	cursor: pointer;
+	font-size: 25px;
+	line-height: 1;
+	padding: 0;
+	transition: color 0.15s;
+	top: 5px;
+}
+
+.left-handle .sidebar-chevron {
+	left: -10px;
+}
+
+.right-handle .sidebar-chevron {
+	left: 10px;
+}
+
+.sidebar-chevron:hover {
+	color: rgba(255, 255, 255, 0.9);
+}
+
 /* ── sidebar ── */
 
 .sidebar {
@@ -73,8 +152,8 @@ body {
 	color: var(--color-white);
 	display: flex;
 	flex-direction: column;
-	flex-shrink: 0;
-	width: 240px;
+	height: 100%;
+	overflow: hidden;
 }
 
 .sidebar-top {
@@ -166,17 +245,15 @@ body {
 /* ── main area ── */
 
 .main-area {
-	display: flex;
 	flex: 1;
-	flex-direction: column;
 	overflow: hidden;
+	position: relative;
 }
 
 .chat-window {
 	flex: 1;
 	overflow-y: auto;
 	padding: 20px 16px;
-	scrollbar-gutter: stable;
 }
 
 .chat-messages {
@@ -273,7 +350,7 @@ body {
 /* ── sql block ── */
 
 .sql-block {
-	background: var(--color-gray-lighter);
+	background: #1e1e1e;
 	border-radius: 6px;
 	font-family: "SF Mono", "Cascadia Code", monospace;
 	font-size: 12px;
@@ -284,7 +361,7 @@ body {
 }
 
 .sql-block code {
-	color: var(--color-dusk);
+	color: #d4d4d4;
 }
 
 .explanation {
@@ -542,6 +619,7 @@ body {
 	height: 32px;
 	justify-content: center;
 	width: 32px;
+	align-self: flex-end;
 }
 
 .send-btn:hover {
@@ -551,4 +629,562 @@ body {
 .send-btn:disabled {
 	cursor: not-allowed;
 	opacity: 0.4;
+}
+
+/* ── eval bar ── */
+
+.eval-bar {
+	border-top: 1px solid var(--color-gray-lighter);
+	display: flex;
+	flex-direction: column;
+	margin-top: 10px;
+	padding-top: 8px;
+}
+
+.eval-buttons {
+	align-items: center;
+	display: flex;
+}
+
+.eval-spacer {
+	flex: 1;
+}
+
+.eval-btn {
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 16px;
+	line-height: 1;
+	opacity: 0.45;
+	padding: 3px 6px;
+	transition: opacity 0.15s, background 0.15s;
+}
+
+.eval-btn:hover {
+	background: var(--color-gray-lighter);
+	opacity: 0.9;
+}
+
+.eval-btn.active {
+	background: var(--color-green-100);
+	border-color: var(--color-green-300);
+	opacity: 1;
+}
+
+/* comment box slides down when open */
+.eval-comment-box {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-height: 0;
+	overflow: hidden;
+	transition: max-height 0.25s ease, padding-top 0.25s ease;
+}
+
+.eval-comment-box.open {
+	max-height: 160px;
+	padding-top: 8px;
+}
+
+.eval-comment-input {
+	background: var(--color-gray-lighter);
+	border: 1px solid var(--color-gray-light);
+	border-radius: 6px;
+	font-family: var(--font-body);
+	font-size: 13px;
+	padding: 7px 10px;
+	resize: none;
+	width: 100%;
+}
+
+.eval-comment-submit {
+	align-self: flex-end;
+	background: var(--color-green-700);
+	border: none;
+	border-radius: 6px;
+	color: var(--color-white);
+	cursor: pointer;
+	font-size: 12px;
+	padding: 5px 12px;
+}
+
+.eval-comment-submit:hover {
+	background: var(--color-green-500);
+}
+
+/* ── eval mode banner (read-only view) ── */
+
+.eval-mode-banner {
+	align-items: center;
+	background: var(--color-blue-900);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	color: var(--color-white);
+	display: flex;
+	font-size: 13px;
+	gap: 12px;
+	padding: 8px 16px;
+}
+
+.eval-mode-back {
+	background: transparent;
+	border: none;
+	color: rgba(255, 255, 255, 0.7);
+	cursor: pointer;
+	font-size: 13px;
+}
+
+.eval-mode-back:hover {
+	color: var(--color-white);
+}
+
+.eval-mode-user {
+	font-weight: 600;
+}
+
+.eval-mode-rating {
+	color: rgba(255, 255, 255, 0.6);
+	font-size: 12px;
+}
+
+.eval-mode-comment {
+	color: rgba(255, 255, 255, 0.5);
+	font-size: 12px;
+	font-style: italic;
+}
+
+/* eval user label above user bubble */
+.bubble-row.user.with-label {
+	align-items: flex-end;
+	flex-direction: column;
+}
+
+.eval-user-label {
+	color: var(--color-gray-mid);
+	font-size: 11px;
+	margin-bottom: 2px;
+}
+
+/* ── chat-section + skill-panel + eval-panel: full-area slide panels ── */
+
+.chat-section,
+.skill-panel,
+.eval-panel {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+	position: absolute;
+	transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+	width: 100%;
+}
+
+/* chat starts visible, slides left when skill or eval opens */
+.chat-section {
+	transform: translateX(0);
+}
+
+.main-area.skill-open .chat-section,
+.main-area.eval-open .chat-section {
+	transform: translateX(-100%);
+}
+
+/* skill panel starts off-screen right, slides in when skill opens */
+.skill-panel {
+	transform: translateX(100%);
+}
+
+.main-area.skill-open .skill-panel {
+	transform: translateX(0);
+}
+
+/* eval panel starts off-screen right, slides in when eval opens */
+.eval-panel {
+	transform: translateX(100%);
+}
+
+.main-area.eval-open .eval-panel {
+	transform: translateX(0);
+}
+
+.eval-panel-content {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+}
+
+/* ── skills sidebar (right, always visible) ── */
+
+.skills-sidebar {
+	background: #111;
+	border-left: 1px solid rgba(255, 255, 255, 0.08);
+	color: var(--color-white);
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+	width: 100%;
+}
+
+.skills-sidebar-tabs {
+	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+	display: flex;
+	gap: 2px;
+	padding: 8px 20px 0;
+}
+
+.sidebar-tab {
+	background: transparent;
+	border: none;
+	border-bottom: 2px solid transparent;
+	color: rgba(255, 255, 255, 0.45);
+	cursor: pointer;
+	flex: 1;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.6px;
+	margin-bottom: -1px;
+	padding: 6px 4px;
+	text-transform: uppercase;
+	transition: color 0.15s;
+}
+
+.sidebar-tab:hover {
+	color: rgba(255, 255, 255, 0.8);
+}
+
+.sidebar-tab.active {
+	border-bottom-color: var(--color-green-500);
+	color: var(--color-white);
+}
+
+.skills-list {
+	flex: 1;
+	overflow-y: auto;
+	padding: 4px 8px;
+}
+
+.skill-item {
+	border-radius: 6px;
+	color: rgba(255, 255, 255, 0.65);
+	cursor: pointer;
+	font-size: 13px;
+	overflow: hidden;
+	padding: 7px 10px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.skill-item:hover {
+	background: rgba(255, 255, 255, 0.08);
+	color: var(--color-white);
+}
+
+.skill-item.active {
+	background: rgba(255, 255, 255, 0.12);
+	color: var(--color-white);
+}
+
+/* eval items in sidebar */
+.eval-item {
+	white-space: normal;
+}
+
+.eval-item-title {
+	font-size: 12px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.eval-item-meta {
+	color: rgba(255, 255, 255, 0.4);
+	font-size: 10px;
+	margin-top: 2px;
+}
+
+.eval-item-ts {
+	color: rgba(255, 255, 255, 0.25);
+	font-size: 10px;
+	font-variant-numeric: tabular-nums;
+	margin-top: 1px;
+}
+
+.eval-empty {
+	cursor: default;
+	opacity: 0.4;
+}
+
+/* ── skill editor ── */
+
+.skill-editor {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.skill-editor-header {
+	align-items: center;
+	background: #252526;
+	border-bottom: 1px solid #3c3c3c;
+	display: flex;
+	flex-shrink: 0;
+	gap: 8px;
+	padding: 10px 12px;
+}
+
+.skill-editor-title {
+	color: #9cdcfe;
+	flex: 1;
+	font-size: 13px;
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.skill-save-btn {
+	background: var(--color-forest);
+	border: none;
+	border-radius: 6px;
+	color: var(--color-white);
+	cursor: pointer;
+	font-family: var(--font-body);
+	font-size: 12px;
+	padding: 4px 10px;
+}
+
+.skill-save-btn.saved {
+	background: var(--color-green-500);
+}
+
+.skill-close-btn {
+	background: transparent;
+	border: none;
+	color: #858585;
+	cursor: pointer;
+	font-size: 14px;
+	line-height: 1;
+	padding: 2px 4px;
+}
+
+.skill-close-btn:hover {
+	color: #ffffff;
+}
+
+/* ── overlay markdown editor (Monaco dark) ── */
+
+.editor-wrap {
+	background: #1e1e1e;
+	flex: 1;
+	font-family: "SF Mono", "Cascadia Code", monospace;
+	font-size: 12.5px;
+	line-height: 1.65;
+	overflow: hidden;
+	position: relative;
+	tab-size: 4;
+}
+
+/* highlight layer sits below, pointer-events none */
+.editor-highlight {
+	bottom: 0;
+	color: #d4d4d4;
+	left: 0;
+	overflow: auto;
+	padding: 12px 14px;
+	pointer-events: none;
+	position: absolute;
+	right: 0;
+	top: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* textarea on top, transparent text so highlight shows through */
+.editor-input {
+	background: transparent;
+	border: none;
+	bottom: 0;
+	caret-color: #aeafad;
+	color: transparent;
+	font-family: inherit;
+	font-size: inherit;
+	left: 0;
+	line-height: inherit;
+	outline: none;
+	padding: 12px 14px;
+	position: absolute;
+	resize: none;
+	right: 0;
+	tab-size: 4;
+	top: 0;
+	width: 100%;
+}
+
+/* ── markdown highlight tokens (Monaco dark) ── */
+
+.hl-h1 {
+	color: #4EC9B0;
+	font-weight: 700;
+}
+
+.hl-h2 {
+	color: #9CDCFE;
+	font-weight: 600;
+}
+
+.hl-h3 {
+	color: #9CDCFE;
+	font-weight: 500;
+}
+
+.hl-fence {
+	color: #569CD6;
+}
+
+.hl-code {
+	color: #CE9178;
+}
+
+.hl-list {
+	color: #C586C0;
+}
+
+.hl-bold {
+	color: #DCDCAA;
+	font-weight: 600;
+}
+
+/* ── SQL highlight tokens (Monaco dark) ── */
+
+.sql-kw {
+	color: #569CD6;
+	font-weight: 600;
+}
+
+.sql-str {
+	color: #CE9178;
+}
+
+.sql-num {
+	color: #B5CEA8;
+}
+
+.sql-comment {
+	color: #6A9955;
+	font-style: italic;
+}
+
+.sql-id {
+	color: #9CDCFE;
+}
+
+/* ── thin scrollbars (global) ── */
+
+* {
+	scrollbar-color: rgba(128, 128, 128, 0.4) transparent;
+	scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+	height: 4px;
+	width: 4px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgba(128, 128, 128, 0.4);
+	border-radius: 2px;
+}
+
+/* ── login dialog ── */
+
+.login-dialog {
+	background: #1a1c1e;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 16px;
+	color: var(--color-white);
+	left: 50%;
+	padding: 32px;
+	position: fixed;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	width: 320px;
+}
+
+.login-dialog::backdrop {
+	backdrop-filter: blur(4px);
+	background: rgba(0, 0, 0, 0.65);
+}
+
+.login-header {
+	align-items: center;
+	display: flex;
+	gap: 10px;
+	justify-content: center;
+	margin-bottom: 28px;
+}
+
+.login-title {
+	font-family: var(--font-headline);
+	font-size: 18px;
+	font-weight: 500;
+}
+
+.login-form {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.login-input {
+	background: rgba(255, 255, 255, 0.07);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 8px;
+	color: var(--color-white);
+	font-family: var(--font-body);
+	font-size: 14px;
+	outline: none;
+	padding: 10px 12px;
+	width: 100%;
+}
+
+.login-input:focus {
+	border-color: var(--color-green-500);
+}
+
+.login-input::placeholder {
+	color: rgba(255, 255, 255, 0.3);
+}
+
+.login-error {
+	color: var(--color-red-500);
+	font-size: 13px;
+}
+
+.login-btn {
+	background: var(--color-forest);
+	border: none;
+	border-radius: 8px;
+	color: var(--color-white);
+	cursor: pointer;
+	font-family: var(--font-body);
+	font-size: 14px;
+	margin-top: 4px;
+	padding: 10px;
+	width: 100%;
+}
+
+.login-btn:hover {
+	background: var(--color-green-500);
+}
+
+.login-btn:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
 }

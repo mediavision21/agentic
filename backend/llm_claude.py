@@ -8,7 +8,8 @@ client = anthropic.AsyncAnthropic(api_key=os.getenv("API_KEY"))
 # 1$/5$/M 		claude-haiku-4-5-20251001
 # 3$/15$/M 		claude-sonnet-4-6
 # 5$/25$/M 		claude-opus-4-6
-MODEL = "claude-haiku-4-5-20251001"
+# MODEL = "claude-haiku-4-5-20251001"
+MODEL = "claude-sonnet-4-6"
 
 async def complete_stream(system_prompt, messages):
     # messages: list of {"role": "user"|"assistant", "content": str}
@@ -16,6 +17,8 @@ async def complete_stream(system_prompt, messages):
     async with client.messages.stream(
         model=MODEL,
         max_tokens=2048,
+        temperature=0,
+        # top_p=1, # claude-sonnet-4-6&claude-haiku-4-5-20251001 can not use temprature and top_p at the same time. 
         system=system_prompt,
         messages=messages,
     ) as stream:
@@ -35,6 +38,8 @@ async def complete(system_prompt, messages):
     return await client.messages.create(
         model=MODEL,
         max_tokens=2048,
+        temperature=0,
+        top_p=1,
         system=system_prompt,
         messages=messages,
     )

@@ -1,12 +1,14 @@
 import os
 import re
 import json
+import uuid
 import yaml
 from datetime import datetime
 from skills import load_skills
 from db import execute_query
 import llm_claude
 import llm_local
+import evaldb
 
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
 
@@ -175,6 +177,9 @@ async def generate_agent_stream(prompt, backend="claude", history=None):
     if history is None:
         history = []
 
+    msg_id = str(uuid.uuid4())
+    yield {"type": "msg_id", "id": msg_id}
+
     system_prompt = build_system_prompt()
     messages = build_llm_messages(history, prompt)
 
@@ -194,6 +199,11 @@ async def generate_agent_stream(prompt, backend="claude", history=None):
         print(chunk, end="", flush=True)
         yield {"type": "token", "text": chunk}
     print()
+
+    evaldb.save_log(
+        msg_id, prompt, system_prompt, messages, full_text,
+        meta.get("model", ""), meta.get("usage", {})
+    )
 
     ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
     with open(os.path.join(LOGS_DIR, f"{ts}-response.md"), "w") as f:

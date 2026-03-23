@@ -33,7 +33,7 @@ function PromptInput(options) {
 	}
 
 	const canSend = prompt.trim() !== "" && !loading
-
+	const showToggle = false
 	return (
 		<form className="prompt-box" onSubmit={handleSubmit}>
 			<textarea
@@ -48,7 +48,7 @@ function PromptInput(options) {
 				rows={1}
 			/>
 			<div className="prompt-footer">
-				<div className="backend-toggle">
+				{showToggle ? <div className="backend-toggle">
 					<label className={"backend-opt" + (backend === "claude" ? " selected" : "")}>
 						<input type="radio" value="claude" checked={backend === "claude"} onChange={function () { setBackend("claude") }} />
 						Claude
@@ -57,7 +57,8 @@ function PromptInput(options) {
 						<input type="radio" value="local" checked={backend === "local"} onChange={function () { setBackend("local") }} />
 						Local
 					</label>
-				</div>
+				</div> : <div />
+				}
 				<button
 					className="send-btn"
 					type="submit"
