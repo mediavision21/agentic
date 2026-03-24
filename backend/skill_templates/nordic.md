@@ -25,10 +25,11 @@ Subscription/payment KPIs (penetration, spend, churn_intention, stacking, accoun
 Viewing/reach KPIs (reach, viewing_time) are **individual-level**.
 
 ### reach
-- Unit: ratio 0.0–1.0 (% of population who watched in the past week)
+- Unit: ratio 0.0–1.0 (daily reach — % of population who watched yesterday)
+- Default reach type: when reach is requested without a specified time period, always use reach (daily). Use weekly or monthly variants only when explicitly requested.
 - category: online_video, tv
 - kpi_dimension: '', ads_ott, avod, bsvod, fast, genre, hvod, online_excluding_social, online_total, public_service, social, ssvod, svod
-- age_group: available only when kpi_dimension IN ('', 'online_excluding_social', 'online_total', 'social')
+- age_group: available only when kpi_dimension IN ('', 'online_excluding_social', 'online_total', 'social'). When kpi_dimension = genre, population_segment = viewers.
 - population_segment: viewers
 - countries: all four
 - years: 2010–2025
@@ -50,7 +51,7 @@ Viewing/reach KPIs (reach, viewing_time) are **individual-level**.
 - years: 2010–2025
 
 ### reach_service
-- Unit: ratio 0.0–1.0 (weekly reach of a specific streaming service)
+- Unit: ratio 0.0–1.0 (daily reach of a specific streaming service)
 - category: online_video
 - kpi_dimension: '', avod, bsvod, hvod, ssvod, svod  (the bundle type the user accessed through)
 - age_group: none
@@ -112,6 +113,7 @@ Viewing/reach KPIs (reach, viewing_time) are **individual-level**.
 - population_segment: viewers (most dims) or genre_viewers (only when kpi_dimension='genre')
 - countries: all four
 - years: 2010–2025
+- Viewing time in the total population (not just among viewers) requires combining reach and viewing_time: `SUM(reach * viewing_time_viewers * population) / SUM(population)`
 
 ### viewing_time_service
 - Unit: minutes per day per viewer
@@ -297,18 +299,18 @@ Count metrics (keep 2 decimals):
 ## kpi_type + dimension meaning (what the data represents)
 
 ### reach
-- svod: % of population who watched paid streaming (Netflix, HBO, etc.) in past week
-- avod: % of population who watched free ad-supported streaming in past week
-- online_total: % of population who watched any online video (incl. social) in past week
-- online_excluding_social: % of population who watched online video excluding social media in past week
-- social: % of population who used social media video (YouTube, TikTok, Instagram etc.) in past week
-- fta: % of population who watched free-to-air broadcast TV in past week
-- public_service: % of population who used public broadcaster services (NRK, DR, SVT, YLE) in past week
-- ssvod: % watching single standalone SVOD subscriptions in past week
-- bsvod: % watching bundled SVOD (included in broadband/telco package) in past week
-- genre: weekly reach broken down by content genre — use kpi_detail to filter genre: `drama_total`, `drama_local`, `drama_foreign`, `entertainment_total`, `entertainment_local`, `film_local`, `film_foreign`, `tv_series_local`, `tv_series_foreign`, `sports_total`, `sports_local`, `sports_foreign`, `factual_documentary`, `family_kids`, `news_debate`, `music`, `gaming_esport`, `other`
-- ads_ott: % who watched ad-supported OTT services in past week
-- fast: % who watched free ad-supported streaming TV channels in past week
+- svod: % of population who watched paid streaming (Netflix, HBO, etc.) yesterday
+- avod: % of population who watched free ad-supported streaming yesterday
+- online_total: % of population who watched any online video (incl. social) yesterday
+- online_excluding_social: % of population who watched online video excluding social media yesterday
+- social: % of population who used social media video (YouTube, TikTok, Instagram etc.) yesterday
+- fta: % of population who watched free-to-air broadcast TV yesterday
+- public_service: % of population who used public broadcaster services (NRK, DR, SVT, YLE) yesterday
+- ssvod: % watching single standalone SVOD subscriptions yesterday
+- bsvod: % watching bundled SVOD (included in broadband/telco package) yesterday
+- genre: daily reach broken down by content genre — use kpi_detail to filter genre: `drama_total`, `drama_local`, `drama_foreign`, `entertainment_total`, `entertainment_local`, `film_local`, `film_foreign`, `tv_series_local`, `tv_series_foreign`, `sports_total`, `sports_local`, `sports_foreign`, `factual_documentary`, `family_kids`, `news_debate`, `music`, `gaming_esport`, `other`
+- ads_ott: % who watched ad-supported OTT services yesterday
+- fast: % who watched free ad-supported streaming TV channels yesterday
 
 ### penetration
 - svod: % of households subscribing to paid streaming services
@@ -353,9 +355,27 @@ Count metrics (keep 2 decimals):
 | `fact_fx_rate_quarterly`| FX rates per quarter — join on `period_key` and `currency_code`, multiply `value * rate_to_eur`          |
 | `insight_text`          | editorial commentary rows — use as context alongside numeric KPI data                                     |
 
-## Cross-country quarter normalization
-Sweden has data for all 4 quarters; Norway, Denmark, Finland have Q1 and Q3 only.
+## Multi-country querying rules
 
+### Quarter filter
+When querying more than one country, always filter to Q1 and Q3. Including Q2/Q4 gives Sweden twice as many data points, producing misleading comparisons:
+```sql
+AND quarter IN (1, 3)  -- always add when querying more than one country
+```
+Sweden-only queries: all quarters available, no filter needed.
+
+### Population weighting
+When combining data from more than one country, always use population-weighted averages. A simple average across countries is incorrect because countries have different population sizes.
+- reach, viewing_time — weight by individuals aged 15–74
+- penetration, spend, churn_intention, stacking, account_sharing — weight by households aged 15–74
+
+Population data is in `macro.fact_population`. Join on country + year (annual figures apply to all quarters in the same year).
+```sql
+SUM(value * population) / SUM(population) AS value_weighted
+```
+Single-country queries: no weighting needed — use AVG(value) with GROUP BY.
+
+### Latest period per country
 **Never use a global MAX(period_date) across countries** — Sweden's Q4 will shadow other countries that only have Q3.
 
 When querying the "latest available" data per country, always get the max per country:
@@ -388,3 +408,5 @@ For time series across all countries: just SELECT all periods — the chart will
 8. When asked about age groups: select `COALESCE(NULLIF(age_group, ''), 'All ages') AS age_group` and GROUP BY it.
 9. When result has period_date × country × age_group: add a `series` composite column and use it as plot stroke.
 10. Check the `comment` column if a time series looks broken — it may flag a method change or service rename.
+11. When querying more than one country: ALWAYS add `AND quarter IN (1, 3)` and use population-weighted averages.
+12. When reach is requested without a specified time period, default to daily reach (kpi_type = 'reach' or 'reach_service'). Only use weekly/monthly variants when explicitly requested.

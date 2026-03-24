@@ -11,7 +11,7 @@ function SkillEditor(options) {
     useEffect(function () {
         if (!name) return
         setSaved(false)
-        fetch(`/api/skill-templates/${name}`)
+        fetch(`/api/skill-templates/${name}`, { credentials: "include" })
             .then(function (r) { return r.json() })
             .then(function (d) { setContent(d.content || "") })
     }, [name])
@@ -34,6 +34,7 @@ function SkillEditor(options) {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ content }),
+            credentials: "include",
         })
         setSaved(true)
     }

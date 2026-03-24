@@ -1,4 +1,5 @@
 import os
+import re
 import asyncpg
 from urllib.parse import urlparse, urlunparse, quote
 
@@ -152,8 +153,27 @@ async def get_column_stats(table, col_name, col_type, threshold=20):
         return "?"
 
 
+def _is_read_only(sql):
+	# strip comments and whitespace, check first keyword
+	stripped = re.sub(r'--[^\n]*', '', sql)
+	stripped = re.sub(r'/\*.*?\*/', '', stripped, flags=re.DOTALL)
+	stripped = stripped.strip().upper()
+	if not stripped.startswith("SELECT") and not stripped.startswith("WITH"):
+		return False
+	# block dangerous keywords anywhere in the statement
+	dangerous = re.compile(
+		r'\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|COPY|EXECUTE|DO)\b',
+		re.IGNORECASE
+	)
+	if dangerous.search(stripped):
+		return False
+	return True
+
+
 async def execute_query(sql):
 	# execute a read-only query, returns {columns, rows} — raises on error
+	if not _is_read_only(sql):
+		raise ValueError("Only SELECT / WITH queries are allowed")
 	async with pool.acquire() as conn:
 		await conn.execute(f"SET search_path TO {schema}, public")
 		rows = await conn.fetch(sql)

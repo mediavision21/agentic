@@ -6,19 +6,20 @@ function formatTs(ts) {
 }
 
 function SkillsSidebar(options) {
-    const { activeSkill, onSelect, onSelectEval, activeEvalId, style } = options
+    const { activeSkill, onSelect, onSelectEval, activeEvalId, style, user } = options
     const [tab, setTab] = useState("skills")
     const [skills, setSkills] = useState([])
     const [evals, setEvals] = useState([])
 
     useEffect(function () {
-        fetch("/api/skill-templates")
+        if (!user) return
+        fetch("/api/skill-templates", { credentials: "include" })
             .then(function (r) { return r.json() })
             .then(function (d) { setSkills(d.files || []) })
-    }, [])
+    }, [user])
 
     function fetchEvals() {
-        fetch("/api/evaluations")
+        fetch("/api/evaluations", { credentials: "include" })
             .then(function (r) { return r.json() })
             .then(function (d) { setEvals(d.evaluations || []) })
     }

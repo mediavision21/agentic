@@ -1,0 +1,23 @@
+ai.mediavision.se {
+	log {
+		output file /var/log/caddy/access.log
+		format console
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	handle /api/* {
+		reverse_proxy localhost:8000
+	}
+
+	handle {
+		root * /opt/rock/frontend/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

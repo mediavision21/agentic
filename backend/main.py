@@ -1,11 +1,14 @@
 import os
 import json
+import hashlib
+import hmac
+import time
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Cookie
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
@@ -33,29 +36,77 @@ async def lifespan(app):
 
 app = FastAPI(lifespan=lifespan)
 
+SESSION_SECRET = os.getenv("SESSION_SECRET", "mv-default-secret-change-me")
+SESSION_MAX_AGE = 7 * 24 * 3600  # 7 days
+
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=["http://localhost:5173"],
 	allow_methods=["*"],
 	allow_headers=["*"],
+	allow_credentials=True,
 )
 
 
+def make_session_token(username):
+	expires = int(time.time()) + SESSION_MAX_AGE
+	payload = f"{username}:{expires}"
+	sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+	return f"{payload}:{sig}"
+
+
+def verify_session_token(token):
+	if not token:
+		return None
+	try:
+		parts = token.split(":")
+		if len(parts) != 3:
+			return None
+		username, expires_str, sig = parts
+		payload = f"{username}:{expires_str}"
+		expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+		if not hmac.compare_digest(sig, expected):
+			return None
+		if int(expires_str) < int(time.time()):
+			return None
+		return username
+	except Exception:
+		return None
+
+
+def get_current_user(request: Request):
+	token = request.cookies.get("mv_session")
+	return verify_session_token(token)
+
+
+PUBLIC_PATHS = {"/api/login", "/api/health", "/api/me"}
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+	path = request.url.path
+	if path.startswith("/api/") and path not in PUBLIC_PATHS:
+		username = get_current_user(request)
+		if not username:
+			return JSONResponse({"error": "Not authenticated"}, status_code=401)
+	return await call_next(request)
+
+
 class QueryRequest(BaseModel):
-	prompt: str
-	backend: str = "claude"
-	history: list = []
+	prompt: str = Field(..., max_length=4000)
+	backend: str = Field("claude", pattern=r"^(claude|local)$")
+	history: list = Field(default=[], max_length=50)
 
 
 class SqlRequest(BaseModel):
-	sql: str
+	sql: str = Field(..., max_length=4000)
 
 
 class EvalRequest(BaseModel):
-	msg_id: str
-	rating: str
-	user: str = ""
-	comment: str = ""
+	msg_id: str = Field(..., max_length=64)
+	rating: str = Field(..., pattern=r"^(good|bad)$")
+	user: str = Field("", max_length=64)
+	comment: str = Field("", max_length=2000)
 
 
 class LoginRequest(BaseModel):
@@ -72,10 +123,43 @@ async def health():
 	return {"status": "ok"}
 
 
+@app.get("/api/me")
+async def me(request: Request):
+	username = get_current_user(request)
+	if username:
+		return {"ok": True, "username": username}
+	return {"ok": False}
+
+
+_login_attempts = {}  # ip -> (count, first_attempt_time)
+LOGIN_RATE_WINDOW = 300  # 5 minutes
+LOGIN_RATE_LIMIT = 10
+
+
 @app.post("/api/login")
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
+	# rate limit by IP
+	ip = request.client.host if request.client else "unknown"
+	now = time.time()
+	count, first_time = _login_attempts.get(ip, (0, now))
+	if now - first_time > LOGIN_RATE_WINDOW:
+		count, first_time = 0, now
+	if count >= LOGIN_RATE_LIMIT:
+		return JSONResponse({"ok": False, "error": "Too many login attempts, try again later"}, status_code=429)
+
+	# validate username format
+	if not req.username or len(req.username) > 64 or not req.username.isalnum():
+		_login_attempts[ip] = (count + 1, first_time)
+		return {"ok": False, "error": "Invalid username or password"}
+
 	if evaldb.verify_user(req.username, req.password):
-		return {"ok": True, "username": req.username}
+		_login_attempts.pop(ip, None)
+		token = make_session_token(req.username)
+		resp = JSONResponse({"ok": True, "username": req.username})
+		is_secure = str(request.url).startswith("https")
+		resp.set_cookie("mv_session", token, max_age=SESSION_MAX_AGE, httponly=True, samesite="lax", secure=is_secure)
+		return resp
+	_login_attempts[ip] = (count + 1, first_time)
 	return {"ok": False, "error": "Invalid username or password"}
 
 
@@ -127,10 +211,22 @@ async def list_skill_templates():
 	return {"files": files}
 
 
+def _safe_template_path(name):
+	# block path traversal — name must be a simple filename
+	if "/" in name or "\\" in name or ".." in name:
+		return None
+	path = os.path.join(SKILL_TEMPLATES_DIR, name)
+	# resolve symlinks and verify it's still inside the templates dir
+	real = os.path.realpath(path)
+	if not real.startswith(os.path.realpath(SKILL_TEMPLATES_DIR) + os.sep):
+		return None
+	return path
+
+
 @app.get("/api/skill-templates/{name}")
 async def get_skill_template(name: str):
-	path = os.path.join(SKILL_TEMPLATES_DIR, name)
-	if not os.path.exists(path):
+	path = _safe_template_path(name)
+	if not path or not os.path.exists(path):
 		return {"error": "not found"}
 	with open(path) as f:
 		return {"name": name, "content": f.read()}
@@ -138,7 +234,9 @@ async def get_skill_template(name: str):
 
 @app.put("/api/skill-templates/{name}")
 async def update_skill_template(name: str, req: SkillTemplateUpdate):
-	path = os.path.join(SKILL_TEMPLATES_DIR, name)
+	path = _safe_template_path(name)
+	if not path:
+		return JSONResponse({"error": "invalid template name"}, status_code=400)
 	with open(path, "w") as f:
 		f.write(req.content)
 	return {"ok": True}

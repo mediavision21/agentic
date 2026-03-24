@@ -18,10 +18,23 @@ function App() {
 	const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT)
 	const [rightWidth, setRightWidth] = useState(DEFAULT_RIGHT)
 	const [dragTarget, setDragTarget] = useState(null) // "left" | "right" | null
-	const [user, setUser] = useState(function () { return localStorage.getItem("mv_user") || "" })
+	const [user, setUser] = useState("")
+	const [authChecked, setAuthChecked] = useState(false)
 	const $bottom = useRef(null)
 
 	const currentSession = sessions.find(function (s) { return s.id === activeId })
+
+	// restore session from cookie on page load
+	useEffect(function () {
+		fetch("/api/me", { credentials: "include" })
+			.then(function (r) { return r.json() })
+			.then(function (data) {
+				if (data.ok) {
+					setUser(data.username)
+				}
+			})
+			.finally(function () { setAuthChecked(true) })
+	}, [])
 
 	useEffect(function () {
 		if ($bottom.current) {
@@ -30,7 +43,6 @@ function App() {
 	}, [sessions, activeId, evalView])
 
 	function onLogin(username) {
-		localStorage.setItem("mv_user", username)
 		setUser(username)
 	}
 
@@ -149,6 +161,7 @@ function App() {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ sql: sqlMatch[1].trim() }),
+					credentials: "include",
 				})
 				const data = await resp.json()
 				console.log("[/sql] response", data)
@@ -169,6 +182,7 @@ function App() {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ prompt, backend, history }),
+					credentials: "include",
 				})
 				const reader = resp.body.getReader()
 				const decoder = new TextDecoder()
@@ -235,13 +249,12 @@ function App() {
 
 	return (
 		<div className="app-layout">
-			{!user && <LoginDialog onLogin={onLogin} />}
+			{authChecked && !user && <LoginDialog onLogin={onLogin} />}
 
 			<aside className="sidebar" style={leftStyle}>
 				<div className="sidebar-top">
 					<div className="sidebar-logo">
-						<img src="/symbol-white.svg" height="28" alt="logo" />
-						<span className="sidebar-title">MediaVision</span>
+						<img src="/logotype-white.svg" height="20px" alt="logo" style={{ "paddingLeft": "5px" }} />
 					</div>
 					<button className="new-chat-btn" onClick={newChat}>+ New chat</button>
 				</div>
@@ -271,7 +284,7 @@ function App() {
 				className="sidebar-handle left-handle"
 				onMouseDown={function (e) { startDrag({ e, which: "left" }) }}
 			>
-				<div class="handle"></div>
+				<div className="handle"></div>
 				<button className="sidebar-chevron" onClick={toggleLeft}>
 					{leftWidth > 0 ? "‹" : "›"}
 				</button>
@@ -319,7 +332,7 @@ function App() {
 				className="sidebar-handle right-handle"
 				onMouseDown={function (e) { startDrag({ e, which: "right" }) }}
 			>
-				<div class="handle"></div>
+				<div className="handle"></div>
 				<button className="sidebar-chevron" onClick={toggleRight}>
 					{rightWidth > 0 ? "›" : "‹"}
 				</button>
@@ -331,6 +344,7 @@ function App() {
 				onSelect={function (name) { setActiveSkill(name); setEvalView(null) }}
 				onSelectEval={onSelectEval}
 				activeEvalId={evalView ? evalView.id : null}
+				user={user}
 			/>
 		</div>
 	)

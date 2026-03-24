@@ -16,3 +16,5 @@ tmp
 rusty
 dist
 .*
+*.log
+package-lock.json

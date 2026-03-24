@@ -172,6 +172,7 @@ body {
 	font-family: var(--font-headline);
 	font-size: 16px;
 	font-weight: 500;
+	text-transform: uppercase;
 }
 
 .new-chat-btn {
@@ -1134,6 +1135,7 @@ body {
 	font-family: var(--font-headline);
 	font-size: 18px;
 	font-weight: 500;
+	text-transform: uppercase;
 }
 
 .login-form {
