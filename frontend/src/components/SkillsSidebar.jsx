@@ -9,7 +9,7 @@ function SkillsSidebar(options) {
     const { activeSkill, onSelect, onSelectEval, activeEvalId, style, user } = options
     const [tab, setTab] = useState("skills")
     const [skills, setSkills] = useState([])
-    const [evals, setEvals] = useState([])
+    const [evalSessions, setEvalSessions] = useState([])
 
     useEffect(function () {
         if (!user) return
@@ -18,10 +18,10 @@ function SkillsSidebar(options) {
             .then(function (d) { setSkills(d.files || []) })
     }, [user])
 
-    function fetchEvals() {
-        fetch("/api/evaluations", { credentials: "include" })
+    function fetchEvalSessions() {
+        fetch("/api/evaluated-sessions", { credentials: "include" })
             .then(function (r) { return r.json() })
-            .then(function (d) { setEvals(d.evaluations || []) })
+            .then(function (d) { setEvalSessions(d.sessions || []) })
     }
 
     return (
@@ -33,7 +33,7 @@ function SkillsSidebar(options) {
                 >Skills</button>
                 <button
                     className={"sidebar-tab" + (tab === "eval" ? " active" : "")}
-                    onClick={function () { setTab("eval"); fetchEvals() }}
+                    onClick={function () { setTab("eval"); fetchEvalSessions() }}
                 >Eval</button>
             </div>
             {tab === "skills" && (
@@ -53,19 +53,19 @@ function SkillsSidebar(options) {
             )}
             {tab === "eval" && (
                 <div className="skills-list">
-                    {evals.length === 0 && (
+                    {evalSessions.length === 0 && (
                         <div className="skill-item eval-empty">No evaluations yet</div>
                     )}
-                    {evals.map(function (ev) {
+                    {evalSessions.map(function (s) {
                         return (
                             <div
-                                key={ev.id}
-                                className={"skill-item eval-item" + (activeEvalId === ev.id ? " active" : "")}
-                                onClick={function () { onSelectEval(ev) }}
+                                key={s.id}
+                                className={"skill-item eval-item" + (activeEvalId === s.id ? " active" : "")}
+                                onClick={function () { onSelectEval(s) }}
                             >
-                                <div className="eval-item-title">{ev.prompt || "—"}</div>
-                                <div className="eval-item-meta">{ev.user || "User"} · {ev.rating}</div>
-                                <div className="eval-item-ts">{formatTs(ev.timestamp)}</div>
+                                <div className="eval-item-title">{s.title || "—"}</div>
+                                <div className="eval-item-meta">{s.user} · {s.eval_count} eval{s.eval_count > 1 ? "s" : ""}</div>
+                                <div className="eval-item-ts">{formatTs(s.created_at)}</div>
                             </div>
                         )
                     })}

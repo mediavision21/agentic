@@ -96,6 +96,7 @@ class QueryRequest(BaseModel):
 	prompt: str = Field(..., max_length=4000)
 	backend: str = Field("claude", pattern=r"^(claude|local)$")
 	history: list = Field(default=[], max_length=50)
+	session_id: str = Field("", max_length=64)
 
 
 class SqlRequest(BaseModel):
@@ -205,6 +206,16 @@ async def list_evaluations():
 	return {"evaluations": data}
 
 
+@app.get("/api/evaluated-sessions")
+async def list_evaluated_sessions():
+	return {"sessions": evaldb.get_evaluated_sessions()}
+
+
+@app.get("/api/conversations/{conv_id}/evaluations")
+async def get_conversation_evals(conv_id: str):
+	return {"evaluations": evaldb.get_conversation_evaluations(conv_id)}
+
+
 @app.get("/api/skill-templates")
 async def list_skill_templates():
 	files = sorted(f for f in os.listdir(SKILL_TEMPLATES_DIR) if f.endswith(".md"))
@@ -242,11 +253,39 @@ async def update_skill_template(name: str, req: SkillTemplateUpdate):
 	return {"ok": True}
 
 
+class ConversationRequest(BaseModel):
+	id: str = Field(..., max_length=64)
+	title: str = Field("", max_length=200)
+
+
+@app.post("/api/conversations")
+async def create_conversation(req: ConversationRequest, request: Request):
+	username = get_current_user(request)
+	evaldb.save_conversation(req.id, username, req.title)
+	return {"ok": True}
+
+
+@app.get("/api/conversations")
+async def list_conversations(request: Request):
+	username = get_current_user(request)
+	return {"conversations": evaldb.get_conversations(username)}
+
+
+@app.get("/api/conversations/{conv_id}")
+async def get_conversation(conv_id: str, request: Request):
+	messages = evaldb.get_conversation_messages(conv_id)
+	return {"messages": messages}
+
+
 @app.post("/api/query")
-async def query(req: QueryRequest):
+async def query(req: QueryRequest, request: Request):
+	username = get_current_user(request)
 	async def stream():
 		try:
-			async for event in generate_agent_stream(req.prompt, req.backend, req.history):
+			async for event in generate_agent_stream(
+				req.prompt, req.backend, req.history,
+				user=username or "", conversation_id=req.session_id
+			):
 				yield f"data: {json.dumps(event)}\n\n"
 		except Exception as e:
 			yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"

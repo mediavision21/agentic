@@ -173,7 +173,7 @@ def build_llm_messages(history, prompt):
     return messages
 
 
-async def generate_agent_stream(prompt, backend="claude", history=None):
+async def generate_agent_stream(prompt, backend="claude", history=None, user="", conversation_id=""):
     if history is None:
         history = []
 
@@ -200,11 +200,6 @@ async def generate_agent_stream(prompt, backend="claude", history=None):
         yield {"type": "token", "text": chunk}
     print()
 
-    evaldb.save_log(
-        msg_id, prompt, system_prompt, messages, full_text,
-        meta.get("model", ""), meta.get("usage", {})
-    )
-
     ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
     with open(os.path.join(LOGS_DIR, f"{ts}-response.md"), "w") as f:
         f.write(full_text)
@@ -217,6 +212,7 @@ async def generate_agent_stream(prompt, backend="claude", history=None):
             "response": full_text,
         }, f, default_flow_style=False, allow_unicode=True)
 
+    result_data = {}
     sql_raw = extract_sql(full_text)
 
     if sql_raw is None:
@@ -229,6 +225,11 @@ async def generate_agent_stream(prompt, backend="claude", history=None):
         yield {"type": "text", "text": display_text}
         if suggestions:
             yield {"type": "suggestions", "items": suggestions}
+        evaldb.save_log(
+            msg_id, prompt, system_prompt, messages, full_text,
+            meta.get("model", ""), meta.get("usage", {}),
+            user=user, conversation_id=conversation_id
+        )
         return
 
     sql = postprocess_sql(sql_raw)
@@ -243,16 +244,29 @@ async def generate_agent_stream(prompt, backend="claude", history=None):
     try:
         data = await execute_query(sql)
         yield {"type": "rows", "columns": data["columns"], "rows": data["rows"]}
+        result_data = {"columns": data["columns"], "rows": data["rows"], "plot_config": plot_config}
     except Exception as e:
         print(f"[agent] query error: {e}")
         yield {"type": "error", "error": f"SQL error: {e}"}
+        evaldb.save_log(
+            msg_id, prompt, system_prompt, messages, full_text,
+            meta.get("model", ""), meta.get("usage", {}),
+            user=user, conversation_id=conversation_id
+        )
         return
 
     try:
         summary = await generate_summary(prompt, data["columns"], data["rows"], backend)
         yield {"type": "summary", "text": summary}
+        result_data["summary"] = summary
     except Exception as e:
         print(f"[agent] summary error: {e}")
+
+    evaldb.save_log(
+        msg_id, prompt, system_prompt, messages, full_text,
+        meta.get("model", ""), meta.get("usage", {}),
+        user=user, conversation_id=conversation_id, result_data=result_data
+    )
 
 
 SUMMARY_SYSTEM_PROMPT = """You are a data analyst. The user asked a question and a SQL query was run. Given the result rows, write a concise summary (2-4 sentences) of what the data shows. Focus on key trends, totals, or notable values. Do not repeat the SQL."""

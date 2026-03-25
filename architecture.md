@@ -19,6 +19,8 @@ mediavision/
 │   ├── db.py                         # asyncpg pool, schema introspection, query exec
 │   ├── skills.py                     # generates markdown skill files from DB schema
 │   ├── agent.py                      # prompt builder, SQL extraction, LLM dispatch
+│   ├── evaldb.py                     # SQLite: llm_logs, evaluations, users, conversations
+│   ├── add_user.py                   # CLI tool to create users
 │   ├── llm_claude.py                 # Anthropic SDK client
 │   └── llm_local.py                  # llama.cpp OpenAI-compatible HTTP client
 ├── frontend/
@@ -27,9 +29,14 @@ mediavision/
 │   │   ├── main.jsx                  # react root mount
 │   │   ├── App.jsx                   # root: state management, API calls
 │   │   ├── style.css                 # Mediavision brand tokens, chat layout, bubble styles
+│   │   ├── parseResponse.js          # parse raw LLM text → structured content for ChatMessage
 │   │   └── components/
 │   │       ├── ChatMessage.jsx       # iMessage-style bubble (user right, assistant left)
+│   │       ├── EvalPanel.jsx         # full conversation view for evaluations (read-only)
+│   │       ├── LoginDialog.jsx       # auth modal (SHA-256 hashed password)
 │   │       ├── PromptInput.jsx       # text input + backend radio selector (bottom bar)
+│   │       ├── SkillsSidebar.jsx     # right sidebar: skills + eval tabs
+│   │       ├── SkillEditor.jsx       # markdown skill template editor
 │   │       ├── SqlDisplay.jsx        # collapsible <details> for SQL / system prompt
 │   │       ├── ResultTable.jsx       # tabular results, capped at top 20 rows
 │   │       └── ResultChart.jsx       # Observable Plot inline in assistant bubble
@@ -40,22 +47,41 @@ mediavision/
 ## Data Flow
 ```
 User prompt
-    → POST /api/query {prompt, backend}
+    → POST /api/query {prompt, backend, history, session_id}
     → agent.py reads skills/*.md as schema context
     → LLM generates SQL (SELECT only)
     → db.py executes in read-only transaction
-    → {sql, explanation, columns, rows} returned
+    → SSE stream: msg_id, tokens (thinking), sql/text, rows, summary, suggestions
+    → llm_logs saved with user + conversation_id
     → frontend renders chat messages: user bubble (right) + assistant bubble (left)
-    → assistant bubble: SQL collapsed, table (top 20), chart inline
+    → assistant bubble: thinking collapsed, SQL collapsed, table, chart inline
 ```
+
+## Persistence
+- **SQLite** (`mediavision.db`): llm_logs, evaluations, users, conversations
+- **conversations** table: id, user, title, created_at — groups messages by session
+- **llm_logs**: each row has conversation_id + user for filtering
+- Chat history loaded per-user on login, lazy-loaded on click
+- Eval view loads full conversation from conversation_id
 
 ## API Endpoints
 
-| Method | Path        | Purpose                              |
-| ------ | ----------- | ------------------------------------ |
-| POST   | /api/query  | Generate SQL from prompt, execute it |
-| GET    | /api/skills | Return loaded skill files            |
-| GET    | /api/health | Health check                         |
+| Method | Path                        | Purpose                                  |
+| ------ | --------------------------- | ---------------------------------------- |
+| POST   | /api/login                  | Authenticate user, set session cookie    |
+| GET    | /api/me                     | Check current session                    |
+| POST   | /api/query                  | Generate SQL from prompt, execute it     |
+| POST   | /api/sql                    | Direct SQL execution                     |
+| GET    | /api/skills                 | Return loaded skill files                |
+| GET    | /api/skill-templates        | List skill template files                |
+| GET    | /api/skill-templates/{name} | Read a skill template                    |
+| PUT    | /api/skill-templates/{name} | Update a skill template                  |
+| POST   | /api/evaluate               | Save evaluation rating/comment           |
+| GET    | /api/evaluations            | List all evaluations with logs           |
+| POST   | /api/conversations          | Create/persist a conversation            |
+| GET    | /api/conversations          | List conversations for current user      |
+| GET    | /api/conversations/{id}     | Get all messages for a conversation      |
+| GET    | /api/health                 | Health check                             |
 
 ## Startup Flow
 1. FastAPI lifespan creates asyncpg pool from DATABASE_URL

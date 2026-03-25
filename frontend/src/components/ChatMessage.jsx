@@ -24,8 +24,11 @@ function EvalBar(options) {
 				body: JSON.stringify({ msg_id: msgId, rating: r, user: user || "" }),
 				credentials: "include",
 			})
+			setSaved(true)
 		}
 	}
+
+	const [saved, setSaved] = useState(false)
 
 	async function submitComment() {
 		await fetch("/api/evaluate", {
@@ -35,6 +38,7 @@ function EvalBar(options) {
 			credentials: "include",
 		})
 		setShowComment(false)
+		setSaved(true)
 	}
 
 	return (
@@ -52,6 +56,12 @@ function EvalBar(options) {
 					title="good"
 				>👍</button>
 			</div>
+			{saved && (
+				<div className="eval-saved-comment">
+					<span className="eval-saved-user">{user || "User"} {rating === "good" ? "👍" : "👎"}</span>
+					{comment && <span className="eval-saved-text">{comment}</span>}
+				</div>
+			)}
 			<div className={"eval-comment-box" + (showComment ? " open" : "")}>
 				<textarea
 					className="eval-comment-input"
@@ -73,7 +83,7 @@ function EvalBar(options) {
 }
 
 function ChatMessage(options) {
-	const { message, onSuggest, evalMode, evalUser, user } = options
+	const { message, onSuggest, evalMode, evalUser, evalInfo, user } = options
 
 	if (message.role === "user") {
 		return (
@@ -134,8 +144,24 @@ function ChatMessage(options) {
 					</div>
 				)}
 
-				{/* eval buttons only when response is complete and we have an id, not in eval view */}
+				{/* eval buttons for live chat */}
 				{!evalMode && !loading && msg_id && <EvalBar msgId={msg_id} user={user} />}
+
+				{/* read-only evals at same position */}
+				{evalInfo && evalInfo.length > 0 && (
+					<div className="eval-bar">
+						{evalInfo.map(function (ev, ei) {
+							return (
+								<div key={ei} className="eval-saved-comment">
+									<span className="eval-saved-user">
+										{ev.user || "User"} {ev.rating === "good" ? "👍" : "👎"}
+									</span>
+									{ev.comment && <span className="eval-saved-text">{ev.comment}</span>}
+								</div>
+							)
+						})}
+					</div>
+				)}
 			</div>
 		</div>
 	)

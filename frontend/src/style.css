@@ -675,6 +675,27 @@ body {
 }
 
 /* comment box slides down when open */
+.eval-saved-comment {
+	border-left: 3px solid var(--color-green-700);
+	display: flex;
+	flex-direction: column;
+	font-size: 13px;
+	gap: 2px;
+	margin-top: 8px;
+	padding: 6px 10px;
+}
+
+.eval-saved-user {
+	color: var(--color-green-700);
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.eval-saved-text {
+	color: var(--color-gray-dark);
+	white-space: pre-wrap;
+}
+
 .eval-comment-box {
 	display: flex;
 	flex-direction: column;

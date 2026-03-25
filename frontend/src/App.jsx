@@ -5,13 +5,18 @@ import SkillsSidebar from "./components/SkillsSidebar.jsx"
 import SkillEditor from "./components/SkillEditor.jsx"
 import EvalPanel from "./components/EvalPanel.jsx"
 import LoginDialog from "./components/LoginDialog.jsx"
+import parseRawResponse from "./parseResponse.js"
 
 const DEFAULT_LEFT = 240
 const DEFAULT_RIGHT = 240
 
 function App() {
-	const [sessions, setSessions] = useState([{ id: 1, title: "New chat", messages: [] }])
-	const [activeId, setActiveId] = useState(1)
+	function makeSessionId() {
+		return Date.now() + "-" + Math.random().toString(36).slice(2, 6)
+	}
+	const [initialId] = useState(makeSessionId)
+	const [sessions, setSessions] = useState([{ id: initialId, title: "New chat", messages: [] }])
+	const [activeId, setActiveId] = useState(initialId)
 	const [loading, setLoading] = useState(false)
 	const [activeSkill, setActiveSkill] = useState(null)
 	const [evalView, setEvalView] = useState(null) // {id, prompt, response, user, rating, comment}
@@ -36,6 +41,24 @@ function App() {
 			.finally(function () { setAuthChecked(true) })
 	}, [])
 
+	// fetch conversation history after login
+	useEffect(function () {
+		if (user) {
+			fetch("/api/conversations", { credentials: "include" })
+				.then(function (r) { return r.json() })
+				.then(function (data) {
+					if (data.conversations && data.conversations.length > 0) {
+						const loaded = data.conversations.map(function (c) {
+							return { id: c.id, title: c.title, messages: [], loaded: false }
+						})
+						setSessions(function (prev) {
+							return [...loaded, ...prev]
+						})
+					}
+				})
+		}
+	}, [user])
+
 	useEffect(function () {
 		if ($bottom.current) {
 			$bottom.current.scrollIntoView({ behavior: "smooth" })
@@ -47,16 +70,65 @@ function App() {
 	}
 
 	function newChat() {
-		const id = Date.now()
+		const id = makeSessionId()
 		setSessions(function (prev) { return [...prev, { id, title: "New chat", messages: [] }] })
 		setActiveId(id)
 		setEvalView(null)
+	}
+
+	async function loadConversation(id) {
+		console.log("[loadConversation] loading", id)
+		try {
+		const [msgsResp, evalsResp] = await Promise.all([
+			fetch("/api/conversations/" + id, { credentials: "include" }),
+			fetch("/api/conversations/" + id + "/evaluations", { credentials: "include" }),
+		])
+		const msgsData = await msgsResp.json()
+		const evalsData = await evalsResp.json()
+		console.log("[loadConversation] messages:", msgsData.messages?.length, "evals:", evalsData.evaluations?.length)
+
+		// index evaluations by log_id
+		const evalsByLogId = {}
+		for (const ev of evalsData.evaluations) {
+			if (!evalsByLogId[ev.log_id]) evalsByLogId[ev.log_id] = []
+			evalsByLogId[ev.log_id].push(ev)
+		}
+
+		const msgs = []
+		for (const row of msgsData.messages) {
+			let rd = null
+			if (row.result_data) {
+				try { rd = JSON.parse(row.result_data) } catch (e) { /* ignore */ }
+			}
+			msgs.push({ role: "user", text: row.prompt })
+			msgs.push({
+				role: "assistant",
+				content: parseRawResponse(row.response, rd),
+				evals: evalsByLogId[row.id] || null,
+			})
+		}
+		console.log("[loadConversation] built msgs:", msgs.length)
+		setSessions(function (prev) {
+			return prev.map(function (s) {
+				if (s.id !== id) return s
+				return { ...s, messages: msgs, loaded: true }
+			})
+		})
+		} catch (e) {
+			console.error("[loadConversation] error:", e)
+		}
 	}
 
 	function selectSession(id) {
 		setActiveId(id)
 		setActiveSkill(null)
 		setEvalView(null)
+
+		const session = sessions.find(function (s) { return s.id === id })
+		console.log("[selectSession]", id, "loaded:", session?.loaded, "msgs:", session?.messages?.length)
+		if (session && session.loaded === false) {
+			loadConversation(id)
+		}
 	}
 
 	function onSelectEval(ev) {
@@ -134,7 +206,9 @@ function App() {
 		const sessionId = activeId
 		setEvalView(null)
 
-		const currentMessages = sessions.find(function (s) { return s.id === sessionId })?.messages || []
+		const currentSession_ = sessions.find(function (s) { return s.id === sessionId })
+		const currentMessages = currentSession_?.messages || []
+		const isFirstMessage = currentMessages.length === 0
 		const history = buildHistory(currentMessages)
 
 		const userMsg = { role: "user", text: prompt }
@@ -181,7 +255,7 @@ function App() {
 				const resp = await fetch("/api/query", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ prompt, backend, history }),
+					body: JSON.stringify({ prompt, backend, history, session_id: String(sessionId) }),
 					credentials: "include",
 				})
 				const reader = resp.body.getReader()
@@ -225,6 +299,15 @@ function App() {
 			patchLastMsg(sessionId, function () { return { loading: false, error: e.message } })
 		} finally {
 			setLoading(false)
+			// persist conversation on first message
+			if (isFirstMessage) {
+				fetch("/api/conversations", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ id: String(sessionId), title: prompt.slice(0, 40) }),
+					credentials: "include",
+				})
+			}
 		}
 	}
 
@@ -302,6 +385,7 @@ function App() {
 										onSuggest={handleSubmit}
 										evalMode={false}
 										evalUser={null}
+										evalInfo={msg.evals || null}
 										user={user}
 									/>
 								)
