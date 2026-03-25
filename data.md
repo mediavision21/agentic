@@ -16,7 +16,7 @@ This make model hard to understand and cost more token.
 
 currently we have the data be either NULL or empty string, which cause hard to do in sql. 
 
-> Action: normalized to `""`? 
+> Action: normalized to NULL? 
 
 ## dim_period
 

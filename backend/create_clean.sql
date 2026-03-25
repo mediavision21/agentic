@@ -18,11 +18,11 @@ SELECT
         WHEN 'no' THEN 'norway'
         WHEN 'se' THEN 'sweden'
     END                                                                     AS country,
-    category,
-	service_id,
-    kpi_type,
-    kpi_dimension,
-    age_group,
-    population_segment,
+    NULLIF(TRIM(category), '')                                              AS category,
+    NULLIF(TRIM(service_id), '')                                            AS service_id,
+    NULLIF(TRIM(REGEXP_REPLACE(kpi_type, '_service$', '')), '')             AS kpi_type,
+    NULLIF(TRIM(kpi_dimension), '')                                         AS kpi_dimension,
+    COALESCE(NULLIF(age_group, ''), 'All ages') 							AS age_group,
+    NULLIF(TRIM(population_segment), '')                                    AS population_segment,
     value
 FROM macro.nordic_long_v2;

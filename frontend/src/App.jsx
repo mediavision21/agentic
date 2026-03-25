@@ -41,20 +41,18 @@ function App() {
 			.finally(function () { setAuthChecked(true) })
 	}, [])
 
-	// fetch conversation history after login
+	// fetch conversation history after login — replace sessions entirely
 	useEffect(function () {
 		if (user) {
 			fetch("/api/conversations", { credentials: "include" })
 				.then(function (r) { return r.json() })
 				.then(function (data) {
-					if (data.conversations && data.conversations.length > 0) {
-						const loaded = data.conversations.map(function (c) {
-							return { id: c.id, title: c.title, messages: [], loaded: false }
-						})
-						setSessions(function (prev) {
-							return [...loaded, ...prev]
-						})
-					}
+					const history = (data.conversations || []).map(function (c) {
+						return { id: c.id, title: c.title, messages: [], loaded: false }
+					})
+					const fresh = { id: makeSessionId(), title: "New chat", messages: [] }
+					setSessions([...history, fresh])
+					setActiveId(fresh.id)
 				})
 		}
 	}, [user])
@@ -77,45 +75,42 @@ function App() {
 	}
 
 	async function loadConversation(id) {
-		console.log("[loadConversation] loading", id)
 		try {
-		const [msgsResp, evalsResp] = await Promise.all([
-			fetch("/api/conversations/" + id, { credentials: "include" }),
-			fetch("/api/conversations/" + id + "/evaluations", { credentials: "include" }),
-		])
-		const msgsData = await msgsResp.json()
-		const evalsData = await evalsResp.json()
-		console.log("[loadConversation] messages:", msgsData.messages?.length, "evals:", evalsData.evaluations?.length)
+			const [msgsResp, evalsResp] = await Promise.all([
+				fetch("/api/conversations/" + id, { credentials: "include" }),
+				fetch("/api/conversations/" + id + "/evaluations", { credentials: "include" }),
+			])
+			const msgsData = await msgsResp.json()
+			const evalsData = await evalsResp.json()
 
-		// index evaluations by log_id
-		const evalsByLogId = {}
-		for (const ev of evalsData.evaluations) {
-			if (!evalsByLogId[ev.log_id]) evalsByLogId[ev.log_id] = []
-			evalsByLogId[ev.log_id].push(ev)
-		}
-
-		const msgs = []
-		for (const row of msgsData.messages) {
-			let rd = null
-			if (row.result_data) {
-				try { rd = JSON.parse(row.result_data) } catch (e) { /* ignore */ }
+			// index evaluations by log_id
+			const evalsByLogId = {}
+			for (const ev of evalsData.evaluations) {
+				if (!evalsByLogId[ev.log_id]) evalsByLogId[ev.log_id] = []
+				evalsByLogId[ev.log_id].push(ev)
 			}
-			msgs.push({ role: "user", text: row.prompt })
-			msgs.push({
-				role: "assistant",
-				content: parseRawResponse(row.response, rd),
-				evals: evalsByLogId[row.id] || null,
+
+			const msgs = []
+			for (const row of msgsData.messages) {
+				let rd = null
+				if (row.result_data) {
+					try { rd = JSON.parse(row.result_data) } catch (e) { /* ignore */ }
+				}
+				msgs.push({ role: "user", text: row.prompt })
+				msgs.push({
+					role: "assistant",
+					content: parseRawResponse(row.response, rd),
+					evals: evalsByLogId[row.id] || null,
+				})
+			}
+			setSessions(function (prev) {
+				return prev.map(function (s) {
+					if (s.id !== id) return s
+					return { ...s, messages: msgs, loaded: true }
+				})
 			})
-		}
-		console.log("[loadConversation] built msgs:", msgs.length)
-		setSessions(function (prev) {
-			return prev.map(function (s) {
-				if (s.id !== id) return s
-				return { ...s, messages: msgs, loaded: true }
-			})
-		})
 		} catch (e) {
-			console.error("[loadConversation] error:", e)
+			console.error("[loadConversation]", e)
 		}
 	}
 
@@ -125,7 +120,6 @@ function App() {
 		setEvalView(null)
 
 		const session = sessions.find(function (s) { return s.id === id })
-		console.log("[selectSession]", id, "loaded:", session?.loaded, "msgs:", session?.messages?.length)
 		if (session && session.loaded === false) {
 			loadConversation(id)
 		}

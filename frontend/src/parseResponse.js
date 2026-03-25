@@ -18,9 +18,7 @@ function parseRawResponse(rawText, resultData) {
             catch (e) { /* ignore parse errors */ }
         }
 
-        // thinking = everything before the first ``` fence
-        const firstFence = rawText.indexOf("```")
-        const thinking = firstFence > 0 ? rawText.slice(0, firstFence).trim() : ""
+        // thinking = the full raw text (same as streaming_text in live chat)
 
         // explanation = text AFTER the last ``` fence
         const lastFenceEnd = rawText.lastIndexOf("```")
@@ -28,7 +26,7 @@ function parseRawResponse(rawText, resultData) {
 
         const content = {
             loading: false,
-            streaming_text: thinking || undefined,
+            streaming_text: rawText,
             sql,
             explanation,
             plot_config: (resultData && resultData.plot_config) || plot_config,
