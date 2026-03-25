@@ -41,7 +41,7 @@ async def main():
 
 	try:
 		await create_pool()
-		await generate_skills()
+		generate_skills()
 
 		print(f"[cli] backend={backend}")
 		print(f"[cli] prompt: {prompt}")

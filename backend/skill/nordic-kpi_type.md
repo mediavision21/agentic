@@ -1,5 +1,6 @@
 ## kpi_type
-its a sub type of category
+Each kpi_type belongs to one or more categories. Filter kpi_type to exactly one value per query.
+[FIX] original "its a sub type of category" — kpi_type is not a subtype of category; they are separate dimensions that constrain each other.
 
 Household vs individual is implicit in the kpi_type — not stored as a column.
 Subscription/payment KPIs (penetration, spend, churn_intention, stacking, account_sharing, gross_access) are **household-level**.
@@ -32,6 +33,14 @@ possible values are
 - years: 2024–2025  (very limited data)
 
 ### penetration
+- Unit: ratio 0.0–1.0 (% of households)
+- category: online_video, tv
+- population_segment: NULL (whole population)
+- countries: all four
+- years: 2005–2025
+[FIX] penetration was missing unit/category/country/year metadata that other kpi_types have. Added based on pattern. Verify years range.
+
+Dimensions (kpi_dimension → meaning):
 - svod: % of households subscribing to paid streaming services
 - ssvod: % of households with standalone SVOD subscriptions
 - bsvod: % of households with bundled SVOD (via ISP/telco)
@@ -86,9 +95,16 @@ possible values are
 - years: 2023–2025  (very limited data)
 
 ### spend (local currency per month)
-- '' (empty) + subscribers: average monthly ARPU for pay TV or SVOD subscribers
+- Unit: local currency/month
+- category: online_video, tv, cinema, dvd_blu_ray, tvod
+- countries: all four
+- years: 2005–2025
+[FIX] spend was missing unit/category/country/year metadata. Added based on pattern. Verify.
+
+Dimensions (kpi_dimension + population_segment → meaning):
+- '' + subscribers: average monthly ARPU for pay TV or SVOD subscribers
 - ssvod + subscribers: average monthly spend on standalone SVOD subscriptions
-- '' (empty) + users: average monthly consumer spend (cinema tickets, DVD, TVOD rentals)
+- '' + users: average monthly consumer spend (cinema tickets, DVD, TVOD rentals)
 
 
 ### stacking (average number of services)

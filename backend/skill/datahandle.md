@@ -1,4 +1,6 @@
-# How to handle data 
+# How to handle data
+[FIX] the stacking section below duplicates info already in nordic-kpi_type.md under stacking. Move to kpi_type or remove from here?
+
 ## stacking
 - Unit: average number of paid services per subscriber (e.g. 1.85 = holds ~2 services on average)
 - Value range: 0–3.15

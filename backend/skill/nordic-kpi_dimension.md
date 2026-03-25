@@ -1,7 +1,8 @@
 
 ## kpi_dimension
 
-its a sub type of kpi_type. For rows have service_is is NULL, then we don't separate service, otherwise kpi_service can have more separation on service. 
+Subdivides a kpi_type into finer segments. When service_id is NULL the row measures the whole market segment for that dimension. When service_id is set (only for _service kpi_types), it measures a specific service within that dimension.
+[FIX] original "its a sub type of kpi_type. For rows have service_is is NULL..." had typo (service_is) and was unclear. Reworded.
 
 possible values are
 - ads_ott: % who watched ad-supported OTT services yesterday

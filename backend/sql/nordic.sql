@@ -22,7 +22,7 @@ SELECT
     NULLIF(TRIM(service_id), '')                                            AS service_id,
     NULLIF(TRIM(REGEXP_REPLACE(kpi_type, '_service$', '')), '')             AS kpi_type,
     NULLIF(TRIM(kpi_dimension), '')                                         AS kpi_dimension,
-    COALESCE(NULLIF(age_group, ''), 'All ages') 							AS age_group,
+    COALESCE(NULLIF(age_group, ''), '15-74') 								AS age_group,
     NULLIF(TRIM(population_segment), '')                                    AS population_segment,
     value
 FROM macro.nordic_long_v2;

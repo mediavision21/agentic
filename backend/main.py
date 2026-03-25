@@ -24,7 +24,7 @@ SKILL_TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "skill_templates")
 @asynccontextmanager
 async def lifespan(app):
 	await create_pool()
-	await generate_skills()
+	generate_skills()
 	if os.getenv("LLM_BACKEND") == "local" and os.getenv("START_LLAMA", "1") != "0":
 		llm_local.start_server()
 	print("[startup] database connected, skills generated")
@@ -169,7 +169,7 @@ async def create_pivot():
 	from create_pivot import main as run_pivot
 	try:
 		# await run_pivot()
-		await generate_skills()
+		generate_skills()
 		return {"ok": True}
 	except Exception as e:
 		return {"error": str(e)}
