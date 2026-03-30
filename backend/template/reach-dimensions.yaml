@@ -1,0 +1,55 @@
+description: online video reach breakdown by dimension in a single country (Norway)
+sql: |
+  SELECT
+    period_sort,
+    period_label,
+    kpi_dimension AS dimension,
+    SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS value
+  FROM macro.nordic
+  WHERE kpi_type      = 'reach'
+    AND category      = 'online_video'
+    AND kpi_dimension IN ('ssvod', 'bsvod', 'hvod', 'avod')
+    AND country       = 'norway'
+    AND age_group     = '15-74'
+    AND year          > 2020
+    AND quarter       IN (1, 3)
+  GROUP BY period_sort, period_label, kpi_dimension
+  ORDER BY period_sort
+plots:
+  - id: reach_dims_trend
+    title: "Online reach by dimension over time — Norway"
+    code: |
+      var rows = data.map(function(d) { return Object.assign({}, d, { value: +d.value, period_sort: +d.period_sort }) });
+      var periods = [];
+      var seen = {};
+      rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort }).forEach(function(d) { if (!seen[d.period_label]) { seen[d.period_label] = true; periods.push(d.period_label) } });
+      return Plot.plot({
+        width: Math.max(800, periods.length * 50),
+        marks: [
+          Plot.line(rows, { x: "period_label", y: "value", stroke: "dimension", curve: "catmull-rom", tip: true })
+        ],
+        x: { label: null, domain: periods, tickRotate: -45 },
+        y: { label: "Reach %", grid: true },
+        color: { legend: true },
+        marginRight: 200,
+        marginBottom: 80
+      })
+
+  - id: reach_dims_heatmap
+    title: "Reach by dimension × period"
+    code: |
+      var rows = data.map(function(d) { return Object.assign({}, d, { value: +d.value, period_sort: +d.period_sort }) });
+      var periods = [];
+      var seen = {};
+      rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort }).forEach(function(d) { if (!seen[d.period_label]) { seen[d.period_label] = true; periods.push(d.period_label) } });
+      return Plot.plot({
+        marks: [
+          Plot.cell(rows, { x: "period_label", y: "dimension", fill: "value", tip: true }),
+          Plot.text(rows, { x: "period_label", y: "dimension", text: function(d) { return d.value.toFixed(0) + "%" }, fontSize: 9, fill: "black" })
+        ],
+        x: { label: null, domain: periods, tickRotate: -45 },
+        y: { label: null },
+        color: { scheme: "YlOrRd", legend: true, label: "Reach %" },
+        marginLeft: 200,
+        marginBottom: 80
+      })

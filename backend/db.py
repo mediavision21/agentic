@@ -172,11 +172,14 @@ def _is_read_only(sql):
 
 async def execute_query(sql):
 	# execute a read-only query, returns {columns, rows} — raises on error
+	print('executing: ', sql)
 	if not _is_read_only(sql):
 		raise ValueError("Only SELECT / WITH queries are allowed")
 	async with pool.acquire() as conn:
 		await conn.execute(f"SET search_path TO {schema}, public")
 		rows = await conn.fetch(sql)
+	print('num rows: ', len(rows))
+	print('row0: ', rows[0])
 	if not rows:
 		return {"columns": [], "rows": []}
 	columns = list(rows[0].keys())

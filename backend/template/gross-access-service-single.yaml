@@ -1,0 +1,31 @@
+description: Netflix gross access trend in a single country (Norway)
+sql: |
+  SELECT
+    period_sort,
+    period_label,
+    SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS value
+  FROM macro.nordic
+  WHERE kpi_type      = 'gross_access'
+    AND canonical_name = 'Netflix'
+    AND country       = 'norway'
+    AND year          > 2020
+  GROUP BY period_sort, period_label
+  ORDER BY period_sort
+plots:
+  - id: ga_single
+    title: "Netflix gross access over time — Norway"
+    code: |
+      var rows = data.map(function(d) { return Object.assign({}, d, { value: +d.value, period_sort: +d.period_sort }) });
+      var periods = [];
+      var seen = {};
+      rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort }).forEach(function(d) { if (!seen[d.period_label]) { seen[d.period_label] = true; periods.push(d.period_label) } });
+      return Plot.plot({
+        width: Math.max(800, periods.length * 50),
+        marks: [
+          Plot.line(rows, { x: "period_label", y: "value", curve: "catmull-rom", tip: true }),
+          Plot.dot(rows, { x: "period_label", y: "value", r: 3 })
+        ],
+        x: { label: null, domain: periods, tickRotate: -45 },
+        y: { label: "Gross access %", grid: true },
+        marginBottom: 80
+      })

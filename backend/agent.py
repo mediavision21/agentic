@@ -9,6 +9,7 @@ from db import execute_query
 import llm_claude
 import llm_local
 import evaldb
+from template_router import load_templates, match_template
 
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
 
@@ -179,6 +180,46 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
 
     msg_id = str(uuid.uuid4())
     yield {"type": "msg_id", "id": msg_id}
+
+    # template routing — try to match a pre-baked template first
+    templates = load_templates()
+    if templates:
+        matched_file = await match_template(prompt, templates)
+        if matched_file:
+            template = templates[matched_file]
+            sql = template["sql"].strip()
+            description = template.get("description", matched_file)
+            print(f"[agent] template matched: {matched_file}")
+
+            yield {"type": "sql", "sql": sql, "plot_config": None, "explanation": description}
+
+            try:
+                data = await execute_query(sql)
+                yield {"type": "rows", "columns": data["columns"], "rows": data["rows"]}
+            except Exception as e:
+                print(f"[agent] template query error: {e}")
+                yield {"type": "error", "error": f"SQL error: {e}"}
+                evaldb.save_log(
+                    msg_id, prompt, f"[template] {matched_file}", [], sql,
+                    "template", {}, user=user, conversation_id=conversation_id
+                )
+                return
+
+            if template.get("plots"):
+                yield {"type": "template_plots", "plots": template["plots"]}
+
+            try:
+                summary = await generate_summary(prompt, data["columns"], data["rows"], backend)
+                yield {"type": "summary", "text": summary}
+            except Exception as e:
+                print(f"[agent] summary error: {e}")
+
+            evaldb.save_log(
+                msg_id, prompt, f"[template] {matched_file}", [], sql,
+                "template", {}, user=user, conversation_id=conversation_id,
+                result_data={"columns": data["columns"], "rows": data["rows"], "plot_config": None}
+            )
+            return
 
     system_prompt = build_system_prompt()
     messages = build_llm_messages(history, prompt)

@@ -7,6 +7,7 @@ SELECT
         WHEN 'no' THEN 'norway'
         WHEN 'se' THEN 'sweden'
     END                                                                     AS country,
+	age,
     population_type,
     value AS population
-FROM macro.fact_population where age = '15-74';
+FROM macro.fact_population;

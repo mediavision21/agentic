@@ -1,0 +1,37 @@
+description: top streaming services by Nordic gross access (latest period)
+sql: |
+  WITH latest AS (
+    SELECT country, MAX(date) AS date
+    FROM macro.nordic
+    WHERE kpi_type = 'gross_access'
+    GROUP BY country
+  )
+  SELECT
+    n.canonical_name AS service,
+    ROUND(SUM(n.value * n.population) / NULLIF(SUM(n.population), 0) * 100) AS value
+  FROM macro.nordic n
+  JOIN latest l ON n.country = l.country AND n.date = l.date
+  WHERE n.kpi_type      = 'gross_access'
+    AND n.canonical_name IS NOT NULL
+    AND n.quarter       IN (1, 3)
+  GROUP BY n.canonical_name
+  HAVING value > 0
+  ORDER BY value DESC
+  LIMIT 20
+
+plots:
+  - id: top_gross_access
+    title: "Top services by gross access (Nordic, latest)"
+    code: |
+      var rows = data.map(function(d) { return Object.assign({}, d, { value: +d.value }) }).sort(function(a, b) { return b.value - a.value }).slice(0, 20);
+      return Plot.plot({
+        marks: [
+          Plot.barX(rows, { x: "value", y: "service", fill: "steelblue", sort: { y: "-x" }, tip: true }),
+          Plot.text(rows, { x: "value", y: "service", text: function(d) { return d.value.toFixed(0) + "%" }, dx: 4, textAnchor: "start", fontSize: 10 }),
+          Plot.ruleX([0])
+        ],
+        x: { label: "Gross access %", grid: true },
+        y: { label: null },
+        marginLeft: 140,
+        marginRight: 80
+      })

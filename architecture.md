@@ -19,6 +19,8 @@ mediavision/
 │   ├── db.py                         # asyncpg pool, schema introspection, query exec
 │   ├── skills.py                     # generates markdown skill files from DB schema
 │   ├── agent.py                      # prompt builder, SQL extraction, LLM dispatch
+│   ├── template_router.py            # YAML template loader + Haiku-based prompt matcher
+│   ├── template/                     # pre-baked YAML templates (sql + plot configs)
 │   ├── evaldb.py                     # SQLite: llm_logs, evaluations, users, conversations
 │   ├── add_user.py                   # CLI tool to create users
 │   ├── llm_claude.py                 # Anthropic SDK client
@@ -48,13 +50,16 @@ mediavision/
 ```
 User prompt
     → POST /api/query {prompt, backend, history, session_id}
-    → agent.py reads skills/*.md as schema context
-    → LLM generates SQL (SELECT only)
+    → template_router.py: load YAML templates from backend/template/*.yaml
+    → Haiku LLM matches prompt to template description (fast, cheap)
+    → IF matched: use pre-baked SQL + plot configs from template
+    → IF not matched: agent.py reads skills/*.md, LLM generates SQL (SELECT only)
     → db.py executes in read-only transaction
-    → SSE stream: msg_id, tokens (thinking), sql/text, rows, summary, suggestions
+    → SSE stream: msg_id, tokens, sql/text, rows, template_plots, summary, suggestions
     → llm_logs saved with user + conversation_id
     → frontend renders chat messages: user bubble (right) + assistant bubble (left)
     → assistant bubble: thinking collapsed, SQL collapsed, table, chart inline
+    → template_plots: tabbed plot selector with Observable Plot code evaluation
 ```
 
 ## Persistence

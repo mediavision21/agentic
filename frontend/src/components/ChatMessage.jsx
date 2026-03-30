@@ -1,8 +1,62 @@
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
+import * as Plot from "@observablehq/plot"
 import SqlDisplay from "./SqlDisplay.jsx"
 import ResultTable from "./ResultTable.jsx"
 import ResultChart from "./ResultChart.jsx"
 import Markdown from "./Markdown.jsx"
+
+// render a template plot by evaluating its Observable Plot code with data
+function TemplatePlotView(options) {
+	const { plot, rows } = options
+	const $container = useRef(null)
+
+	useEffect(function () {
+		if (!$container.current || !rows || rows.length === 0) return
+		$container.current.innerHTML = ""
+		try {
+			const code = "var data = __rows__;\n" + plot.code
+			console.log(code)
+			const fn = new Function("Plot", "__rows__", code)
+			const chart = fn(Plot, rows)
+			if (chart) $container.current.appendChild(chart)
+		} catch (e) {
+			console.error("[TemplatePlot] render error:", e)
+			$container.current.textContent = "Plot render error: " + e.message
+		}
+	}, [plot, rows])
+
+	return (
+		<div className="template-plot">
+			<div className="template-plot-title">{plot.title}</div>
+			<div className="chart-container" ref={$container}></div>
+		</div>
+	)
+}
+
+function TemplatePlots(options) {
+	const { plots, rows } = options
+	const [activeId, setActiveId] = useState(plots[0] ? plots[0].id : null)
+	const active = plots.find(function (p) { return p.id === activeId })
+
+	return (
+		<div className="template-plots">
+			<div className="template-plot-tabs">
+				{plots.map(function (p) {
+					return (
+						<button
+							key={p.id}
+							className={"template-plot-tab" + (p.id === activeId ? " active" : "")}
+							onClick={function () { setActiveId(p.id) }}
+						>
+							{p.title}
+						</button>
+					)
+				})}
+			</div>
+			{active && <TemplatePlotView plot={active} rows={rows} />}
+		</div>
+	)
+}
 
 // 👎 left, 👍 right — clicking 👎 slides down a comment box
 function EvalBar(options) {
@@ -97,7 +151,7 @@ function ChatMessage(options) {
 	}
 
 	// assistant
-	const { loading, error, sql, explanation, text, columns, rows, summary, plot_config, streaming_text, suggestions, msg_id } = message.content
+	const { loading, error, sql, explanation, text, columns, rows, summary, plot_config, streaming_text, suggestions, msg_id, template_plots } = message.content
 
 	return (
 		<div className="bubble-row assistant">
@@ -119,14 +173,21 @@ function ChatMessage(options) {
 				)}
 
 				{rows && rows.length > 0 && (
+					<details className="collapsible">
+						<summary>Data ({rows.length} rows)</summary>
+						<ResultTable columns={columns} rows={rows} />
+					</details>
+				)}
+
+				{rows && rows.length > 0 && !template_plots && (
 					<ResultChart columns={columns} rows={rows} plot_config={plot_config} />
 				)}
 
-				{summary && <Markdown text={summary} />}
-
-				{rows && rows.length > 0 && (
-					<ResultTable columns={columns} rows={rows} />
+				{template_plots && template_plots.length > 0 && rows && rows.length > 0 && (
+					<TemplatePlots plots={template_plots} rows={rows} />
 				)}
+
+				{summary && <Markdown text={summary} />}
 
 				{!evalMode && suggestions && suggestions.length > 0 && (
 					<div className="suggestion-chips">

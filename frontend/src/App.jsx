@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import PromptInput from "./components/PromptInput.jsx"
 import ChatMessage from "./components/ChatMessage.jsx"
-import SkillsSidebar from "./components/SkillsSidebar.jsx"
-import SkillEditor from "./components/SkillEditor.jsx"
+import EvalSidebar from "./components/EvalSidebar.jsx"
 import EvalPanel from "./components/EvalPanel.jsx"
 import LoginDialog from "./components/LoginDialog.jsx"
 import parseRawResponse from "./parseResponse.js"
@@ -18,7 +17,6 @@ function App() {
 	const [sessions, setSessions] = useState([{ id: initialId, title: "New chat", messages: [] }])
 	const [activeId, setActiveId] = useState(initialId)
 	const [loading, setLoading] = useState(false)
-	const [activeSkill, setActiveSkill] = useState(null)
 	const [evalView, setEvalView] = useState(null) // {id, prompt, response, user, rating, comment}
 	const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT)
 	const [rightWidth, setRightWidth] = useState(DEFAULT_RIGHT)
@@ -116,7 +114,6 @@ function App() {
 
 	function selectSession(id) {
 		setActiveId(id)
-		setActiveSkill(null)
 		setEvalView(null)
 
 		const session = sessions.find(function (s) { return s.id === id })
@@ -127,7 +124,6 @@ function App() {
 
 	function onSelectEval(ev) {
 		setEvalView(ev)
-		setActiveSkill(null)
 	}
 
 	function startDrag(options) {
@@ -282,6 +278,8 @@ function App() {
 							patchLastMsg(sessionId, function (c) { return { ...c, summary: event.text } })
 						} else if (event.type === "suggestions") {
 							patchLastMsg(sessionId, function (c) { return { ...c, suggestions: event.items } })
+						} else if (event.type === "template_plots") {
+							patchLastMsg(sessionId, function (c) { return { ...c, template_plots: event.plots } })
 						} else if (event.type === "error") {
 							patchLastMsg(sessionId, function (c) { return { ...c, loading: false, error: event.error } })
 						}
@@ -319,8 +317,7 @@ function App() {
 		width: rightWidth,
 	}
 
-	// "skill-open" or "eval-open" drives the slide animation
-	const panelClass = activeSkill ? " skill-open" : evalView ? " eval-open" : ""
+	const panelClass = evalView ? " eval-open" : ""
 
 	const userInitial = user ? user[0].toUpperCase() : "?"
 
@@ -392,13 +389,6 @@ function App() {
 					</div>
 				</div>
 
-				{/* skill editor panel — slides in from right when a skill is selected */}
-				<div className="skill-panel">
-					{activeSkill && (
-						<SkillEditor name={activeSkill} onClose={function () { setActiveSkill(null) }} />
-					)}
-				</div>
-
 				{/* eval panel — slides in from right when an eval is selected */}
 				<div className="eval-panel">
 					<EvalPanel evalView={evalView} onClose={function () { setEvalView(null) }} />
@@ -416,10 +406,8 @@ function App() {
 				</button>
 			</div>
 
-			<SkillsSidebar
+			<EvalSidebar
 				style={rightStyle}
-				activeSkill={activeSkill}
-				onSelect={function (name) { setActiveSkill(name); setEvalView(null) }}
 				onSelectEval={onSelectEval}
 				activeEvalId={evalView ? evalView.id : null}
 				user={user}

@@ -1,0 +1,36 @@
+description: population-weighted comparison of top SVOD services (Nordic, latest)
+sql: |
+  WITH latest AS (
+    SELECT country, MAX(date) AS date
+    FROM macro.nordic
+    WHERE kpi_type = 'reach_service_weekly' AND category = 'online_video'
+    GROUP BY country
+  )
+  SELECT
+    n.canonical_name AS service,
+    ROUND(SUM(n.value * n.population) / NULLIF(SUM(n.population), 0) * 100) AS value
+  FROM macro.nordic n
+  JOIN latest l ON n.country = l.country AND n.date = l.date
+  WHERE n.kpi_type      = 'reach_service_weekly'
+    AND n.category      = 'online_video'
+    AND n.canonical_name IN ('Netflix', 'Disney+', 'HBO Max', 'Prime Video', 'Viaplay')
+    AND n.age_group     = '15-74'
+  GROUP BY n.canonical_name
+  ORDER BY value DESC
+plots:
+  - id: service_compare_weighted_bar
+    title: "SVOD service reach comparison (Nordic weighted, latest)"
+    code: |
+      var rows = data.map(function(d) { return Object.assign({}, d, { value: +d.value }) }).sort(function(a, b) { return b.value - a.value });
+      return Plot.plot({
+        marks: [
+          Plot.barX(rows, { x: "value", y: "service", fill: "service", sort: { y: "-x" }, tip: true }),
+          Plot.text(rows, { x: "value", y: "service", text: function(d) { return d.value.toFixed(1) + "%" }, dx: 4, textAnchor: "start", fontSize: 11 }),
+          Plot.ruleX([0])
+        ],
+        x: { label: "Weekly reach %", grid: true },
+        y: { label: null },
+        color: { legend: false },
+        marginLeft: 120,
+        marginRight: 80
+      })

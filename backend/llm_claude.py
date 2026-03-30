@@ -39,7 +39,18 @@ async def complete(system_prompt, messages):
         model=MODEL,
         max_tokens=2048,
         temperature=0,
-        top_p=1,
+        # top_p=1,
+        system=system_prompt,
+        messages=messages,
+    )
+
+
+async def complete_fast(system_prompt, messages):
+    # lightweight haiku call for routing decisions
+    return await client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=100,
+        temperature=0,
         system=system_prompt,
         messages=messages,
     )

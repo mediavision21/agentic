@@ -454,6 +454,41 @@ body {
 	fill: var(--color-voi-axis);
 }
 
+/* ── template plot tabs ── */
+
+.template-plots {
+	margin-top: 10px;
+}
+
+.template-plot-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-bottom: 6px;
+}
+
+.template-plot-tab {
+	background: transparent;
+	border: 1px solid var(--color-gray-light);
+	border-radius: 4px;
+	color: var(--color-gray-dark);
+	cursor: pointer;
+	font-family: var(--font-body);
+	font-size: 12px;
+	padding: 4px 10px;
+}
+
+.template-plot-tab.active {
+	background: var(--color-gray-light);
+	color: var(--color-fg);
+}
+
+.template-plot-title {
+	color: var(--color-gray-mid);
+	font-size: 11px;
+	margin-bottom: 4px;
+}
+
 /* ── markdown body ── */
 
 .md-body {
@@ -788,10 +823,9 @@ body {
 	margin-bottom: 2px;
 }
 
-/* ── chat-section + skill-panel + eval-panel: full-area slide panels ── */
+/* ── chat-section + eval-panel: full-area slide panels ── */
 
 .chat-section,
-.skill-panel,
 .eval-panel {
 	display: flex;
 	flex-direction: column;
@@ -807,18 +841,8 @@ body {
 	transform: translateX(0);
 }
 
-.main-area.skill-open .chat-section,
 .main-area.eval-open .chat-section {
 	transform: translateX(-100%);
-}
-
-/* skill panel starts off-screen right, slides in when skill opens */
-.skill-panel {
-	transform: translateX(100%);
-}
-
-.main-area.skill-open .skill-panel {
-	transform: translateX(0);
 }
 
 /* eval panel starts off-screen right, slides in when eval opens */
