@@ -10,7 +10,7 @@ echo "==> Syncing frontend dist..."
 rsync -az "./frontend/dist/" "rock@mediavision:/opt/rock/frontend/dist/"
 
 echo "==> Syncing database ..."
-rsync -az "mediavision.db" "rock@mediavision:/opt/rock/"
+# rsync -az "mediavision.db" "rock@mediavision:/opt/rock/"
 
 
 # echo "==> Syncing .env if exists..."

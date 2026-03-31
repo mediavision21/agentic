@@ -1,4 +1,5 @@
 description: daily reach online video per service
+status: verified by Niklas and Rasmus
 sql: |
   SELECT
     period_sort,

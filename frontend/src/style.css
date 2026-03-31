@@ -958,6 +958,38 @@ body {
 	margin-top: 1px;
 }
 
+.template-category-header {
+	align-items: center;
+	cursor: pointer;
+	display: flex;
+	font-size: 11px;
+	font-weight: 600;
+	gap: 5px;
+	letter-spacing: 0.05em;
+	opacity: 0.5;
+	padding: 8px 12px 4px;
+	text-transform: uppercase;
+	user-select: none;
+}
+
+.template-category-header:hover {
+	opacity: 0.8;
+}
+
+.template-category-arrow {
+	font-size: 10px;
+}
+
+.template-category-count {
+	color: rgba(255, 255, 255, 0.35);
+	font-weight: 400;
+	margin-left: auto;
+}
+
+.template-item {
+	padding-left: 20px;
+}
+
 .eval-empty {
 	cursor: default;
 	opacity: 0.4;

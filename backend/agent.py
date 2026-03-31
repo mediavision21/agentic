@@ -9,7 +9,7 @@ from db import execute_query
 import llm_claude
 import llm_local
 import evaldb
-from template_router import load_templates, match_template
+from template_router import load_templates, match_top_templates
 
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
 
@@ -91,6 +91,32 @@ def build_system_prompt():
     for name, content in skills["files"].items():
         schema_parts.append(content)
     return SYSTEM_PROMPT_TEMPLATE.format(schema="\n\n".join(schema_parts))
+
+
+def build_guided_system_prompt(matches, templates):
+    # Like build_system_prompt but includes top-3 templates as few-shot examples
+    skills = load_skills()
+    schema_parts = []
+    for name, content in skills["files"].items():
+        schema_parts.append(content)
+    schema = "\n\n".join(schema_parts)
+
+    example_parts = []
+    for m in matches:
+        t = templates[m["file"]]
+        desc = t.get("description", m["file"])
+        sql = t.get("sql", "").strip()
+        plots = t.get("plots", [])
+        score_pct = int(m["score"] * 100)
+        part = f"### {m['file']} (similarity: {score_pct}%)\nDescription: {desc}\n```sql\n{sql}\n```"
+        if plots:
+            # include first plot code as reference
+            part += f"\nPlot example:\n```js\n{plots[0].get('code','').strip()}\n```"
+        example_parts.append(part)
+
+    examples_section = "\n\n".join(example_parts)
+    base = SYSTEM_PROMPT_TEMPLATE.format(schema=schema)
+    return base + f"\n\n## Similar templates for reference\nUse these as examples to guide your SQL and plot style:\n\n{examples_section}"
 
 
 def extract_sql(text):
@@ -181,47 +207,55 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
     msg_id = str(uuid.uuid4())
     yield {"type": "msg_id", "id": msg_id}
 
-    # template routing — try to match a pre-baked template first
+    # template routing — rank top 3 templates by similarity
     templates = load_templates()
-    if templates:
-        matched_file = await match_template(prompt, templates)
-        if matched_file:
-            template = templates[matched_file]
-            sql = template["sql"].strip()
-            description = template.get("description", matched_file)
-            print(f"[agent] template matched: {matched_file}")
+    matches = await match_top_templates(prompt, templates) if templates else []
 
-            yield {"type": "sql", "sql": sql, "plot_config": None, "explanation": description}
+    if matches and matches[0]["score"] >= 0.95:
+        # full match — use template directly
+        matched_file = matches[0]["file"]
+        template = templates[matched_file]
+        sql = template["sql"].strip()
+        description = template.get("description", matched_file)
+        print(f"[agent] template full match: {matched_file} score={matches[0]['score']}")
 
-            try:
-                data = await execute_query(sql)
-                yield {"type": "rows", "columns": data["columns"], "rows": data["rows"]}
-            except Exception as e:
-                print(f"[agent] template query error: {e}")
-                yield {"type": "error", "error": f"SQL error: {e}"}
-                evaldb.save_log(
-                    msg_id, prompt, f"[template] {matched_file}", [], sql,
-                    "template", {}, user=user, conversation_id=conversation_id
-                )
-                return
+        yield {"type": "sql", "sql": sql, "plot_config": None, "explanation": description}
 
-            if template.get("plots"):
-                yield {"type": "template_plots", "plots": template["plots"]}
-
-            try:
-                summary = await generate_summary(prompt, data["columns"], data["rows"], backend)
-                yield {"type": "summary", "text": summary}
-            except Exception as e:
-                print(f"[agent] summary error: {e}")
-
+        try:
+            data = await execute_query(sql)
+            yield {"type": "rows", "columns": data["columns"], "rows": data["rows"]}
+        except Exception as e:
+            print(f"[agent] template query error: {e}")
+            yield {"type": "error", "error": f"SQL error: {e}"}
             evaldb.save_log(
                 msg_id, prompt, f"[template] {matched_file}", [], sql,
-                "template", {}, user=user, conversation_id=conversation_id,
-                result_data={"columns": data["columns"], "rows": data["rows"], "plot_config": None}
+                "template", {}, user=user, conversation_id=conversation_id
             )
             return
 
-    system_prompt = build_system_prompt()
+        if template.get("plots"):
+            yield {"type": "template_plots", "plots": template["plots"]}
+
+        try:
+            summary = await generate_summary(prompt, data["columns"], data["rows"], backend)
+            yield {"type": "summary", "text": summary}
+        except Exception as e:
+            print(f"[agent] summary error: {e}")
+
+        evaldb.save_log(
+            msg_id, prompt, f"[template] {matched_file}", [], sql,
+            "template", {}, user=user, conversation_id=conversation_id,
+            result_data={"columns": data["columns"], "rows": data["rows"], "plot_config": None}
+        )
+        return
+
+    # partial match or no match — generate SQL with guided or full skill prompt
+    if matches:
+        print(f"[agent] guided generation with {len(matches)} template hints")
+        system_prompt = build_guided_system_prompt(matches, templates)
+    else:
+        print(f"[agent] no template match, using full skill prompt")
+        system_prompt = build_system_prompt()
     messages = build_llm_messages(history, prompt)
 
     os.makedirs(LOGS_DIR, exist_ok=True)
@@ -295,6 +329,35 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
             user=user, conversation_id=conversation_id
         )
         return
+
+    # retry with next 3 templates if no rows returned and we have more candidates
+    if len(data["rows"]) == 0 and matches and len(matches) > 3:
+        print(f"[agent] 0 rows, retrying with templates {[m['file'] for m in matches[3:6]]}")
+        retry_system_prompt = build_guided_system_prompt(matches[3:6], templates)
+        try:
+            retry_resp = await llm_claude.complete(retry_system_prompt, messages)
+            retry_text = retry_resp.content[0].text.strip()
+            retry_sql_raw = extract_sql(retry_text)
+            if retry_sql_raw:
+                retry_sql = postprocess_sql(retry_sql_raw)
+                retry_plot = extract_plot_config(retry_text)
+                retry_explanation = re.sub(r"```(?:sql|json).*?```", "", retry_text, flags=re.DOTALL).strip()
+                retry_data = await execute_query(retry_sql)
+                if len(retry_data["rows"]) > 0:
+                    print(f"[agent] retry succeeded with {len(retry_data['rows'])} rows")
+                    yield {"type": "sql", "sql": retry_sql, "plot_config": retry_plot, "explanation": retry_explanation}
+                    yield {"type": "rows", "columns": retry_data["columns"], "rows": retry_data["rows"]}
+                    data = retry_data
+                    result_data = {"columns": retry_data["columns"], "rows": retry_data["rows"], "plot_config": retry_plot}
+                else:
+                    print(f"[agent] retry also returned 0 rows, stopping")
+                    return
+            else:
+                print(f"[agent] retry produced no SQL, stopping")
+                return
+        except Exception as e:
+            print(f"[agent] retry error: {e}")
+            return
 
     try:
         summary = await generate_summary(prompt, data["columns"], data["rows"], backend)

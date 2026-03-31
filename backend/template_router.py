@@ -30,12 +30,19 @@ def reload_templates():
     return load_templates()
 
 
-MATCH_SYSTEM_PROMPT = """You are a query router. Given a user question and a list of template descriptions, return ONLY the filename of the best matching template, or NONE if no template matches.
-Be generous in matching - if the question is about the same topic as a template, match it.
-Reply with just the filename or NONE. Nothing else."""
+MATCH_SYSTEM_PROMPT = """You are a query router. Given a user question and a list of template descriptions, return the top 6 best matching templates with a similarity score from 0.0 to 1.0.
+
+Format (one per line):
+filename.yaml: 0.92
+filename.yaml: 0.75
+filename.yaml: 0.61
+
+If no template is relevant at all, return NONE.
+Return only the lines above, nothing else."""
 
 
-async def match_template(prompt, templates):
+async def match_top_templates(prompt, templates):
+    # returns list of {"file": str, "score": float} sorted by score desc, or []
     lines = []
     for fname, data in templates.items():
         desc = data.get("description", fname)
@@ -46,10 +53,26 @@ async def match_template(prompt, templates):
     try:
         resp = await llm_claude.complete_fast(MATCH_SYSTEM_PROMPT, messages)
         answer = resp.content[0].text.strip()
-        print(f"[template_router] match result: {answer}")
-        if answer == "NONE" or answer not in templates:
-            return None
-        return answer
+        print(f"[template_router] match result:\n{answer}")
+        if answer == "NONE":
+            return []
+        results = []
+        for line in answer.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.rsplit(":", 1)
+            if len(parts) != 2:
+                continue
+            fname = parts[0].strip()
+            try:
+                score = float(parts[1].strip())
+            except ValueError:
+                continue
+            if fname in templates:
+                results.append({"file": fname, "score": score})
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:6]
     except Exception as e:
         print(f"[template_router] match error: {e}")
-        return None
+        return []

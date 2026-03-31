@@ -3,6 +3,7 @@ import PromptInput from "./components/PromptInput.jsx"
 import ChatMessage from "./components/ChatMessage.jsx"
 import EvalSidebar from "./components/EvalSidebar.jsx"
 import EvalPanel from "./components/EvalPanel.jsx"
+import TemplatePanel from "./components/TemplatePanel.jsx"
 import LoginDialog from "./components/LoginDialog.jsx"
 import parseRawResponse from "./parseResponse.js"
 
@@ -18,6 +19,7 @@ function App() {
 	const [activeId, setActiveId] = useState(initialId)
 	const [loading, setLoading] = useState(false)
 	const [evalView, setEvalView] = useState(null) // {id, prompt, response, user, rating, comment}
+	const [templateView, setTemplateView] = useState(null)
 	const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT)
 	const [rightWidth, setRightWidth] = useState(DEFAULT_RIGHT)
 	const [dragTarget, setDragTarget] = useState(null) // "left" | "right" | null
@@ -123,7 +125,20 @@ function App() {
 	}
 
 	function onSelectEval(ev) {
+		setTemplateView(null)
 		setEvalView(ev)
+	}
+
+	async function onSelectTemplate(tpl) {
+		setEvalView(null)
+		setTemplateView({ name: tpl.name, description: tpl.description, loading: true })
+		try {
+			const resp = await fetch("/api/templates/" + tpl.name, { credentials: "include" })
+			const data = await resp.json()
+			setTemplateView({ name: tpl.name, description: tpl.description, ...data, loading: false })
+		} catch (e) {
+			setTemplateView({ name: tpl.name, description: tpl.description, error: e.message, loading: false })
+		}
 	}
 
 	function startDrag(options) {
@@ -317,7 +332,7 @@ function App() {
 		width: rightWidth,
 	}
 
-	const panelClass = evalView ? " eval-open" : ""
+	const panelClass = (evalView || templateView) ? " eval-open" : ""
 
 	const userInitial = user ? user[0].toUpperCase() : "?"
 
@@ -389,9 +404,10 @@ function App() {
 					</div>
 				</div>
 
-				{/* eval panel — slides in from right when an eval is selected */}
+				{/* eval panel — slides in from right when an eval or template is selected */}
 				<div className="eval-panel">
-					<EvalPanel evalView={evalView} onClose={function () { setEvalView(null) }} />
+					{evalView && <EvalPanel evalView={evalView} onClose={function () { setEvalView(null) }} />}
+					{templateView && <TemplatePanel templateView={templateView} onClose={function () { setTemplateView(null) }} />}
 				</div>
 			</main>
 
@@ -411,6 +427,8 @@ function App() {
 				onSelectEval={onSelectEval}
 				activeEvalId={evalView ? evalView.id : null}
 				user={user}
+				onSelectTemplate={onSelectTemplate}
+				activeTemplateName={templateView ? templateView.name : null}
 			/>
 		</div>
 	)

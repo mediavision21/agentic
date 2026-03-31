@@ -3,6 +3,7 @@ import json
 import hashlib
 import hmac
 import time
+import yaml
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Cookie
@@ -275,6 +276,62 @@ async def list_conversations(request: Request):
 async def get_conversation(conv_id: str, request: Request):
 	messages = evaldb.get_conversation_messages(conv_id)
 	return {"messages": messages}
+
+
+TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "template")
+
+
+def _safe_yaml_path(name):
+    if "/" in name or "\\" in name or ".." in name:
+        return None
+    path = os.path.join(TEMPLATE_DIR, name)
+    real = os.path.realpath(path)
+    if not real.startswith(os.path.realpath(TEMPLATE_DIR) + os.sep):
+        return None
+    return path
+
+
+@app.get("/api/templates")
+async def list_templates():
+    result = []
+    for fname in sorted(os.listdir(TEMPLATE_DIR)):
+        if not fname.endswith(".yaml"):
+            continue
+        path = os.path.join(TEMPLATE_DIR, fname)
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        name = fname[:-5]
+        result.append({
+            "name": name,
+            "category": data.get("category", ""),
+            "description": data.get("description", ""),
+            "status": data.get("status", ""),
+        })
+    return {"templates": result}
+
+
+@app.get("/api/templates/{name}")
+async def run_template(name: str):
+    fname = name if name.endswith(".yaml") else name + ".yaml"
+    path = _safe_yaml_path(fname)
+    if not path or not os.path.exists(path):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    with open(path) as f:
+        data = yaml.safe_load(f)
+    sql = data.get("sql", "")
+    plots = data.get("plots", [])
+    try:
+        result = await execute_query(sql)
+    except Exception as e:
+        return {"error": str(e), "sql": sql, "columns": [], "rows": [], "plots": plots}
+    return {
+        "name": name,
+        "description": data.get("description", ""),
+        "sql": sql,
+        "columns": result["columns"],
+        "rows": result["rows"],
+        "plots": plots,
+    }
 
 
 @app.post("/api/query")

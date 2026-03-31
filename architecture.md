@@ -35,6 +35,7 @@ mediavision/
 │   │   └── components/
 │   │       ├── ChatMessage.jsx       # iMessage-style bubble (user right, assistant left)
 │   │       ├── EvalPanel.jsx         # full conversation view for evaluations (read-only)
+│   │       ├── TemplatePanel.jsx     # template result view: runs SQL + renders all plots
 │   │       ├── LoginDialog.jsx       # auth modal (SHA-256 hashed password)
 │   │       ├── PromptInput.jsx       # text input + backend radio selector (bottom bar)
 │   │       ├── SkillsSidebar.jsx     # right sidebar: skills + eval tabs
@@ -86,6 +87,8 @@ User prompt
 | POST   | /api/conversations          | Create/persist a conversation            |
 | GET    | /api/conversations          | List conversations for current user      |
 | GET    | /api/conversations/{id}     | Get all messages for a conversation      |
+| GET    | /api/templates              | List all YAML templates (name, desc, status) |
+| GET    | /api/templates/{name}       | Run template SQL, return rows + plots    |
 | GET    | /api/health                 | Health check                             |
 
 ## Startup Flow
