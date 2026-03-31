@@ -1,4 +1,4 @@
-category: overview
+category: Viewing - overview
 description: Daily reach of online video per service — population-weighted Nordic average, top 6 services, grouped by service with one bar per period
 sql: |
   WITH weighted AS (

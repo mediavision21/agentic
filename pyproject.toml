@@ -12,5 +12,3 @@ dependencies = [
     "python-dotenv",
 ]
 
-[tool.uv]
-dependency-groups.dev = []

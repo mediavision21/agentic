@@ -1,4 +1,4 @@
-category: overview
+category: Viewing - overview
 description: Daily reach of online video (Social video, Other online, Total online) across Nordic countries
 sql: |
   SELECT

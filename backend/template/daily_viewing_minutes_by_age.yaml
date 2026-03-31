@@ -1,0 +1,268 @@
+category: Viewing - overview
+description: Daily viewing minutes of video by age group (Social video, Other online video, TV) — population-weighted Nordic average
+sql: |
+  WITH population AS (
+    SELECT
+      CASE country
+        WHEN 'dk' THEN 'denmark'
+        WHEN 'fi' THEN 'finland'
+        WHEN 'no' THEN 'norway'
+        WHEN 'se' THEN 'sweden'
+        ELSE country
+      END AS country,
+      year,
+      value AS population_15_74
+    FROM macro.fact_population
+    WHERE population_type = 'individuals'
+      AND age = '15-74'
+  ),
+  reach AS (
+    SELECT
+      country,
+      year,
+      quarter,
+      period_sort,
+      period_label,
+      age_group,
+      CASE
+        WHEN category = 'online_video' AND kpi_dimension = 'social' THEN 'Social video'
+        WHEN category = 'online_video' AND kpi_dimension = 'online_excluding_social' THEN 'Other online video'
+        WHEN category = 'tv' THEN 'TV'
+      END AS business_model,
+      value AS reach
+    FROM macro.nordic
+    WHERE canonical_name IS NULL
+      AND population_segment IS NULL
+      AND age_group IN ('15-24', '25-34', '35-44', '45-54', '55-64', '65-74')
+      AND (
+        (
+          category = 'online_video'
+          AND kpi_type = 'reach'
+          AND kpi_dimension IN ('social', 'online_excluding_social')
+        )
+        OR (
+          category = 'tv'
+          AND kpi_type = 'reach'
+        )
+      )
+  ),
+  viewing_time AS (
+    SELECT
+      country,
+      year,
+      quarter,
+      period_sort,
+      period_label,
+      age_group,
+      CASE
+        WHEN category = 'online_video' AND kpi_dimension = 'social' THEN 'Social video'
+        WHEN category = 'online_video' AND kpi_dimension = 'online_excluding_social' THEN 'Other online video'
+        WHEN category = 'tv' THEN 'TV'
+      END AS business_model,
+      value AS viewing_time_viewers
+    FROM macro.nordic
+    WHERE canonical_name IS NULL
+      AND population_segment = 'viewers'
+      AND age_group IN ('15-24', '25-34', '35-44', '45-54', '55-64', '65-74')
+      AND (
+        (
+          category = 'online_video'
+          AND kpi_type = 'viewing_time'
+          AND kpi_dimension IN ('social', 'online_excluding_social')
+        )
+        OR (
+          category = 'tv'
+          AND kpi_type = 'viewing_time'
+        )
+      )
+  ),
+  agg AS (
+    SELECT
+      r.period_sort,
+      r.period_label,
+      r.age_group,
+      r.business_model,
+      SUM(r.reach * vt.viewing_time_viewers * pop.population_15_74)
+        / NULLIF(SUM(pop.population_15_74), 0) AS viewing_time_population
+    FROM reach r
+    JOIN viewing_time vt
+      ON r.country = vt.country
+     AND r.year = vt.year
+     AND r.quarter = vt.quarter
+     AND r.age_group = vt.age_group
+     AND r.business_model = vt.business_model
+    JOIN population pop
+      ON r.country = pop.country
+     AND r.year = pop.year
+    WHERE r.period_sort >= 20243
+      AND r.quarter IN (1, 3)
+    GROUP BY
+      r.period_sort,
+      r.period_label,
+      r.age_group,
+      r.business_model
+  )
+  SELECT
+    period_sort,
+    period_label,
+    age_group,
+    CASE age_group
+      WHEN '15-24' THEN 1
+      WHEN '25-34' THEN 2
+      WHEN '35-44' THEN 3
+      WHEN '45-54' THEN 4
+      WHEN '55-64' THEN 5
+      WHEN '65-74' THEN 6
+      ELSE 99
+    END AS age_sort,
+    business_model,
+    CASE business_model
+      WHEN 'Social video' THEN 1
+      WHEN 'Other online video' THEN 2
+      WHEN 'TV' THEN 3
+      ELSE 99
+    END AS series_order,
+    viewing_time_population
+  FROM agg
+  ORDER BY period_sort, age_sort, series_order
+
+plots:
+  - id: daily_viewing_minutes_by_age
+    title: "Daily viewing minutes of video"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          period_sort: +d.period_sort,
+          age_sort: +d.age_sort,
+          series_order: +d.series_order,
+          value: +d.viewing_time_population
+        });
+      });
+
+      if (!rows.length) {
+        return Plot.plot({
+          width: 1200,
+          height: 220,
+          marks: [Plot.text(["No data"], {x: [0], y: [0], text: function(d) { return d; }, fontSize: 18})],
+          x: { axis: null },
+          y: { axis: null }
+        });
+      }
+
+      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
+        .sort(function(a, b) { return b - a; });
+      var latest = sortedPeriods[0];
+      var yearAgo = sortedPeriods.find(function(s) {
+        return Math.floor(s / 10) === Math.floor(latest / 10) - 1 &&
+               (s % 10) === (latest % 10);
+      }) || sortedPeriods[1] || sortedPeriods[0];
+
+      var subset = rows.filter(function(d) {
+        return d.period_sort === latest || d.period_sort === yearAgo;
+      });
+
+      var latestLabel = (rows.find(function(d) { return d.period_sort === latest; }) || {}).period_label || "";
+      var yearAgoLabel = (rows.find(function(d) { return d.period_sort === yearAgo; }) || {}).period_label || "";
+      var periodOrder = Array.from(new Set([yearAgoLabel, latestLabel].filter(Boolean)));
+      var ageOrder = ["15-24", "25-34", "35-44", "45-54", "55-64", "65-74"];
+      var stackOrder = ["TV", "Other online video", "Social video"];
+
+      var xOrder = [];
+      periodOrder.forEach(function(period) {
+        ageOrder.forEach(function(age) {
+          xOrder.push(period + "\n" + age);
+        });
+      });
+
+      var stackedRows = [];
+      var totals = [];
+      periodOrder.forEach(function(period) {
+        ageOrder.forEach(function(age) {
+          var xLabel = period + "\n" + age;
+          var cum = 0;
+          stackOrder.forEach(function(model) {
+            var row = subset.find(function(d) {
+              return d.period_label === period && d.age_group === age && d.business_model === model;
+            });
+            var v = row ? row.value : 0;
+            stackedRows.push({
+              x: xLabel,
+              period_label: period,
+              age_group: age,
+              business_model: model,
+              y1: cum,
+              y2: cum + v,
+              mid: cum + v / 2,
+              value: v
+            });
+            cum += v;
+          });
+          totals.push({ x: xLabel, total: cum });
+        });
+      });
+
+      var maxTotal = totals.length
+        ? Math.max.apply(null, totals.map(function(d) { return d.total; }))
+        : 0;
+      var maxY = Math.max(10, Math.ceil(maxTotal * 1.15 / 10) * 10);
+      var colorMap = {
+        "Social video": "#d8f3dc",
+        "Other online video": "#95d5b2",
+        "TV": "#083d2b"
+      };
+
+      return Plot.plot({
+        width: 1200,
+        height: 520,
+        x: { label: null, domain: xOrder, tickRotate: -45 },
+        y: { label: null, grid: true, domain: [0, maxY] },
+        color: {
+          legend: true,
+          domain: ["Social video", "Other online video", "TV"],
+          range: ["#d8f3dc", "#95d5b2", "#083d2b"]
+        },
+        marks: [
+          Plot.barY(stackedRows, {
+            x: "x",
+            y1: "y1",
+            y2: "y2",
+            fill: "business_model",
+            insetLeft: 18,
+            insetRight: 18,
+            tip: true,
+            title: function(d) { return d.business_model + ": " + Math.round(d.value) + " min"; }
+          }),
+          Plot.text(stackedRows.filter(function(d) { return d.business_model === "TV" && d.value > 0; }), {
+            x: "x",
+            y: "mid",
+            text: function(d) { return Math.round(d.value) + " min"; },
+            rotate: -90,
+            fontSize: 14,
+            fontWeight: "bold",
+            fill: "white"
+          }),
+          Plot.text(stackedRows.filter(function(d) { return d.business_model !== "TV" && d.value > 0; }), {
+            x: "x",
+            y: "mid",
+            text: function(d) { return Math.round(d.value) + " min"; },
+            rotate: -90,
+            fontSize: 14,
+            fontWeight: "bold",
+            fill: "#21423a"
+          }),
+          Plot.text(totals, {
+            x: "x",
+            y: "total",
+            text: function(d) { return Math.round(d.total) + " min"; },
+            fontSize: 14,
+            fontWeight: "bold",
+            fill: "#3d4952",
+            dy: -10
+          }),
+          Plot.ruleY([0])
+        ],
+        marginTop: 40,
+        marginBottom: 110,
+        marginLeft: 50,
+        marginRight: 30
+      });

@@ -1,4 +1,4 @@
-category: overview
+category: Viewing - overview
 description: Daily viewing minutes of online video (Social video + Other online video) — population-weighted Nordic average
 sql: |
   SELECT
