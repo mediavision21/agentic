@@ -1,0 +1,213 @@
+category: Viewing - overview
+description: Household penetration by video type (SVOD, SSVOD, BSVOD, HVOD, Pay TV channel, TVE) across Nordic countries
+sql: |
+  WITH households AS (
+      -- Number of households (15–74) per country and year.
+      SELECT
+          country,
+          year::text AS year,
+          value AS households_15_74
+      FROM macro.fact_population
+      WHERE
+          population_type = 'households'
+          AND age = '15-74'
+  ),
+  base AS (
+      -- Base dataset at country level.
+      -- Penetration values are kept per country and later combined
+      -- using household-weighted averages.
+      SELECT
+          p.period_label,
+          p.year,
+          p.quarter_label,
+          p.period_sort,
+          l.country,
+          l.kpi_dimension,
+          l.value AS penetration_country,
+          hh.households_15_74
+      FROM macro.nordic_long_v2 l
+      -- Period dimension
+      JOIN macro.dim_period p
+        ON l.year = p.year
+       AND l.quarter = p.quarter
+      -- Country dimension (required for country_label filter)
+      JOIN macro.dim_country c
+        ON l.country = c.country
+      -- Household weights
+      JOIN households hh
+        ON l.country = hh.country
+       AND l.year = hh.year
+      WHERE
+          -- Allow both Online Video and TV
+          l.category IN ('online_video', 'tv')
+          AND l.kpi_type = 'penetration'
+          AND l.kpi_dimension IN (
+              'svod',
+              'ssvod',
+              'bsvod',
+              'hvod',
+              'tve',
+              'pay_tv_channel'
+          )
+          -- Business-model-specific start dates
+          AND (
+              -- SVOD / SSVOD / BSVOD: from Q1 2016
+              (
+                  l.kpi_dimension IN ('svod', 'ssvod', 'bsvod')
+                  AND (
+                      CAST(p.year AS int) > 2016
+                      OR (CAST(p.year AS int) = 2016 AND p.quarter_label = 'Q1')
+                  )
+              )
+              -- HVOD: from Q3 2022
+              OR (
+                  l.kpi_dimension = 'hvod'
+                  AND (
+                      CAST(p.year AS int) > 2022
+                      OR (CAST(p.year AS int) = 2022 AND p.quarter_label = 'Q3')
+                  )
+              )
+              -- TVE: from first available data (no artificial cutoff)
+              OR l.kpi_dimension = 'tve'
+              -- Pay TV: from first available data (historical TV)
+              OR l.kpi_dimension = 'pay_tv_channel'
+          )
+          -- Metabase field filters (ONLY here)
+          [[ AND {{country_label}} ]]
+          [[ AND {{year}} ]]
+          [[ AND {{quarter_label}} ]]
+          [[ AND {{period_label}} ]]
+  ),
+  penetration_weighted AS (
+      -- Combine multiple countries using household-weighted averages.
+      SELECT
+          period_label,
+          year,
+          quarter_label,
+          period_sort,
+          kpi_dimension,
+          SUM(penetration_country * households_15_74)
+              / SUM(households_15_74)
+              AS penetration_household_weighted
+      FROM base
+      GROUP BY
+          period_label,
+          year,
+          quarter_label,
+          period_sort,
+          kpi_dimension
+  )
+  SELECT
+      pw.period_label,
+      pw.year,
+      pw.quarter_label,
+      pw.period_sort,
+      UPPER(pw.kpi_dimension) AS business_model,
+      pw.penetration_household_weighted AS penetration
+  FROM penetration_weighted pw
+  ORDER BY
+      pw.period_sort,
+      business_model;
+
+plots:
+  - id: household_penetration_trend
+    title: "Household penetration by video type — trend"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          penetration: +d.penetration * 100,
+          period_sort: +d.period_sort
+        });
+      });
+      var periods = [];
+      var seen = {};
+      rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort }).forEach(function(d) {
+        if (!seen[d.period_label]) { seen[d.period_label] = true; periods.push(d.period_label); }
+      });
+      var colorMap = {
+        "SVOD":           "#1a5c38",
+        "SSVOD":          "#b83c26",
+        "BSVOD":          "#d4a017",
+        "HVOD":           "#c9a0dc",
+        "PAY_TV_CHANNEL": "#111111",
+        "TVE":            "#cccccc"
+      };
+      var modelOrder = ["SVOD", "SSVOD", "BSVOD", "HVOD", "PAY_TV_CHANNEL", "TVE"];
+      return Plot.plot({
+        width: Math.max(900, periods.length * 80),
+        marks: [
+          Plot.line(rows, {
+            x: "period_label",
+            y: "penetration",
+            stroke: "business_model",
+            curve: "catmull-rom",
+            strokeWidth: 2,
+            tip: true
+          }),
+          Plot.dot(rows, {
+            x: "period_label",
+            y: "penetration",
+            fill: "business_model",
+            r: 4
+          })
+        ],
+        x: { label: null, domain: periods, tickRotate: -45 },
+        y: { label: "Household penetration %", grid: true, domain: [0, 100] },
+        color: {
+          legend: true,
+          domain: modelOrder,
+          range: modelOrder.map(function(m) { return colorMap[m]; })
+        },
+        marginRight: 160,
+        marginBottom: 80
+      });
+
+  - id: household_penetration_compare
+    title: "Household penetration by video type — latest vs year-ago"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          penetration: +d.penetration * 100,
+          period_sort: +d.period_sort
+        });
+      });
+      // Identify the two most recent distinct period_sort values (same quarter, one year apart)
+      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
+        .sort(function(a, b) { return b - a });
+      var latest = sortedPeriods[0];
+      var yearAgo = sortedPeriods.find(function(s) {
+        return Math.floor(s / 10) === Math.floor(latest / 10) - 1 &&
+               (s % 10) === (latest % 10);
+      }) || sortedPeriods[1];
+      var subset = rows.filter(function(d) {
+        return d.period_sort === latest || d.period_sort === yearAgo;
+      });
+      var latestLabel  = (rows.find(function(d) { return d.period_sort === latest;  }) || {}).period_label || "";
+      var yearAgoLabel = (rows.find(function(d) { return d.period_sort === yearAgo; }) || {}).period_label || "";
+      var modelOrder = ["SVOD", "SSVOD", "BSVOD", "HVOD", "PAY_TV_CHANNEL", "TVE"];
+      return Plot.plot({
+        width: 900,
+        height: 360,
+        fx: { label: null, domain: modelOrder, padding: 0.2 },
+        x:  { label: null, domain: [yearAgoLabel, latestLabel], axis: null },
+        y:  { label: "Household penetration %", grid: true, domain: [0, 100] },
+        color: {
+          legend: true,
+          domain: [yearAgoLabel, latestLabel],
+          range: ["#2d8653", "#1a5c38"]
+        },
+        marks: [
+          Plot.barY(subset, {
+            fx: "business_model",
+            x: "period_label",
+            y: "penetration",
+            fill: "period_label",
+            tip: true,
+            insetLeft: 2,
+            insetRight: 2
+          }),
+          Plot.ruleY([0])
+        ],
+        marginBottom: 40,
+        marginTop: 30
+      });

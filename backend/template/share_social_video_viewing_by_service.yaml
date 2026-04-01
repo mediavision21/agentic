@@ -178,7 +178,7 @@ plots:
         marginRight: 20,
         marginTop: 20,
         marginBottom: 50,
-        x: { label: null, domain: periodOrder },
+        x: { label: null, domain: periodOrder, padding: 0.4 },
         y: {
           label: null,
           grid: true,
@@ -187,13 +187,11 @@ plots:
           tickFormat: function(v) { return v + "%"; }
         },
         marks: [
-          Plot.barY(bandData, {
+          Plot.areaY(bandData, {
             x: "period_label",
             y1: "y1",
             y2: "y2",
             fill: function(d) { return colorAssigned[d.service]; },
-            insetLeft: 55,
-            insetRight: 55,
             tip: true,
             title: function(d) { return d.service + ": " + (d.y2 - d.y1).toFixed(1) + "%"; }
           }),
