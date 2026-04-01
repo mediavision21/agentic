@@ -1,0 +1,141 @@
+description: S-SVOD household penetration by service across Nordic countries, top 15 services ranked by latest period
+sql: |
+  WITH base AS (
+      SELECT
+          n.period_sort,
+          n.period_label,
+          n.year::text AS year,
+          n.quarter_label,
+          n.quarter,
+          n.country,
+          n.canonical_name AS service,
+          n.value AS penetration_country,
+          n.population_household
+      FROM macro.nordic n
+      WHERE
+          n.category = 'online_video'
+          AND n.kpi_type = 'penetration'
+          AND n.kpi_dimension = 'bsvod'
+          AND n.canonical_name IS NOT NULL
+          AND n.age_group = '15-74'
+          AND n.population_segment IS NULL
+          AND n.value IS NOT NULL
+          AND n.value > 0
+          AND n.year::int >= 2023
+          AND n.quarter IN (1, 3)
+          [[ AND {{country_label}} ]]
+          [[ AND {{year}} ]]
+          [[ AND {{quarter_label}} ]]
+          [[ AND {{period_label}} ]]
+  ),
+  penetration_weighted AS (
+      SELECT
+          period_sort,
+          period_label,
+          year,
+          quarter_label,
+          service,
+          SUM(penetration_country * population_household)
+              / NULLIF(SUM(population_household), 0) AS penetration_household
+      FROM base
+      GROUP BY
+          period_sort, period_label, year, quarter_label, service
+  ),
+  latest_period AS (
+      SELECT MAX(period_sort) AS max_period_sort
+      FROM penetration_weighted
+  ),
+  service_rank AS (
+      SELECT
+          service,
+          ROW_NUMBER() OVER (ORDER BY penetration_household DESC) AS service_rank
+      FROM penetration_weighted
+      WHERE period_sort = (SELECT max_period_sort FROM latest_period)
+  ),
+  top_services AS (
+      SELECT service, service_rank
+      FROM service_rank
+      WHERE service_rank <= 15
+  ),
+  periods AS (
+      SELECT DISTINCT period_sort, period_label, year, quarter_label
+      FROM penetration_weighted
+  ),
+  service_period_grid AS (
+      SELECT
+          ts.service,
+          ts.service_rank,
+          p.period_sort,
+          p.period_label,
+          p.year,
+          p.quarter_label
+      FROM top_services ts
+      CROSS JOIN periods p
+  )
+  SELECT
+      g.period_label,
+      g.year,
+      g.quarter_label,
+      g.period_sort,
+      g.service,
+      g.service_rank,
+      pw.penetration_household AS penetration
+  FROM service_period_grid g
+  LEFT JOIN penetration_weighted pw
+    ON pw.service = g.service
+   AND pw.period_sort = g.period_sort
+  ORDER BY
+      g.service_rank,
+      g.period_sort;
+
+plots:
+  - id: ssvod_penetration_by_service
+    title: "S-SVOD household penetration by service"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          penetration: +d.penetration * 100,
+          period_sort: +d.period_sort,
+          service_rank: +d.service_rank
+        });
+      });
+      var periods = Array.from(new Set(rows.map(function(d) { return d.period_label; })))
+        .sort(function(a, b) {
+          var pa = (rows.find(function(r) { return r.period_label === a; }) || {}).period_sort || 0;
+          var pb = (rows.find(function(r) { return r.period_label === b; }) || {}).period_sort || 0;
+          return pa - pb;
+        });
+      var services = Array.from(
+        new Map(rows.map(function(d) { return [d.service, d.service_rank]; })).entries()
+      ).sort(function(a, b) { return a[1] - b[1]; }).map(function(e) { return e[0]; });
+      var greens = ["#c7e8c7", "#8dc88d", "#52a852", "#2d8653", "#1a6640", "#0f3d26"];
+      var colorRange = periods.map(function(_, i) {
+        return greens[Math.round(i * (greens.length - 1) / Math.max(periods.length - 1, 1))];
+      });
+      return Plot.plot({
+        width: Math.max(1000, services.length * 65),
+        height: 420,
+        fx: { label: null, domain: services, padding: 0.15 },
+        x:  { label: null, domain: periods, axis: null },
+        y:  { label: "Household penetration %", grid: true, domain: [0, 40] },
+        color: {
+          legend: true,
+          domain: periods,
+          range: colorRange
+        },
+        marks: [
+          Plot.barY(rows, {
+            fx: "service",
+            x: "period_label",
+            y: "penetration",
+            fill: "period_label",
+            tip: true,
+            insetLeft: 1,
+            insetRight: 1
+          }),
+          Plot.ruleY([0])
+        ],
+        marginBottom: 60,
+        marginTop: 40,
+        marginLeft: 50
+      });

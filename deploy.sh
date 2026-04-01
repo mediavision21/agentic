@@ -12,6 +12,8 @@ rsync -az "./frontend/dist/" "rock@mediavision:/opt/rock/frontend/dist/"
 echo "==> Syncing database ..."
 # rsync -az "mediavision.db" "rock@mediavision:/opt/rock/"
 
+ssh mediavision "sudo systemctl restart rock"
+
 
 # echo "==> Syncing .env if exists..."
 # if [ -f "$SCRIPT_DIR/.env" ]; then

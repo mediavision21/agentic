@@ -1,4 +1,5 @@
 import os
+import glob
 import json
 import hashlib
 import hmac
@@ -283,7 +284,7 @@ TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "template")
 
 
 def _safe_yaml_path(name):
-    if "/" in name or "\\" in name or ".." in name:
+    if "\\" in name or ".." in name.split("/"):
         return None
     path = os.path.join(TEMPLATE_DIR, name)
     real = os.path.realpath(path)
@@ -295,23 +296,22 @@ def _safe_yaml_path(name):
 @app.get("/api/templates")
 async def list_templates():
     result = []
-    for fname in sorted(os.listdir(TEMPLATE_DIR)):
-        if not fname.endswith(".yaml"):
-            continue
-        path = os.path.join(TEMPLATE_DIR, fname)
+    for path in sorted(glob.glob(os.path.join(TEMPLATE_DIR, "**", "*.yaml"), recursive=True)):
+        rel = os.path.relpath(path, TEMPLATE_DIR)
         with open(path) as f:
             data = yaml.safe_load(f)
-        name = fname[:-5]
+        folder = os.path.dirname(rel)
+        category = folder if folder else data.get("category", "")
         result.append({
-            "name": name,
-            "category": data.get("category", ""),
+            "name": rel[:-5],  # strip .yaml
+            "category": category,
             "description": data.get("description", ""),
             "status": data.get("status", ""),
         })
     return {"templates": result}
 
 
-@app.get("/api/templates/{name}")
+@app.get("/api/templates/{name:path}")
 async def run_template(name: str):
     fname = name if name.endswith(".yaml") else name + ".yaml"
     path = _safe_yaml_path(fname)
@@ -323,7 +323,8 @@ async def run_template(name: str):
     plots = data.get("plots", [])
     placeholders = detect_placeholders(sql)
     if placeholders:
-        defaults = await build_default_filters(placeholders)
+        yaml_filters = data.get("filters")
+        defaults = await build_default_filters(placeholders, yaml_filters)
         sql = apply_filters(sql, defaults)
     try:
         result = await execute_query(sql)

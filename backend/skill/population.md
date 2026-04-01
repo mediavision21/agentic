@@ -1,9 +1,9 @@
-# view macro.population
+# population — DEPRECATED
 
-the population is for age group as whole from age 15-74
+Do NOT use `macro.population` or `fact_population`.
 
-columns
-- year: integer
-- country: denmark, finland, norway, sweden
-- population_type: individual or house hold
-- population: unit thousand
+Population data is already denormalized into `macro.nordic`:
+- `population` — individuals 15-74 per country/year
+- `population_household` — households 15-74 per country/year
+
+Use those columns directly for cross-country weighting. No JOIN needed.

@@ -26,21 +26,24 @@ FILTER_REGISTRY = {
 }
 
 
-async def build_default_filters(names):
+def _merge_spec(name, yaml_filters):
+    # Merge global registry spec with optional per-YAML override
+    # yaml_filters: dict from template's "filters" key, e.g. {"quarter_label": {"choices": ["Q1"], "default": ["Q1"]}}
+    spec = dict(FILTER_REGISTRY.get(name, {}))
+    if yaml_filters and name in yaml_filters:
+        spec.update(yaml_filters[name])
+    return spec
+
+
+async def build_default_filters(names, yaml_filters=None):
     # Returns {name: [default values]} for use in direct template execution
     result = {}
     for name in names:
-        spec = FILTER_REGISTRY.get(name)
-        if spec is None:
+        spec = _merge_spec(name, yaml_filters)
+        if not spec:
             continue
         if "default" in spec:
             result[name] = spec["default"]
-        elif "default_dynamic_sql" in spec:
-            try:
-                data = await execute_query(spec["default_dynamic_sql"])
-                result[name] = [row[0] for row in data["rows"]]
-            except Exception as e:
-                print(f"[template_filters] failed to load default for {name}: {e}")
     return result
 
 
@@ -49,12 +52,12 @@ def detect_placeholders(sql):
     return re.findall(r"\[\[.*?\{\{(\w+)\}\}.*?\]\]", sql)
 
 
-async def load_filter_choices(names):
+async def load_filter_choices(names, yaml_filters=None):
     # Returns {name: [choices]} resolving dynamic_sql when needed
     result = {}
     for name in names:
-        spec = FILTER_REGISTRY.get(name)
-        if spec is None:
+        spec = _merge_spec(name, yaml_filters)
+        if not spec:
             continue
         if "choices" in spec:
             result[name] = spec["choices"]

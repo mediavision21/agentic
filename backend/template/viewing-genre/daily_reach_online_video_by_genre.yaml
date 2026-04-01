@@ -1,0 +1,214 @@
+description: Daily reach of online video per genre — population-weighted Nordic average
+sql: |
+  WITH population AS (
+    SELECT
+      country,
+      year::text AS year,
+      value AS population_15_74
+    FROM macro.fact_population
+    WHERE population_type = 'individuals'
+      AND age = '15-74'
+  ),
+  base AS (
+    SELECT
+      p.period_sort,
+      p.period_label,
+      p.year,
+      p.quarter_label,
+      l.country,
+      CASE l.kpi_detail
+        WHEN 'drama_foreign' THEN 'Foreign drama'
+        WHEN 'news_debate' THEN 'News and debate'
+        WHEN 'factual_documentary' THEN 'Documentaries'
+        WHEN 'drama_local' THEN 'Local drama'
+        WHEN 'sports_foreign' THEN 'Foreign sports'
+      END AS genre,
+      l.value AS reach_viewers,
+      pop.population_15_74
+    FROM macro.nordic_long_v2 l
+    JOIN macro.dim_period p
+      ON l.year = p.year
+     AND l.quarter = p.quarter
+    JOIN population pop
+      ON l.country = pop.country
+     AND l.year = pop.year
+    JOIN macro.dim_country c
+      ON l.country = c.country
+    WHERE l.category = 'online_video'
+      AND l.kpi_type = 'reach'
+      AND l.kpi_dimension = 'genre'
+      AND l.population_segment = 'viewers'
+      AND l.kpi_detail IN (
+        'drama_foreign',
+        'news_debate',
+        'factual_documentary',
+        'drama_local',
+        'sports_foreign'
+      )
+      AND COALESCE(l.service_id, '') = ''
+      AND COALESCE(l.service_package_id, '') = ''
+      AND p.period_sort >= 20221
+  ),
+  genre_reach_country AS (
+    SELECT
+      period_sort,
+      period_label,
+      year,
+      quarter_label,
+      country,
+      genre,
+      SUM(reach_viewers * population_15_74) / NULLIF(SUM(population_15_74), 0) AS genre_reach_viewers_weighted,
+      SUM(population_15_74) AS country_population
+    FROM base
+    GROUP BY
+      period_sort,
+      period_label,
+      year,
+      quarter_label,
+      country,
+      genre
+  ),
+  online_total AS (
+    SELECT
+      l.country,
+      p.period_sort,
+      l.value AS online_total_reach
+    FROM macro.nordic_long_v2 l
+    JOIN macro.dim_period p
+      ON l.year = p.year
+     AND l.quarter = p.quarter
+    WHERE l.category = 'online_video'
+      AND l.kpi_type = 'reach'
+      AND l.kpi_dimension = 'online_total'
+      AND COALESCE(l.kpi_detail, '') = ''
+      AND COALESCE(l.service_id, '') = ''
+      AND COALESCE(l.service_package_id, '') = ''
+      AND COALESCE(l.age_group, '') = ''
+      AND COALESCE(l.population_segment, '') = ''
+  ),
+  genre_reach_population_country AS (
+    SELECT
+      g.period_sort,
+      g.period_label,
+      g.year,
+      g.quarter_label,
+      g.country,
+      g.genre,
+      g.genre_reach_viewers_weighted * ot.online_total_reach AS genre_reach_population,
+      g.country_population
+    FROM genre_reach_country g
+    JOIN online_total ot
+      ON g.country = ot.country
+     AND g.period_sort = ot.period_sort
+  ),
+  genre_reach_population_weighted AS (
+    SELECT
+      period_sort,
+      period_label,
+      year,
+      quarter_label,
+      genre,
+      SUM(genre_reach_population * country_population)
+        / NULLIF(SUM(country_population), 0) AS genre_reach_population_weighted
+    FROM genre_reach_population_country
+    GROUP BY
+      period_sort,
+      period_label,
+      year,
+      quarter_label,
+      genre
+  ),
+  genre_rank AS (
+    SELECT
+      genre,
+      CASE genre
+        WHEN 'Foreign drama' THEN 1
+        WHEN 'News and debate' THEN 2
+        WHEN 'Documentaries' THEN 3
+        WHEN 'Local drama' THEN 4
+        WHEN 'Foreign sports' THEN 5
+        ELSE 99
+      END AS genre_rank
+    FROM (
+      SELECT DISTINCT genre
+      FROM genre_reach_population_weighted
+    ) x
+  )
+  SELECT
+    g.period_label,
+    g.year,
+    g.quarter_label,
+    g.period_sort,
+    g.genre,
+    r.genre_rank,
+    g.genre_reach_population_weighted * 100 AS value
+  FROM genre_reach_population_weighted g
+  JOIN genre_rank r
+    ON g.genre = r.genre
+  ORDER BY r.genre_rank, g.period_sort
+
+plots:
+  - id: daily_reach_online_video_by_genre
+    title: "Daily reach of online video per genre"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          period_sort: +d.period_sort,
+          genre_rank: +d.genre_rank,
+          value: +d.value
+        });
+      });
+
+      if (!rows.length) {
+        return Plot.plot({
+          width: 900,
+          height: 220,
+          marks: [Plot.text(["No data"], {x: [0], y: [0], text: function(d) { return d; }, fontSize: 18})],
+          x: { axis: null },
+          y: { axis: null }
+        });
+      }
+
+      var genres = Array.from(new Set(
+        rows.slice().sort(function(a, b) { return a.genre_rank - b.genre_rank; }).map(function(d) { return d.genre; })
+      ));
+      var periods = Array.from(new Set(
+        rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort; }).map(function(d) { return d.period_label; })
+      ));
+
+      var greens = ["#d8f3dc", "#b7e4c7", "#95d5b2", "#52b788", "#1b6b4a", "#0f5132"];
+      var range = periods.map(function(_, i) { return greens[Math.min(i, greens.length - 1)]; });
+
+      return Plot.plot({
+        width: Math.max(980, genres.length * 160),
+        height: 430,
+        fx: { label: null, domain: genres, padding: 0.18 },
+        x: { label: null, domain: periods, axis: null },
+        y: {
+          label: null,
+          grid: true,
+          domain: [0, Math.max(40, Math.ceil(Math.max.apply(null, rows.map(function(d) { return d.value; })) / 5) * 5)],
+          tickFormat: function(v) { return v + "%"; }
+        },
+        color: {
+          legend: true,
+          domain: periods,
+          range: range
+        },
+        marks: [
+          Plot.barY(rows, {
+            fx: "genre",
+            x: "period_label",
+            y: "value",
+            fill: "period_label",
+            tip: true,
+            insetLeft: 2,
+            insetRight: 2
+          }),
+          Plot.ruleY([0])
+        ],
+        marginTop: 20,
+        marginBottom: 60,
+        marginLeft: 55,
+        marginRight: 30
+      });

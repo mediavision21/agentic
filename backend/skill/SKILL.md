@@ -1,6 +1,1 @@
-## [general.md]
-## [nordic.md]
-## [population.md]
-## [datahandle.md]
-## [multi-country.md]
-## [plot.md]
+# Skills

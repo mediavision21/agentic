@@ -16,7 +16,7 @@ SELECT
         l.year::integer,
         CASE l.quarter WHEN 'q1' THEN 1 WHEN 'q2' THEN 4 WHEN 'q3' THEN 7 WHEN 'q4' THEN 10 END,
         1
-    )                                                                       AS date,
+    )                                                                       AS period_date,
     CASE l.country
         WHEN 'dk' THEN 'denmark'
         WHEN 'fi' THEN 'finland'

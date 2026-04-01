@@ -51,6 +51,13 @@ Internal analyst notes — not for display. Key patterns:
 
 Check `comment` if a time series looks unexpectedly broken.
 
+## population columns
+- `population`: individuals aged 15-74 for this country/year — use for individual-weighted cross-country averages
+- `population_household`: households aged 15-74 for this country/year — use for household-weighted averages
+
+Both columns are already present on every row in `macro.nordic`.
+**NEVER** join `macro.population`, `fact_population`, or any external population table — the data is already here.
+
 ## population_segment
 Filters the base population — does not indicate household vs individual:
 - NULL → whole population
