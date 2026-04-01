@@ -5,7 +5,7 @@ SELECT
     l.year::integer                                                         AS year,
     p.period_sort,
     p.period_label,
-	p.quarter_label,
+    p.quarter_label,
     CASE l.quarter
         WHEN 'q1' THEN 1
         WHEN 'q2' THEN 2
@@ -30,11 +30,16 @@ SELECT
     COALESCE(NULLIF(l.age_group, ''), '15-74')                              AS age_group,
     NULLIF(TRIM(l.population_segment), '')                                  AS population_segment,
     l.value,
-    pop.value                                                               AS population
+    pop.value                                                               AS population,
+    hh.value                                                                AS population_household
 FROM macro.nordic_long_v2       l
-LEFT JOIN macro.dim_service           s   ON l.service_id = s.service_id
-LEFT JOIN macro.dim_period            p   ON l.year = p.year AND l.quarter = p.quarter
+LEFT JOIN macro.dim_service      s   ON l.service_id = s.service_id
+LEFT JOIN macro.dim_period       p   ON l.year = p.year AND l.quarter = p.quarter
 LEFT JOIN macro.fact_population  pop ON l.country = pop.country
                                     AND l.year::integer = pop.year
                                     AND COALESCE(NULLIF(l.age_group, ''), '15-74') = pop.age
-                                    AND pop.population_type = 'individuals';
+                                    AND pop.population_type = 'individuals'
+LEFT JOIN macro.fact_population  hh  ON l.country = hh.country
+                                    AND l.year::integer = hh.year
+                                    AND hh.age = '15-74'
+                                    AND hh.population_type = 'households';

@@ -1,47 +1,21 @@
 category: Viewing - overview
 description: Household penetration by video type (SVOD, SSVOD, BSVOD, HVOD, Pay TV channel, TVE) across Nordic countries
 sql: |
-  WITH households AS (
-      -- Number of households (15–74) per country and year.
+  WITH base AS (
       SELECT
-          country,
-          year::text AS year,
-          value AS households_15_74
-      FROM macro.fact_population
+          n.period_label,
+          n.year::text AS year,
+          n.quarter_label,
+          n.period_sort,
+          n.country,
+          n.kpi_dimension,
+          n.value AS penetration_country,
+          n.population_household
+      FROM macro.nordic n
       WHERE
-          population_type = 'households'
-          AND age = '15-74'
-  ),
-  base AS (
-      -- Base dataset at country level.
-      -- Penetration values are kept per country and later combined
-      -- using household-weighted averages.
-      SELECT
-          p.period_label,
-          p.year,
-          p.quarter_label,
-          p.period_sort,
-          l.country,
-          l.kpi_dimension,
-          l.value AS penetration_country,
-          hh.households_15_74
-      FROM macro.nordic_long_v2 l
-      -- Period dimension
-      JOIN macro.dim_period p
-        ON l.year = p.year
-       AND l.quarter = p.quarter
-      -- Country dimension (required for country_label filter)
-      JOIN macro.dim_country c
-        ON l.country = c.country
-      -- Household weights
-      JOIN households hh
-        ON l.country = hh.country
-       AND l.year = hh.year
-      WHERE
-          -- Allow both Online Video and TV
-          l.category IN ('online_video', 'tv')
-          AND l.kpi_type = 'penetration'
-          AND l.kpi_dimension IN (
+          n.category IN ('online_video', 'tv')
+          AND n.kpi_type = 'penetration'
+          AND n.kpi_dimension IN (
               'svod',
               'ssvod',
               'bsvod',
@@ -49,64 +23,44 @@ sql: |
               'tve',
               'pay_tv_channel'
           )
-          -- Business-model-specific start dates
+          AND n.canonical_name IS NULL
+          AND n.age_group = '15-74'
+          AND n.population_segment IS NULL
           AND (
-              -- SVOD / SSVOD / BSVOD: from Q1 2016
               (
-                  l.kpi_dimension IN ('svod', 'ssvod', 'bsvod')
-                  AND (
-                      CAST(p.year AS int) > 2016
-                      OR (CAST(p.year AS int) = 2016 AND p.quarter_label = 'Q1')
-                  )
+                  n.kpi_dimension IN ('svod', 'ssvod', 'bsvod')
+                  AND (n.year::int > 2016 OR (n.year::int = 2016 AND n.quarter = 1))
               )
-              -- HVOD: from Q3 2022
               OR (
-                  l.kpi_dimension = 'hvod'
-                  AND (
-                      CAST(p.year AS int) > 2022
-                      OR (CAST(p.year AS int) = 2022 AND p.quarter_label = 'Q3')
-                  )
+                  n.kpi_dimension = 'hvod'
+                  AND (n.year::int > 2022 OR (n.year::int = 2022 AND n.quarter = 3))
               )
-              -- TVE: from first available data (no artificial cutoff)
-              OR l.kpi_dimension = 'tve'
-              -- Pay TV: from first available data (historical TV)
-              OR l.kpi_dimension = 'pay_tv_channel'
+              OR n.kpi_dimension = 'tve'
+              OR n.kpi_dimension = 'pay_tv_channel'
           )
-          -- Metabase field filters (ONLY here)
-          [[ AND {{country_label}} ]]
+          AND n.quarter IN (1, 3)
+          [[ AND {{country}} ]]
           [[ AND {{year}} ]]
           [[ AND {{quarter_label}} ]]
           [[ AND {{period_label}} ]]
-  ),
-  penetration_weighted AS (
-      -- Combine multiple countries using household-weighted averages.
-      SELECT
-          period_label,
-          year,
-          quarter_label,
-          period_sort,
-          kpi_dimension,
-          SUM(penetration_country * households_15_74)
-              / SUM(households_15_74)
-              AS penetration_household_weighted
-      FROM base
-      GROUP BY
-          period_label,
-          year,
-          quarter_label,
-          period_sort,
-          kpi_dimension
   )
   SELECT
-      pw.period_label,
-      pw.year,
-      pw.quarter_label,
-      pw.period_sort,
-      UPPER(pw.kpi_dimension) AS business_model,
-      pw.penetration_household_weighted AS penetration
-  FROM penetration_weighted pw
+      period_label,
+      year,
+      quarter_label,
+      period_sort,
+      UPPER(kpi_dimension) AS business_model,
+      SUM(penetration_country * population_household)
+          / NULLIF(SUM(population_household), 0) AS penetration
+  FROM base
+  GROUP BY
+      period_label,
+      year,
+      quarter_label,
+      period_sort,
+      kpi_dimension
   ORDER BY
-      pw.period_sort,
+      period_sort,
       business_model;
 
 plots:
@@ -171,7 +125,6 @@ plots:
           period_sort: +d.period_sort
         });
       });
-      // Identify the two most recent distinct period_sort values (same quarter, one year apart)
       var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
         .sort(function(a, b) { return b - a });
       var latest = sortedPeriods[0];

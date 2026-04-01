@@ -10,6 +10,7 @@ import llm_claude
 import llm_local
 import evaldb
 from template_router import load_templates, match_top_templates
+from template_filters import detect_placeholders, load_filter_choices, apply_filters, FILTER_REGISTRY
 
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
 
@@ -48,6 +49,11 @@ SQL MUST always include:
 
 NEVER aggregate across multiple kpi_type values.
 NEVER use OR on kpi_type. NEVER omit the kpi_type filter.
+
+## Template filters
+Some templates have optional filter placeholders in `[[ AND {{name}} ]]` syntax.
+When a user's request doesn't specify filter values, ask which values to use
+and include a <!--suggestions --> block with the most useful options.
 
 ## Response format when generating SQL
 Output in this exact order:
@@ -200,6 +206,37 @@ def build_llm_messages(history, prompt):
     return messages
 
 
+FILTER_RESOLVE_PROMPT = """You are given a user message and a list of SQL template filter placeholders with their available choices.
+Extract any filter values the user mentioned and return JSON only:
+{"resolved": {"country_label": ["Denmark"], "year": ["2024"]}, "missing": ["quarter_label"]}
+- "resolved": filters the user specified (use exact values from the choices list, case-insensitive match)
+- "missing": filters the user did not mention
+If the user did not specify ANY filter values at all, output exactly: NONE
+Output nothing except the JSON or NONE."""
+
+
+async def resolve_template_filters(prompt, placeholders, choices_map):
+    # Returns (resolved_dict, missing_list) or None if user specified nothing
+    lines = [f"User message: {prompt}", "", "Filter placeholders:"]
+    for name in placeholders:
+        choices = choices_map.get(name, [])
+        spec = FILTER_REGISTRY.get(name, {})
+        label = spec.get("label", name)
+        lines.append(f"- {name} ({label}): {', '.join(str(c) for c in choices)}")
+    user_msg = "\n".join(lines)
+    try:
+        resp = await llm_claude.complete_fast(FILTER_RESOLVE_PROMPT, [{"role": "user", "content": user_msg}])
+        text = resp.content[0].text.strip()
+        print(f"[agent] filter resolve response: {text}")
+        if text == "NONE":
+            return None
+        data = __import__("json").loads(text)
+        return data.get("resolved", {}), data.get("missing", [])
+    except Exception as e:
+        print(f"[agent] filter resolve error: {e}")
+        return None
+
+
 async def generate_agent_stream(prompt, backend="claude", history=None, user="", conversation_id=""):
     if history is None:
         history = []
@@ -218,6 +255,29 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
         sql = template["sql"].strip()
         description = template.get("description", matched_file)
         print(f"[agent] template full match: {matched_file} score={matches[0]['score']}")
+
+        # resolve [[ AND {{placeholder}} ]] filters if present
+        placeholders = detect_placeholders(sql)
+        if placeholders:
+            print(f"[agent] template has placeholders: {placeholders}")
+            choices_map = await load_filter_choices(placeholders)
+            result = await resolve_template_filters(prompt, placeholders, choices_map)
+            if result is None:
+                # user didn't specify — ask for choices
+                lines = ["To show this chart, please specify the filters:"]
+                suggestions = []
+                for name in placeholders:
+                    spec = FILTER_REGISTRY.get(name, {})
+                    label = spec.get("label", name)
+                    choices = choices_map.get(name, [])
+                    lines.append(f"- **{label}**: {', '.join(str(c) for c in choices)}")
+                    suggestions.extend([str(c) for c in choices[:4]])
+                yield {"type": "text", "text": "\n".join(lines)}
+                yield {"type": "suggestions", "items": suggestions}
+                return
+            resolved, _missing = result
+            sql = apply_filters(sql, resolved)
+            print(f"[agent] filters applied: {resolved}")
 
         yield {"type": "sql", "sql": sql, "plot_config": None, "explanation": description}
 

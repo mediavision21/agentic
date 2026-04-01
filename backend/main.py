@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 from db import create_pool, close_pool, execute_query
+from template_filters import detect_placeholders, build_default_filters, apply_filters
 from skills import generate_skills, load_skills
 from agent import generate_agent_stream
 import llm_local
@@ -320,6 +321,10 @@ async def run_template(name: str):
         data = yaml.safe_load(f)
     sql = data.get("sql", "")
     plots = data.get("plots", [])
+    placeholders = detect_placeholders(sql)
+    if placeholders:
+        defaults = await build_default_filters(placeholders)
+        sql = apply_filters(sql, defaults)
     try:
         result = await execute_query(sql)
     except Exception as e:
