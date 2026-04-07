@@ -124,6 +124,18 @@ def save_log(id, prompt, system_prompt, messages, response, model, usage, user="
     conn.close()
 
 
+def get_result_data(log_id):
+    conn = _conn()
+    row = conn.execute("SELECT result_data FROM llm_logs WHERE id=?", (log_id,)).fetchone()
+    conn.close()
+    if row and row["result_data"]:
+        try:
+            return json.loads(row["result_data"])
+        except Exception:
+            return {}
+    return {}
+
+
 def update_result_data(log_id, result_data):
     conn = _conn()
     conn.execute(

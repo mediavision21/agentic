@@ -2,7 +2,7 @@ import os
 import glob
 import json
 import yaml
-import llm_claude
+import llm
 import evaldb
 from db import execute_query
 from template_filters import detect_placeholders, load_filter_choices, apply_filters, FILTER_REGISTRY
@@ -57,8 +57,7 @@ async def match_top_templates(prompt, templates):
 
     messages = [{"role": "user", "content": f"Templates:\n{template_list}\n\nUser question: {prompt}"}]
     try:
-        resp = await llm_claude.complete_fast(MATCH_SYSTEM_PROMPT, messages)
-        answer = resp.content[0].text.strip()
+        answer = await llm.complete_fast(MATCH_SYSTEM_PROMPT, messages)
         print(f"[template_router] match result:\n{answer}")
         if answer == "NONE":
             return []
@@ -102,8 +101,7 @@ async def _resolve_filters(prompt, placeholders, choices_map):
         lines.append(f"- {name} ({label}): {', '.join(str(c) for c in choices)}")
     user_msg = "\n".join(lines)
     try:
-        resp = await llm_claude.complete_fast(FILTER_RESOLVE_PROMPT, [{"role": "user", "content": user_msg}])
-        text = resp.content[0].text.strip()
+        text = await llm.complete_fast(FILTER_RESOLVE_PROMPT, [{"role": "user", "content": user_msg}])
         print(f"[template_router] filter resolve: {text}")
         if text == "NONE":
             return None

@@ -138,6 +138,22 @@ function EvalBar(options) {
 
 function ChatMessage(options) {
 	const { message, onSuggest, evalMode, evalUser, evalInfo, user } = options
+	const [localRows, setLocalRows] = useState(null)
+	const [localColumns, setLocalColumns] = useState(null)
+
+	async function handleRerunSQL(sql) {
+		const resp = await fetch("/api/sql", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ sql }),
+			credentials: "include",
+		})
+		const data = await resp.json()
+		if (!data.error) {
+			setLocalRows(data.rows || [])
+			setLocalColumns(data.columns || [])
+		}
+	}
 
 	if (message.role === "user") {
 		return (
@@ -152,15 +168,18 @@ function ChatMessage(options) {
 
 	// assistant
 	const { loading, error, sql, explanation, text, columns, rows, summary, plot_config, streaming_text, suggestions, msg_id, template_plots } = message.content
+	const displayColumns = localColumns || columns
+	const displayRows = localRows || rows
 
 	return (
 		<div className="bubble-row assistant">
 			<div className="bubble bubble-assistant">
 				{loading && !streaming_text && <span className="loading-dots">Thinking</span>}
-				{streaming_text && (
-					loading
-						? <pre className="streaming-text">{streaming_text}</pre>
-						: <details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streaming_text}</pre></details>
+				{loading && streaming_text && (
+					<pre className="streaming-text">{streaming_text}</pre>
+				)}
+				{!loading && streaming_text && sql && (
+					<details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streaming_text}</pre></details>
 				)}
 
 				{error && <p className="error-msg">{error}</p>}
@@ -169,18 +188,18 @@ function ChatMessage(options) {
 				{text && !sql && <Markdown text={text} />}
 
 				{sql && (
-					<SqlDisplay label="SQL" code={sql} explanation={explanation} />
+					<SqlDisplay label="SQL" code={sql} explanation={explanation} onRerun={handleRerunSQL} />
 				)}
 
-				{rows && rows.length > 0 && (
+				{displayRows && displayRows.length > 0 && (
 					<details className="collapsible">
-						<summary>Data ({rows.length} rows)</summary>
-						<ResultTable columns={columns} rows={rows} />
+						<summary>Data ({displayRows.length} rows)</summary>
+						<ResultTable columns={displayColumns} rows={displayRows} />
 					</details>
 				)}
 
-				{rows && rows.length > 0 && !template_plots && (
-					<ResultChart columns={columns} rows={rows} plot_config={plot_config} />
+				{displayRows && displayRows.length > 0 && !template_plots && (
+					<ResultChart columns={displayColumns} rows={displayRows} plot_config={plot_config} msg_id={msg_id} />
 				)}
 
 				{template_plots && template_plots.length > 0 && rows && rows.length > 0 && (

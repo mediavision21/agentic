@@ -30,7 +30,7 @@ export function highlightSQL(sql) {
 		if (sql[i] === '-' && sql[i + 1] === '-') {
 			let j = sql.indexOf('\n', i)
 			if (j === -1) j = sql.length
-			out += `<span className="sql-comment">${esc(sql.slice(i, j))}</span>`
+			out += `<span class="sql-comment">${esc(sql.slice(i, j))}</span>`
 			i = j
 			continue
 		}
@@ -41,7 +41,7 @@ export function highlightSQL(sql) {
 				if (sql[j] === "'" && sql[j - 1] !== '\\') { j++; break }
 				j++
 			}
-			out += `<span className="sql-str">${esc(sql.slice(i, j))}</span>`
+			out += `<span class="sql-str">${esc(sql.slice(i, j))}</span>`
 			i = j
 			continue
 		}
@@ -49,7 +49,7 @@ export function highlightSQL(sql) {
 		if (/[0-9]/.test(sql[i]) && (i === 0 || /[^a-zA-Z0-9_]/.test(sql[i - 1]))) {
 			let j = i
 			while (j < sql.length && /[0-9.]/.test(sql[j])) j++
-			out += `<span className="sql-num">${esc(sql.slice(i, j))}</span>`
+			out += `<span class="sql-num">${esc(sql.slice(i, j))}</span>`
 			i = j
 			continue
 		}
@@ -59,9 +59,9 @@ export function highlightSQL(sql) {
 			while (j < sql.length && /[a-zA-Z0-9_]/.test(sql[j])) j++
 			const word = sql.slice(i, j)
 			if (SQL_KEYWORDS.has(word.toUpperCase())) {
-				out += `<span className="sql-kw">${esc(word)}</span>`
+				out += `<span class="sql-kw">${esc(word)}</span>`
 			} else {
-				out += `<span className="sql-id">${esc(word)}</span>`
+				out += `<span class="sql-id">${esc(word)}</span>`
 			}
 			i = j
 			continue
@@ -104,4 +104,52 @@ export function highlightMarkdown(text) {
 		// inline **bold**
 		return e.replace(/\*\*(.+?)\*\*/g, '<span className="hl-bold">**$1**</span>')
 	}).join('\n')
+}
+
+export function highlightJSON(obj) {
+	const s = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2)
+	let out = ''
+	let i = 0
+	while (i < s.length) {
+		if (s[i] === '"') {
+			let j = i + 1
+			while (j < s.length) {
+				if (s[j] === '\\') { j += 2; continue }
+				if (s[j] === '"') { j++; break }
+				j++
+			}
+			const str = s.slice(i, j)
+			let k = j
+			while (k < s.length && /\s/.test(s[k])) k++
+			if (s[k] === ':') {
+				out += `<span class="json-key">${esc(str)}</span>`
+			} else {
+				out += `<span class="json-str">${esc(str)}</span>`
+			}
+			i = j
+			continue
+		}
+		if (/[0-9\-]/.test(s[i]) && (i === 0 || /[^a-zA-Z0-9_]/.test(s[i - 1]))) {
+			let j = i
+			if (s[j] === '-') j++
+			while (j < s.length && /[0-9.eE+\-]/.test(s[j])) j++
+			out += `<span class="json-num">${esc(s.slice(i, j))}</span>`
+			i = j
+			continue
+		}
+		let matched = false
+		for (const kw of ['true', 'false', 'null']) {
+			if (s.startsWith(kw, i) && (i + kw.length >= s.length || /[^a-zA-Z]/.test(s[i + kw.length]))) {
+				out += `<span class="json-kw">${kw}</span>`
+				i += kw.length
+				matched = true
+				break
+			}
+		}
+		if (!matched) {
+			out += esc(s[i])
+			i++
+		}
+	}
+	return out
 }

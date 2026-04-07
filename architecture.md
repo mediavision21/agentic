@@ -21,6 +21,7 @@ mediavision/
 │   ├── agent.py                      # three-stage orchestrator: template → guided LLM → full schema LLM
 │   ├── stage2.py                     # template-guided SQL generation (2 tries × 3 templates)
 │   ├── stage3.py                     # full-schema fallback SQL generation
+│   ├── plot_config.py                # plot+summary LLM call; loads rules from skill/plot.md at runtime
 │   ├── template_router.py            # YAML template loader + Haiku-based prompt matcher
 │   ├── template_filters.py           # global filter registry ([[ AND {{var}} ]] substitution)
 │   ├── template/                     # pre-baked YAML templates (sql + plot code + optional filter overrides)
@@ -63,16 +64,19 @@ User prompt is matched against this list. Model returns up to 6 candidates with 
 - **No match**: skip Stage 2, go directly to Stage 3.
 
 ### Stage 2 — Template-Guided SQL Generation (Sonnet)
-Runs only when Stage 1 found partial matches. Does at most 2 tries:
+Runs only when Stage 1 found partial matches. Two-step LLM process:
 
-- **Try 1**: system prompt = role + schema + sample data CSV + top 3 template matches as few-shot examples. Streams LLM response. If query returns rows → done.
-- **Try 2**: same but uses template matches 4–6 as examples (non-streaming). If query returns rows → done.
-- If both tries return 0 rows → hand off to Stage 3.
+**SQL step** (streaming): system prompt = role + schema + sample data CSV + top 3 template matches as few-shot examples. LLM returns PRIMARY sql block + optional ALTERNATIVE sql blocks. Each is tried in order until one returns rows.
+- If all alternatives return 0 rows: **Try 2** (non-streaming) repeats with template matches 4–6.
+- If all tries return 0 rows → hand off to Stage 3.
+
+**Plot+summary step** (after rows confirmed): sample rows sent to a single LLM call that returns a combined JSON with `plot` (Observable Plot config) and `summary` (2-4 sentence text). Uses `skill/plot.md` rules: always `period_label` on x-axis, never `year`/`quarter_label`; `period_sort` used only for sorting.
 
 ### Stage 3 — Full Schema Fallback (Sonnet)
-Runs when Stage 1 found no matches, or Stage 2 returned no data.
-System prompt contains: role + complete SKILL.md schema description + sample data CSV (no template hints).
-Model generates SQL and an Observable Plot config from scratch. SQL is executed and results are returned.
+Runs when Stage 1 found no matches, or Stage 2 returned no data. Same two-step process:
+
+**SQL step** (streaming): system prompt = role + complete SKILL.md schema (no template hints). LLM returns SQL + alternatives. Each tried until rows found.
+**Plot+summary step**: single LLM call generates Observable Plot config + summary from sample rows.
 
 > **Sample data**: `load_data_examples()` in `stage2.py` runs a one-time query against `macro.nordic` (latest quarter, sweden + norway, 5 KPI types, ≤5 rows each ≈ 50 rows). Result cached in-process as CSV and appended to both Stage 2 and Stage 3 system prompts.
 
@@ -123,18 +127,20 @@ User prompt
     → execute SQL → stream rows + template plot code + summary
 
     [Partial match → Stage 2 — Sonnet]
-    → try 1: system prompt with top 3 templates as examples (streaming)
-    → execute SQL → if rows: return
-    → try 2: system prompt with templates 4-6 as examples (non-streaming)
-    → execute SQL → if rows: return
-    → if both tries return 0 rows: hand off to Stage 3
+    → SQL step (streaming): top 3 templates as examples → LLM returns SQL + alternatives
+    → try each SQL in order until rows found
+    → if all return 0 rows: try2 with templates 4-6 (non-streaming), same SQL-try loop
+    → if all tries return 0 rows: hand off to Stage 3
 
     [No match, or Stage 2 returned no data → Stage 3 — Sonnet]
-    → build system prompt: role + full SKILL.md schema (no template hints)
-    → Sonnet generates SQL + Observable Plot config
-    → execute SQL → stream tokens + sql + rows + plot config + summary
+    → SQL step (streaming): full SKILL.md schema, no template hints → SQL + alternatives
+    → try each SQL in order until rows found
 
-    → SSE events: msg_id, token, sql, rows, template_plots, summary, suggestions
+    [After rows found — Stage 2 or Stage 3]
+    → Plot step: sample rows sent to separate LLM call → Observable Plot config JSON
+    → generate summary
+
+    → SSE events: msg_id, token, sql, rows, plot_config, template_plots, summary, suggestions
     → llm_logs saved with user + conversation_id
     → frontend: user bubble (right) + assistant bubble (left)
     → assistant bubble: SQL collapsible, table, chart inline
@@ -159,6 +165,7 @@ User prompt
 | GET    | /api/skill-templates        | List skill template files                |
 | GET    | /api/skill-templates/{name} | Read a skill template                    |
 | PUT    | /api/skill-templates/{name} | Update a skill template                  |
+| PATCH  | /api/messages/{id}/plot_config | Update saved plot config for a message |
 | POST   | /api/evaluate               | Save evaluation rating/comment           |
 | GET    | /api/evaluations            | List all evaluations with logs           |
 | POST   | /api/conversations          | Create/persist a conversation            |

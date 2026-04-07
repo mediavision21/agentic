@@ -1,6 +1,7 @@
 import uuid
 import stage2
 import stage3
+from plot_config import generate_summary
 from template_router import load_templates, match_top_templates, run_matched_template
 
 
@@ -24,7 +25,7 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
             "msg_id": msg_id,
             "user": user,
             "conversation_id": conversation_id,
-            "generate_summary": stage2.generate_summary,
+            "generate_summary": generate_summary,
         }):
             yield event
         return

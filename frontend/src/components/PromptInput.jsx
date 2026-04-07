@@ -3,7 +3,8 @@ import { useState, useRef } from "react"
 function PromptInput(options) {
 	const { onSubmit, loading } = options
 	// const [prompt, setPrompt] = useState("Quarterly trend of usage of on demand video playing country by country in nordic?")
-	const [prompt, setPrompt] = useState("what is the viewing time of the social video in nordics?")
+	// const [prompt, setPrompt] = useState("what is the viewing time of the social video in nordics?")
+	const [prompt, setPrompt] = useState("how many people are watch youtube today?")
 	const [backend, setBackend] = useState("claude")
 	const $textarea = useRef(null)
 

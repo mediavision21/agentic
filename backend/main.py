@@ -197,6 +197,14 @@ async def run_sql(req: SqlRequest):
 	}
 
 
+@app.patch("/api/messages/{msg_id}/plot_config")
+async def update_message_plot_config(msg_id: str, body: dict):
+    result = evaldb.get_result_data(msg_id)
+    result["plot_config"] = body.get("plot_config")
+    evaldb.update_result_data(msg_id, result)
+    return {"ok": True}
+
+
 @app.post("/api/evaluate")
 async def evaluate(req: EvalRequest):
 	evaldb.save_evaluation(req.msg_id, req.rating, req.user, req.comment)

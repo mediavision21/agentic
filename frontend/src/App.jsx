@@ -293,6 +293,8 @@ function App() {
 							patchLastMsg(sessionId, function (c) { return { ...c, summary: event.text } })
 						} else if (event.type === "suggestions") {
 							patchLastMsg(sessionId, function (c) { return { ...c, suggestions: event.items } })
+						} else if (event.type === "plot_config") {
+							patchLastMsg(sessionId, function (c) { return { ...c, plot_config: event.plot_config } })
 						} else if (event.type === "template_plots") {
 							patchLastMsg(sessionId, function (c) { return { ...c, template_plots: event.plots } })
 						} else if (event.type === "error") {

@@ -309,8 +309,7 @@ body {
 	border-radius: 18px;
 	color: var(--color-gray-dark);
 	margin-right: 40px;
-	max-width: 88%;
-	min-width: 200px;
+	width: 88%;
 }
 
 /* ── collapsible ── */
@@ -440,13 +439,14 @@ body {
 .chart-container {
 	border-radius: 6px;
 	margin-top: 10px;
-	overflow: hidden;
 	overflow-x: auto;
 }
 
 .chart-container svg {
 	display: block;
 	font-family: var(--font-body);
+	height: auto;
+	width: 100%;
 }
 
 /* VOI dark theme: axis text color */
@@ -1136,6 +1136,106 @@ body {
 .hl-bold {
 	color: #DCDCAA;
 	font-weight: 600;
+}
+
+/* ── code edit controls ── */
+
+.code-inline-btn {
+	background: none;
+	border: none;
+	color: var(--color-gray-mid);
+	cursor: pointer;
+	font-family: var(--font-body);
+	font-size: 10px;
+	margin-left: 8px;
+	padding: 0 4px;
+	vertical-align: middle;
+}
+
+.code-inline-btn:hover {
+	color: var(--color-gray-dark);
+}
+
+.code-edit-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.code-textarea {
+	background: #1e1e1e;
+	border: 1px solid #444;
+	border-radius: 6px;
+	color: #d4d4d4;
+	font-family: "SF Mono", "Cascadia Code", monospace;
+	font-size: 12px;
+	padding: 10px 12px;
+	resize: vertical;
+	white-space: pre;
+	width: 100%;
+}
+
+.code-edit-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.code-run-btn {
+	background: var(--color-green-700, #2d8653);
+	border: none;
+	border-radius: 4px;
+	color: #fff;
+	cursor: pointer;
+	font-family: var(--font-body);
+	font-size: 12px;
+	padding: 4px 12px;
+}
+
+.code-run-btn:hover {
+	background: var(--color-green-800, #1a5c38);
+}
+
+.code-run-btn:disabled {
+	opacity: 0.6;
+}
+
+.code-cancel-btn {
+	background: none;
+	border: 1px solid var(--color-gray-light);
+	border-radius: 4px;
+	color: var(--color-gray-dark);
+	cursor: pointer;
+	font-family: var(--font-body);
+	font-size: 12px;
+	padding: 4px 10px;
+}
+
+.code-error {
+	color: #f48771;
+	font-family: "SF Mono", "Cascadia Code", monospace;
+	font-size: 11px;
+}
+
+.plot-config-panel {
+	margin-top: 4px;
+}
+
+/* ── JSON highlight tokens ── */
+
+.json-key {
+	color: #9CDCFE;
+}
+
+.json-str {
+	color: #CE9178;
+}
+
+.json-num {
+	color: #B5CEA8;
+}
+
+.json-kw {
+	color: #569CD6;
 }
 
 /* ── SQL highlight tokens (Monaco dark) ── */

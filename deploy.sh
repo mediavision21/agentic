@@ -12,7 +12,7 @@ rsync -az "./frontend/dist/" "rock@mediavision:/opt/rock/frontend/dist/"
 echo "==> Syncing database ..."
 # rsync -az "mediavision.db" "rock@mediavision:/opt/rock/"
 
-ssh mediavision "sudo systemctl restart rock"
+ssh mediavision "systemctl restart rock"
 
 
 # echo "==> Syncing .env if exists..."

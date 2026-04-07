@@ -1,67 +1,12 @@
 import os
 import re
-import json
-import llm_claude
-import llm_local
+import llm
 import evaldb
 from db import execute_query
+from data_examples import load_data_examples, load_kpi_combinations
+from plot_config import generate_plot_and_summary
 
 SKILLS_DIR = os.path.join(os.path.dirname(__file__), "..", "skills")
-
-_data_examples_cache = None
-
-DATA_EXAMPLES_SQL = """
-WITH latest AS (
-    SELECT year, quarter
-    FROM macro.nordic
-    ORDER BY year DESC, quarter DESC
-    LIMIT 1
-),
-ranked AS (
-    SELECT
-        n.year,
-        n.quarter_label,
-        n.country,
-        n.category,
-        COALESCE(n.canonical_name, '') AS service,
-        n.kpi_type,
-        COALESCE(n.kpi_dimension, '') AS kpi_dimension,
-        COALESCE(n.kpi_detail, '') AS kpi_detail,
-        n.age_group,
-        COALESCE(n.population_segment, '') AS population_segment,
-        ROUND(n.value::numeric, 4) AS value,
-        ROW_NUMBER() OVER (
-            PARTITION BY n.kpi_type, n.country
-            ORDER BY n.category, n.canonical_name, n.kpi_dimension
-        ) AS rn
-    FROM macro.nordic n
-    JOIN latest l ON n.year = l.year AND n.quarter = l.quarter
-    WHERE n.country IN ('sweden', 'norway')
-      AND n.kpi_type IN ('reach', 'viewing_time', 'penetration', 'spend', 'reach_service')
-)
-SELECT year, quarter_label, country, category, service,
-       kpi_type, kpi_dimension, kpi_detail, age_group, population_segment, value
-FROM ranked
-WHERE rn <= 5
-ORDER BY kpi_type, country, rn
-"""
-
-
-async def load_data_examples():
-    global _data_examples_cache
-    if _data_examples_cache is not None:
-        return _data_examples_cache
-    try:
-        data = await execute_query(DATA_EXAMPLES_SQL)
-        cols = data["columns"]
-        lines = [",".join(str(c) for c in cols)]
-        for row in data["rows"]:
-            lines.append(",".join("" if row[c] is None else str(row[c]) for c in cols))
-        _data_examples_cache = "\n".join(lines)
-    except Exception as e:
-        print(f"[stage2] load_data_examples error: {e}")
-        _data_examples_cache = ""
-    return _data_examples_cache
 
 
 def _load_schema():
@@ -124,47 +69,33 @@ and include a <!--suggestions --> block with the most useful options.
 ## Response format when generating SQL
 Output in this exact order:
 
-1. ```sql
+1. Primary SQL:
+   ```sql
    <SELECT query>
    ```
 
-2. ```json
-   <Observable Plot config — see spec below>
+2. If alternative approaches exist, add up to 2 more blocks labeled with a comment:
+   ```sql
+   -- Alternative 1
+   <SELECT query>
    ```
 
 3. One or two sentences explaining what the query does.
 
-## Observable Plot config spec
-{{
-  "marks": [
-    {{"type": "lineY|barY|dot|areaY", "x": "<col>", "y": "<col>", "stroke": "<col or null>", "fill": "<col or null>"}}
-  ],
-  "x": {{"label": "<text>"}},
-  "y": {{"label": "<text>", "grid": true}},
-  "color": {{"legend": true}}
-}}
-
-Rules for mark type:
-- Time series (x = period_date, year, quarter) → lineY
-- Categorical comparison (x = country, service_id, category) → barY
-- Scatter / two numeric axes → dot
-- Single country, no age breakdown → no stroke
-- Multiple countries, no age breakdown → stroke = "country"
-- Multiple age groups, single country → stroke = "age_group"
-- Multiple countries AND age groups → SQL must produce a `series` column (country || ' · ' || age_group), stroke = "series"
-- Any categorical column in SELECT (category, kpi_dimension, service, age_group) → MUST be stroke/fill, never omit it
-- Include "color": {{"legend": true}} whenever stroke is set to a column name
+Do NOT generate a plot config — that will be handled separately.
 """
 
 
-def build_system_prompt(data_examples=""):
+def build_system_prompt(data_examples="", kpi_combinations=""):
     base = SYSTEM_PROMPT_TEMPLATE.format(schema=_load_schema())
+    if kpi_combinations:
+        base += f"\n\n## Valid KPI combinations (CSV: category,kpi_type,kpi_dimension)\nOnly use combinations from this list:\n{kpi_combinations}"
     if data_examples:
         base += f"\n\n## Sample data (latest quarter, sweden + norway, key KPI types)\n{data_examples}"
     return base
 
 
-def build_guided_system_prompt(matches, templates, data_examples=""):
+def build_guided_system_prompt(matches, templates, data_examples="", kpi_combinations=""):
     schema = _load_schema()
     example_parts = []
     for m in matches:
@@ -179,6 +110,8 @@ def build_guided_system_prompt(matches, templates, data_examples=""):
         example_parts.append(part)
     examples_section = "\n\n".join(example_parts)
     base = SYSTEM_PROMPT_TEMPLATE.format(schema=schema)
+    if kpi_combinations:
+        base += f"\n\n## Valid KPI combinations (CSV: category,kpi_type,kpi_dimension)\nOnly use combinations from this list:\n{kpi_combinations}"
     if data_examples:
         base += f"\n\n## Sample data (latest quarter, sweden + norway, key KPI types)\n{data_examples}"
     return base + f"\n\n## Similar templates for reference\nUse these as examples to guide your SQL and plot style:\n\n{examples_section}"
@@ -192,6 +125,12 @@ def extract_sql(text):
     if match:
         return match.group(1).strip()
     return None
+
+
+def extract_sqls(text):
+    # returns all sql blocks in order (primary first, then alternatives)
+    return [m.strip() for m in re.findall(r"```sql\s*(.*?)\s*```", text, re.DOTALL)]
+
 
 
 def _remove_empty_string_filters(sql):
@@ -240,16 +179,6 @@ def postprocess_sql(sql):
     return result
 
 
-def extract_plot_config(text):
-    match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-    if not match:
-        return None
-    try:
-        return json.loads(match.group(1).strip())
-    except Exception as e:
-        print(f"[stage2] plot config parse error: {e}")
-        return None
-
 
 def build_messages(history, prompt):
     messages = []
@@ -259,21 +188,6 @@ def build_messages(history, prompt):
     return messages
 
 
-SUMMARY_SYSTEM_PROMPT = """You are a data analyst. The user asked a question and a SQL query was run. Given the result rows, write a concise summary (2-4 sentences) of what the data shows. Focus on key trends, totals, or notable values. Do not repeat the SQL."""
-
-
-async def generate_summary(user_prompt, columns, rows, backend="claude"):
-    sample = rows[:100]
-    header = ", ".join(columns)
-    lines = [header] + [", ".join(str(v) for v in row.values()) for row in sample]
-    data_text = "\n".join(lines)
-    user_msg = f"User question: {user_prompt}\n\nQuery result ({len(sample)} rows):\n{data_text}"
-    if backend == "local":
-        raw = await llm_local.complete(SUMMARY_SYSTEM_PROMPT, user_msg)
-        return raw["choices"][0]["message"]["content"].strip()
-    else:
-        raw = await llm_claude.complete(SUMMARY_SYSTEM_PROMPT, [{"role": "user", "content": user_msg}])
-        return raw.content[0].text.strip()
 
 
 async def run(options):
@@ -290,12 +204,12 @@ async def run(options):
     try1_matches = matches[:3]
     print(f"[stage2] try1 guided generation with {[m['file'] for m in try1_matches]}")
     data_examples = await load_data_examples()
-    system_prompt = build_guided_system_prompt(try1_matches, templates, data_examples)
+    kpi_combinations = await load_kpi_combinations()
+    system_prompt = build_guided_system_prompt(try1_matches, templates, data_examples, kpi_combinations)
     messages = build_messages(history, prompt)
 
     full_text = ""
-    stream_fn = llm_local.complete_stream if backend == "local" else llm_claude.complete_stream
-    async for chunk in stream_fn(system_prompt, messages, label="stage2", log_id=msg_id, user=user, conversation_id=conversation_id):
+    async for chunk in llm.complete_stream(system_prompt, messages, {"backend": backend, "label": "stage2", "log_id": msg_id, "user": user, "conversation_id": conversation_id}):
         if isinstance(chunk, dict):
             break
         full_text += chunk
@@ -303,9 +217,9 @@ async def run(options):
         yield {"type": "token", "text": chunk}
     print()
 
-    sql_raw = extract_sql(full_text)
+    sqls_raw = extract_sqls(full_text)
 
-    if sql_raw is None:
+    if not sqls_raw:
         # no SQL generated — conversational response, not a data failure
         suggestions = []
         sugg_match = re.search(r"<!--suggestions\s*(.*?)\s*-->", full_text, re.DOTALL)
@@ -317,65 +231,78 @@ async def run(options):
             yield {"type": "suggestions", "items": suggestions}
         return
 
-    sql = postprocess_sql(sql_raw)
-    plot_config = extract_plot_config(full_text)
-    explanation = re.sub(r"```(?:sql|json).*?```", "", full_text, flags=re.DOTALL).strip()
+    explanation = re.sub(r"```sql.*?```", "", full_text, flags=re.DOTALL).strip()
 
-    yield {"type": "sql", "sql": sql, "plot_config": plot_config, "explanation": explanation}
-
-    result_data = {}
-    try:
-        data = await execute_query(sql)
-        yield {"type": "rows", "columns": data["columns"], "rows": data["rows"]}
-        result_data = {"columns": data["columns"], "rows": data["rows"], "plot_config": plot_config}
-    except Exception as e:
-        print(f"[stage2] try1 query error: {e}")
-        yield {"type": "error", "error": f"SQL error: {e}"}
-        return
-
-    if len(data["rows"]) > 0:
-        # try1 returned data — done
+    # try each sql alternative until one returns rows
+    data = None
+    for i, sql_raw in enumerate(sqls_raw):
+        sql = postprocess_sql(sql_raw)
+        print(f"[stage2] try1 sql[{i}] executing")
+        yield {"type": "sql", "sql": sql, "plot_config": None, "explanation": explanation}
         try:
-            summary = await generate_summary(prompt, data["columns"], data["rows"], backend)
-            yield {"type": "summary", "text": summary}
-            result_data["summary"] = summary
+            result = await execute_query(sql)
+            if len(result["rows"]) > 0:
+                print(f"[stage2] try1 sql[{i}] returned {len(result['rows'])} rows")
+                data = result
+                break
+            else:
+                print(f"[stage2] try1 sql[{i}] returned 0 rows")
         except Exception as e:
-            print(f"[stage2] summary error: {e}")
-        evaldb.update_result_data(msg_id, result_data)
+            print(f"[stage2] try1 sql[{i}] error: {e}")
+            yield {"type": "error", "error": f"SQL error: {e}"}
+
+    if data is not None:
+        yield {"type": "rows", "columns": data["columns"], "rows": data["rows"]}
+        plot_config = None
+        summary = None
+        try:
+            plot_config, summary = await generate_plot_and_summary({"user_prompt": prompt, "columns": data["columns"], "rows": data["rows"], "backend": backend, "label": "stage2-plot", "log_id": msg_id, "user": user, "conversation_id": conversation_id})
+            if plot_config:
+                yield {"type": "plot_config", "plot_config": plot_config}
+            if summary:
+                yield {"type": "summary", "text": summary}
+        except Exception as e:
+            print(f"[stage2] plot+summary error: {e}")
+        evaldb.update_result_data(msg_id, {"columns": data["columns"], "rows": data["rows"], "plot_config": plot_config, "summary": summary})
         return
 
-    # try1 returned 0 rows — try2 with next 3 templates (non-streaming)
+    # try1 returned 0 rows for all alternatives — try2 with next 3 templates (non-streaming)
     if len(matches) > 3:
         try2_matches = matches[3:6]
         print(f"[stage2] try1 got 0 rows, try2 with {[m['file'] for m in try2_matches]}")
-        try2_prompt = build_guided_system_prompt(try2_matches, templates, data_examples)
+        try2_prompt = build_guided_system_prompt(try2_matches, templates, data_examples, kpi_combinations)
         try:
-            retry_resp = await llm_claude.complete(try2_prompt, messages, label="stage2-try2", log_id=msg_id, user=user, conversation_id=conversation_id)
-            retry_text = retry_resp.content[0].text.strip()
-            retry_sql_raw = extract_sql(retry_text)
-            if retry_sql_raw:
+            retry_text = await llm.complete(try2_prompt, messages, {"backend": "claude", "label": "stage2-try2", "log_id": msg_id, "user": user, "conversation_id": conversation_id})
+            retry_sqls_raw = extract_sqls(retry_text)
+            retry_explanation = re.sub(r"```sql.*?```", "", retry_text, flags=re.DOTALL).strip()
+            for i, retry_sql_raw in enumerate(retry_sqls_raw):
                 retry_sql = postprocess_sql(retry_sql_raw)
-                retry_plot = extract_plot_config(retry_text)
-                retry_explanation = re.sub(r"```(?:sql|json).*?```", "", retry_text, flags=re.DOTALL).strip()
-                retry_data = await execute_query(retry_sql)
-                if len(retry_data["rows"]) > 0:
-                    print(f"[stage2] try2 succeeded with {len(retry_data['rows'])} rows")
-                    yield {"type": "sql", "sql": retry_sql, "plot_config": retry_plot, "explanation": retry_explanation}
-                    yield {"type": "rows", "columns": retry_data["columns"], "rows": retry_data["rows"]}
-                    result_data = {"columns": retry_data["columns"], "rows": retry_data["rows"], "plot_config": retry_plot}
-                    try:
-                        summary = await generate_summary(prompt, retry_data["columns"], retry_data["rows"], backend)
-                        yield {"type": "summary", "text": summary}
-                        result_data["summary"] = summary
-                    except Exception as e:
-                        print(f"[stage2] try2 summary error: {e}")
-                    evaldb.update_result_data(msg_id, result_data)
-                    return
-                else:
-                    print(f"[stage2] try2 also got 0 rows")
+                print(f"[stage2] try2 sql[{i}] executing")
+                try:
+                    retry_data = await execute_query(retry_sql)
+                    if len(retry_data["rows"]) > 0:
+                        print(f"[stage2] try2 sql[{i}] succeeded with {len(retry_data['rows'])} rows")
+                        yield {"type": "sql", "sql": retry_sql, "plot_config": None, "explanation": retry_explanation}
+                        yield {"type": "rows", "columns": retry_data["columns"], "rows": retry_data["rows"]}
+                        retry_plot = None
+                        retry_summary = None
+                        try:
+                            retry_plot, retry_summary = await generate_plot_and_summary({"user_prompt": prompt, "columns": retry_data["columns"], "rows": retry_data["rows"], "backend": backend, "label": "stage2-try2-plot", "log_id": msg_id, "user": user, "conversation_id": conversation_id})
+                            if retry_plot:
+                                yield {"type": "plot_config", "plot_config": retry_plot}
+                            if retry_summary:
+                                yield {"type": "summary", "text": retry_summary}
+                        except Exception as e:
+                            print(f"[stage2] try2 plot+summary error: {e}")
+                        evaldb.update_result_data(msg_id, {"columns": retry_data["columns"], "rows": retry_data["rows"], "plot_config": retry_plot, "summary": retry_summary})
+                        return
+                    else:
+                        print(f"[stage2] try2 sql[{i}] returned 0 rows")
+                except Exception as e:
+                    print(f"[stage2] try2 sql[{i}] error: {e}")
         except Exception as e:
             print(f"[stage2] try2 error: {e}")
 
-    # both tries failed — signal stage3 to take over
-    print(f"[stage2] no data from either try, handing off to stage3")
+    # all tries failed — signal stage3 to take over
+    print(f"[stage2] no data from any try, handing off to stage3")
     yield {"type": "__stage2_no_data__"}
