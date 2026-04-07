@@ -43,12 +43,16 @@ function prepareData(options) {
     })
 }
 
-// if LLM returns scheme as comma-separated hex string, convert to range array
+// LLM may return scheme as comma-separated hex string or array — normalize to range
 function normalizeColorConfig(colorCfg) {
     if (!colorCfg) return colorCfg
     const out = { ...colorCfg }
     if (typeof out.scheme === "string" && out.scheme.includes("#")) {
         out.range = out.scheme.split(",").map(function (s) { return s.trim() })
+        delete out.scheme
+    }
+    if (Array.isArray(out.scheme)) {
+        out.range = out.scheme
         delete out.scheme
     }
     return out
@@ -135,6 +139,8 @@ function buildFromConfig(options) {
 
 // columns that are never a useful y-axis metric
 const SKIP_Y_COLS = new Set(["year", "period_sort", "period_label", "period_date", "quarter_label"])
+// known categorical columns that should be used as stroke/fill for multi-series
+const CATEGORY_COLS = new Set(["country", "service", "service_name", "business_model", "reach_type", "kpi_dimension", "age_group", "genre"])
 
 // fallback heuristic when no plot_config from backend
 function detectChartType(options) {
@@ -148,12 +154,19 @@ function detectChartType(options) {
     })
     if (yCols.length === 0) return null
     const yCol = yCols[0]
+    // detect multi-series categorical column
+    const strokeCol = columns.find(function (col) {
+        if (col === xCol || col === yCol || SKIP_Y_COLS.has(col)) return false
+        if (!CATEGORY_COLS.has(col)) return false
+        const unique = new Set(rows.map(function (r) { return r[col] }))
+        return unique.size > 1
+    }) || null
     const firstX = rows[0][xCol]
-    if (isDateLike(firstX)) return { type: "line", x: xCol, y: yCol }
+    if (isDateLike(firstX)) return { type: "line", x: xCol, y: yCol, stroke: strokeCol }
     // period_label is categorical but represents time → use line
-    if (xCol === "period_label") return { type: "line", x: xCol, y: yCol }
-    if (isNumeric(firstX)) return { type: "dot", x: xCol, y: yCol }
-    return { type: "bar", x: xCol, y: yCol }
+    if (xCol === "period_label") return { type: "line", x: xCol, y: yCol, stroke: strokeCol }
+    if (isNumeric(firstX)) return { type: "dot", x: xCol, y: yCol, stroke: strokeCol }
+    return { type: "bar", x: xCol, y: yCol, fill: strokeCol }
 }
 
 function buildFallback(options) {
@@ -180,24 +193,30 @@ function buildFallback(options) {
     const xDomain = sortedXDomain({ rows, xCol: chartInfo.x })
 
     const tipChannels = { x: chartInfo.x, y: chartInfo.y }
+    if (chartInfo.stroke) tipChannels.stroke = chartInfo.stroke
+    if (chartInfo.fill) tipChannels.fill = chartInfo.fill
+    const hasCategory = chartInfo.stroke || chartInfo.fill
     let marks = []
     if (chartInfo.type === "bar") {
+        const barOpts = { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.fill || voiColors.series1 }
         marks = [
-            Plot.barY(data, { x: chartInfo.x, y: chartInfo.y, fill: voiColors.series1 }),
+            Plot.barY(data, barOpts),
             Plot.ruleY([0]),
             Plot.tip(data, Plot.pointerX(tipChannels)),
         ]
     }
     if (chartInfo.type === "line") {
+        const lineOpts = { x: chartInfo.x, y: chartInfo.y, stroke: chartInfo.stroke || voiColors.series1, curve: "catmull-rom", sort: null }
+        const dotOpts = { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.stroke || voiColors.series1, r: 3 }
         marks = [
-            Plot.lineY(data, { x: chartInfo.x, y: chartInfo.y, stroke: voiColors.series1, curve: "catmull-rom", sort: null }),
-            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: voiColors.series1, r: 3 }),
+            Plot.lineY(data, lineOpts),
+            Plot.dot(data, dotOpts),
             Plot.tip(data, Plot.pointerX(tipChannels)),
         ]
     }
     if (chartInfo.type === "dot") {
         marks = [
-            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: voiColors.series2 }),
+            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.stroke || voiColors.series2 }),
             Plot.tip(data, Plot.pointerX(tipChannels)),
         ]
     }
@@ -210,7 +229,7 @@ function buildFallback(options) {
         applyTickDensity(xOpts, xDomain)
     }
 
-    return Plot.plot({
+    const plotOpts = {
         ...voiTheme,
         width: width || 600,
         height: xOpts.tickRotate ? 340 : 300,
@@ -218,7 +237,9 @@ function buildFallback(options) {
         x: xOpts,
         y: { ...voiTheme.y, label: chartInfo.y, grid: false },
         marks,
-    })
+    }
+    if (hasCategory) plotOpts.color = { ...voiTheme.color, legend: true }
+    return Plot.plot(plotOpts)
 }
 
 // how long to wait for plot_config before showing fallback (ms)

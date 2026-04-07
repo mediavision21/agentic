@@ -174,9 +174,11 @@ function ChatMessage(options) {
 	return (
 		<div className="bubble-row assistant">
 			<div className="bubble bubble-assistant">
-				{loading && !streaming_text && <span className="loading-dots">Thinking</span>}
-				{loading && streaming_text && (
-					<pre className="streaming-text">{streaming_text}</pre>
+				{loading && (
+					<div>
+						<span className="loading-dots">Thinking</span>
+						{streaming_text && <pre className="streaming-text">{streaming_text}</pre>}
+					</div>
 				)}
 				{!loading && streaming_text && sql && (
 					<details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streaming_text}</pre></details>

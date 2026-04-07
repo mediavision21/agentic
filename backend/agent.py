@@ -32,7 +32,7 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
 
     # stage 2: template-guided LLM generation (2 tries × 3 templates)
     if matches:
-        stage2_found_data = False
+        stage2_handled = False
         async for event in stage2.run({
             "prompt": prompt,
             "matches": matches,
@@ -46,9 +46,12 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
             if event.get("type") == "__stage2_no_data__":
                 break
             yield event
+            # stage2 handled: either found data rows, or gave a conversational reply
             if event.get("type") == "rows" and len(event.get("rows", [])) > 0:
-                stage2_found_data = True
-        if stage2_found_data:
+                stage2_handled = True
+            if event.get("type") == "text":
+                stage2_handled = True
+        if stage2_handled:
             return
 
     # stage 3: full schema/skills prompt, no template hints

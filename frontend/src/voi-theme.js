@@ -35,7 +35,7 @@ export const voiTheme = {
 	},
 
 	color: {
-		scheme: dark
+		range: dark
 			? ["#e8533a", "#7ab0d4", "#d4a84b", "#4caf6e", "#888884"]
 			: ["#c43e26", "#2e7db5", "#b07a1c", "#2e8b57", "#73726c"],
 	},
