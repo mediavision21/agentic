@@ -962,12 +962,13 @@ body {
 	align-items: center;
 	cursor: pointer;
 	display: flex;
-	font-size: 11px;
+	font-size: 15px;
 	font-weight: 600;
 	gap: 5px;
 	letter-spacing: 0.05em;
 	opacity: 0.5;
-	padding: 8px 12px 4px;
+	padding: 6px;
+	padding-bottom: 0;
 	text-transform: uppercase;
 	user-select: none;
 }
@@ -987,6 +988,8 @@ body {
 }
 
 .template-item {
+	padding: 12px 15px 12px 20px;
+	padding: 10px;
 	padding-left: 20px;
 }
 

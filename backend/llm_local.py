@@ -46,9 +46,10 @@ def stop_server():
 		_process = None
 
 
-async def complete_stream(system_prompt, messages):
+async def complete_stream(system_prompt, messages, label="local", log_id=None, user="", conversation_id=""):
 	# messages: list of {"role": "user"|"assistant", "content": str}
 	# yields text chunks, then a final {"__meta__": {...}} dict with usage info
+	from llm_claude import _write_log
 	url = f"{LLAMA_SERVER_URL}/v1/chat/completions"
 	payload = {
 		"messages": [{"role": "system", "content": system_prompt}] + messages,
@@ -57,6 +58,7 @@ async def complete_stream(system_prompt, messages):
 		"stream": True,
 	}
 	meta = {}
+	full_text = ""
 	async with httpx.AsyncClient(timeout=120) as client:
 		async with client.stream("POST", url, json=payload) as resp:
 			resp.raise_for_status()
@@ -74,14 +76,17 @@ async def complete_stream(system_prompt, messages):
 						meta["usage"] = chunk["usage"]
 					text = chunk["choices"][0]["delta"].get("content", "")
 					if text:
+						full_text += text
 						yield text
 				except Exception:
 					pass
+	_write_log(label, system_prompt, messages, full_text, meta, log_id, user, conversation_id)
 	yield {"__meta__": meta}
 
 
-async def complete(system_prompt, messages):
+async def complete(system_prompt, messages, label="local", log_id=None, user="", conversation_id=""):
 	# messages: list of {"role": "user"|"assistant", "content": str}
+	from llm_claude import _write_log
 	url = f"{LLAMA_SERVER_URL}/v1/chat/completions"
 	payload = {
 		"messages": [{"role": "system", "content": system_prompt}] + messages,
@@ -91,4 +96,7 @@ async def complete(system_prompt, messages):
 	async with httpx.AsyncClient(timeout=120) as client:
 		resp = await client.post(url, json=payload)
 		resp.raise_for_status()
-		return resp.json()
+		data = resp.json()
+	text = data["choices"][0]["message"]["content"]
+	_write_log(label, system_prompt, messages, text, data.get("usage", {}), log_id, user, conversation_id)
+	return data

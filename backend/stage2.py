@@ -1,15 +1,67 @@
 import os
 import re
 import json
-import yaml
-from datetime import datetime
 import llm_claude
 import llm_local
 import evaldb
 from db import execute_query
 
-LOGS_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
 SKILLS_DIR = os.path.join(os.path.dirname(__file__), "..", "skills")
+
+_data_examples_cache = None
+
+DATA_EXAMPLES_SQL = """
+WITH latest AS (
+    SELECT year, quarter
+    FROM macro.nordic
+    ORDER BY year DESC, quarter DESC
+    LIMIT 1
+),
+ranked AS (
+    SELECT
+        n.year,
+        n.quarter_label,
+        n.country,
+        n.category,
+        COALESCE(n.canonical_name, '') AS service,
+        n.kpi_type,
+        COALESCE(n.kpi_dimension, '') AS kpi_dimension,
+        COALESCE(n.kpi_detail, '') AS kpi_detail,
+        n.age_group,
+        COALESCE(n.population_segment, '') AS population_segment,
+        ROUND(n.value::numeric, 4) AS value,
+        ROW_NUMBER() OVER (
+            PARTITION BY n.kpi_type, n.country
+            ORDER BY n.category, n.canonical_name, n.kpi_dimension
+        ) AS rn
+    FROM macro.nordic n
+    JOIN latest l ON n.year = l.year AND n.quarter = l.quarter
+    WHERE n.country IN ('sweden', 'norway')
+      AND n.kpi_type IN ('reach', 'viewing_time', 'penetration', 'spend', 'reach_service')
+)
+SELECT year, quarter_label, country, category, service,
+       kpi_type, kpi_dimension, kpi_detail, age_group, population_segment, value
+FROM ranked
+WHERE rn <= 5
+ORDER BY kpi_type, country, rn
+"""
+
+
+async def load_data_examples():
+    global _data_examples_cache
+    if _data_examples_cache is not None:
+        return _data_examples_cache
+    try:
+        data = await execute_query(DATA_EXAMPLES_SQL)
+        cols = data["columns"]
+        lines = [",".join(str(c) for c in cols)]
+        for row in data["rows"]:
+            lines.append(",".join("" if row[c] is None else str(row[c]) for c in cols))
+        _data_examples_cache = "\n".join(lines)
+    except Exception as e:
+        print(f"[stage2] load_data_examples error: {e}")
+        _data_examples_cache = ""
+    return _data_examples_cache
 
 
 def _load_schema():
@@ -105,11 +157,14 @@ Rules for mark type:
 """
 
 
-def build_system_prompt():
-    return SYSTEM_PROMPT_TEMPLATE.format(schema=_load_schema())
+def build_system_prompt(data_examples=""):
+    base = SYSTEM_PROMPT_TEMPLATE.format(schema=_load_schema())
+    if data_examples:
+        base += f"\n\n## Sample data (latest quarter, sweden + norway, key KPI types)\n{data_examples}"
+    return base
 
 
-def build_guided_system_prompt(matches, templates):
+def build_guided_system_prompt(matches, templates, data_examples=""):
     schema = _load_schema()
     example_parts = []
     for m in matches:
@@ -124,6 +179,8 @@ def build_guided_system_prompt(matches, templates):
         example_parts.append(part)
     examples_section = "\n\n".join(example_parts)
     base = SYSTEM_PROMPT_TEMPLATE.format(schema=schema)
+    if data_examples:
+        base += f"\n\n## Sample data (latest quarter, sweden + norway, key KPI types)\n{data_examples}"
     return base + f"\n\n## Similar templates for reference\nUse these as examples to guide your SQL and plot style:\n\n{examples_section}"
 
 
@@ -232,35 +289,19 @@ async def run(options):
     # try 1: top 3 template matches, streaming
     try1_matches = matches[:3]
     print(f"[stage2] try1 guided generation with {[m['file'] for m in try1_matches]}")
-    system_prompt = build_guided_system_prompt(try1_matches, templates)
+    data_examples = await load_data_examples()
+    system_prompt = build_guided_system_prompt(try1_matches, templates, data_examples)
     messages = build_messages(history, prompt)
 
-    os.makedirs(LOGS_DIR, exist_ok=True)
-    ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    with open(os.path.join(LOGS_DIR, f"{ts}-request.md"), "w") as f:
-        f.write(f"backend: {backend}\nprompt: {prompt}\n\nsystem:\n{system_prompt}\n")
-
     full_text = ""
-    meta = {}
     stream_fn = llm_local.complete_stream if backend == "local" else llm_claude.complete_stream
-    async for chunk in stream_fn(system_prompt, messages):
+    async for chunk in stream_fn(system_prompt, messages, label="stage2", log_id=msg_id, user=user, conversation_id=conversation_id):
         if isinstance(chunk, dict):
-            meta = chunk.get("__meta__", {})
             break
         full_text += chunk
         print(chunk, end="", flush=True)
         yield {"type": "token", "text": chunk}
     print()
-
-    ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    with open(os.path.join(LOGS_DIR, f"{ts}-response.md"), "w") as f:
-        f.write(full_text)
-    with open(os.path.join(LOGS_DIR, f"{ts}-response.yaml"), "w") as f:
-        yaml.dump({
-            "backend": backend, "prompt": prompt,
-            "model": meta.get("model", ""), "usage": meta.get("usage", {}),
-            "response": full_text,
-        }, f, default_flow_style=False, allow_unicode=True)
 
     sql_raw = extract_sql(full_text)
 
@@ -274,16 +315,11 @@ async def run(options):
         yield {"type": "text", "text": display_text}
         if suggestions:
             yield {"type": "suggestions", "items": suggestions}
-        evaldb.save_log(msg_id, prompt, system_prompt, messages, full_text,
-            meta.get("model", ""), meta.get("usage", {}), user=user, conversation_id=conversation_id)
         return
 
     sql = postprocess_sql(sql_raw)
     plot_config = extract_plot_config(full_text)
     explanation = re.sub(r"```(?:sql|json).*?```", "", full_text, flags=re.DOTALL).strip()
-
-    with open(os.path.join(LOGS_DIR, f"{ts}-sql.md"), "w") as f:
-        f.write(f"## raw\n```sql\n{sql_raw}\n```\n\n## post-processed\n```sql\n{sql}\n```\n")
 
     yield {"type": "sql", "sql": sql, "plot_config": plot_config, "explanation": explanation}
 
@@ -295,8 +331,6 @@ async def run(options):
     except Exception as e:
         print(f"[stage2] try1 query error: {e}")
         yield {"type": "error", "error": f"SQL error: {e}"}
-        evaldb.save_log(msg_id, prompt, system_prompt, messages, full_text,
-            meta.get("model", ""), meta.get("usage", {}), user=user, conversation_id=conversation_id)
         return
 
     if len(data["rows"]) > 0:
@@ -307,18 +341,16 @@ async def run(options):
             result_data["summary"] = summary
         except Exception as e:
             print(f"[stage2] summary error: {e}")
-        evaldb.save_log(msg_id, prompt, system_prompt, messages, full_text,
-            meta.get("model", ""), meta.get("usage", {}),
-            user=user, conversation_id=conversation_id, result_data=result_data)
+        evaldb.update_result_data(msg_id, result_data)
         return
 
     # try1 returned 0 rows — try2 with next 3 templates (non-streaming)
     if len(matches) > 3:
         try2_matches = matches[3:6]
         print(f"[stage2] try1 got 0 rows, try2 with {[m['file'] for m in try2_matches]}")
-        try2_prompt = build_guided_system_prompt(try2_matches, templates)
+        try2_prompt = build_guided_system_prompt(try2_matches, templates, data_examples)
         try:
-            retry_resp = await llm_claude.complete(try2_prompt, messages)
+            retry_resp = await llm_claude.complete(try2_prompt, messages, label="stage2-try2", log_id=msg_id, user=user, conversation_id=conversation_id)
             retry_text = retry_resp.content[0].text.strip()
             retry_sql_raw = extract_sql(retry_text)
             if retry_sql_raw:
@@ -337,9 +369,7 @@ async def run(options):
                         result_data["summary"] = summary
                     except Exception as e:
                         print(f"[stage2] try2 summary error: {e}")
-                    evaldb.save_log(msg_id, prompt, try2_prompt, messages, retry_text,
-                        meta.get("model", ""), meta.get("usage", {}),
-                        user=user, conversation_id=conversation_id, result_data=result_data)
+                    evaldb.update_result_data(msg_id, result_data)
                     return
                 else:
                     print(f"[stage2] try2 also got 0 rows")

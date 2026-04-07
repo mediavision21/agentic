@@ -17,6 +17,12 @@ FILTER_REGISTRY = {
         "choices": ["Q1", "Q2", "Q3", "Q4"],
         "default": ["Q1", "Q3"],  # odd quarters (standard reporting periods)
     },
+    "period_label": {
+        "label": "Quarter",
+        "multiple": True,
+        "choices": ["Q1", "Q2", "Q3", "Q4"],
+        "default": ["Q1", "Q3"],  # odd quarters (standard reporting periods)
+    },
     "year": {
         "label": "Year",
         "multiple": True,

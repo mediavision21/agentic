@@ -1,53 +1,34 @@
 description: Daily reach of online video per genre — population-weighted Nordic average
 sql: |
-  WITH population AS (
+  WITH base AS (
     SELECT
-      country,
-      year::text AS year,
-      value AS population_15_74
-    FROM macro.fact_population
-    WHERE population_type = 'individuals'
-      AND age = '15-74'
-  ),
-  base AS (
-    SELECT
-      p.period_sort,
-      p.period_label,
-      p.year,
-      p.quarter_label,
-      l.country,
-      CASE l.kpi_detail
+      n.period_sort,
+      n.period_label,
+      n.year,
+      n.quarter_label,
+      n.country,
+      CASE n.kpi_detail
         WHEN 'drama_foreign' THEN 'Foreign drama'
         WHEN 'news_debate' THEN 'News and debate'
         WHEN 'factual_documentary' THEN 'Documentaries'
         WHEN 'drama_local' THEN 'Local drama'
         WHEN 'sports_foreign' THEN 'Foreign sports'
       END AS genre,
-      l.value AS reach_viewers,
-      pop.population_15_74
-    FROM macro.nordic_long_v2 l
-    JOIN macro.dim_period p
-      ON l.year = p.year
-     AND l.quarter = p.quarter
-    JOIN population pop
-      ON l.country = pop.country
-     AND l.year = pop.year
-    JOIN macro.dim_country c
-      ON l.country = c.country
-    WHERE l.category = 'online_video'
-      AND l.kpi_type = 'reach'
-      AND l.kpi_dimension = 'genre'
-      AND l.population_segment = 'viewers'
-      AND l.kpi_detail IN (
+      n.value AS reach_viewers,
+      n.population_1574
+    FROM macro.nordic n
+    WHERE n.category = 'online_video'
+      AND n.kpi_type = 'reach'
+      AND n.kpi_dimension = 'genre'
+      AND n.kpi_detail IN (
         'drama_foreign',
         'news_debate',
         'factual_documentary',
         'drama_local',
         'sports_foreign'
       )
-      AND COALESCE(l.service_id, '') = ''
-      AND COALESCE(l.service_package_id, '') = ''
-      AND p.period_sort >= 20221
+      AND n.canonical_name IS NULL
+      AND n.period_sort >= 20221
   ),
   genre_reach_country AS (
     SELECT
@@ -57,8 +38,8 @@ sql: |
       quarter_label,
       country,
       genre,
-      SUM(reach_viewers * population_15_74) / NULLIF(SUM(population_15_74), 0) AS genre_reach_viewers_weighted,
-      SUM(population_15_74) AS country_population
+      SUM(reach_viewers * population_1574) / NULLIF(SUM(population_1574), 0) AS genre_reach_viewers_weighted,
+      SUM(population_1574) AS country_population
     FROM base
     GROUP BY
       period_sort,
@@ -70,21 +51,16 @@ sql: |
   ),
   online_total AS (
     SELECT
-      l.country,
-      p.period_sort,
-      l.value AS online_total_reach
-    FROM macro.nordic_long_v2 l
-    JOIN macro.dim_period p
-      ON l.year = p.year
-     AND l.quarter = p.quarter
-    WHERE l.category = 'online_video'
-      AND l.kpi_type = 'reach'
-      AND l.kpi_dimension = 'online_total'
-      AND COALESCE(l.kpi_detail, '') = ''
-      AND COALESCE(l.service_id, '') = ''
-      AND COALESCE(l.service_package_id, '') = ''
-      AND COALESCE(l.age_group, '') = ''
-      AND COALESCE(l.population_segment, '') = ''
+      country,
+      period_sort,
+      value AS online_total_reach
+    FROM macro.nordic
+    WHERE category = 'online_video'
+      AND kpi_type = 'reach'
+      AND kpi_dimension = 'online_total'
+      AND kpi_detail IS NULL
+      AND canonical_name IS NULL
+      AND age_group = '15-74'
   ),
   genre_reach_population_country AS (
     SELECT

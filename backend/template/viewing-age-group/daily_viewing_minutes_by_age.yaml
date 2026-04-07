@@ -1,21 +1,6 @@
 description: Daily viewing minutes of video by age group (Social video, Other online video, TV) — population-weighted Nordic average
 sql: |
-  WITH population AS (
-    SELECT
-      CASE country
-        WHEN 'dk' THEN 'denmark'
-        WHEN 'fi' THEN 'finland'
-        WHEN 'no' THEN 'norway'
-        WHEN 'se' THEN 'sweden'
-        ELSE country
-      END AS country,
-      year,
-      value AS population_15_74
-    FROM macro.fact_population
-    WHERE population_type = 'individuals'
-      AND age = '15-74'
-  ),
-  reach AS (
+  WITH reach AS (
     SELECT
       country,
       year,
@@ -23,6 +8,7 @@ sql: |
       period_sort,
       period_label,
       age_group,
+      population_1574,
       CASE
         WHEN category = 'online_video' AND kpi_dimension = 'social' THEN 'Social video'
         WHEN category = 'online_video' AND kpi_dimension = 'online_excluding_social' THEN 'Other online video'
@@ -31,7 +17,6 @@ sql: |
       value AS reach
     FROM macro.nordic
     WHERE canonical_name IS NULL
-      AND population_segment IS NULL
       AND age_group IN ('15-24', '25-34', '35-44', '45-54', '55-64', '65-74')
       AND (
         (
@@ -61,7 +46,6 @@ sql: |
       value AS viewing_time_viewers
     FROM macro.nordic
     WHERE canonical_name IS NULL
-      AND population_segment = 'viewers'
       AND age_group IN ('15-24', '25-34', '35-44', '45-54', '55-64', '65-74')
       AND (
         (
@@ -81,8 +65,8 @@ sql: |
       r.period_label,
       r.age_group,
       r.business_model,
-      SUM(r.reach * vt.viewing_time_viewers * pop.population_15_74)
-        / NULLIF(SUM(pop.population_15_74), 0) AS viewing_time_population
+      SUM(r.reach * vt.viewing_time_viewers * r.population_1574)
+        / NULLIF(SUM(r.population_1574), 0) AS viewing_time_population
     FROM reach r
     JOIN viewing_time vt
       ON r.country = vt.country
@@ -90,9 +74,7 @@ sql: |
      AND r.quarter = vt.quarter
      AND r.age_group = vt.age_group
      AND r.business_model = vt.business_model
-    JOIN population pop
-      ON r.country = pop.country
-     AND r.year = pop.year
+    -- population_1574 is always 15-74 individuals regardless of age_group row
     WHERE r.period_sort >= 20243
       AND r.quarter IN (1, 3)
     GROUP BY

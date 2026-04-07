@@ -20,7 +20,6 @@ sql: |
     AND kpi_dimension IN ('social', 'online_excluding_social', 'online_total')
     AND canonical_name IS NULL
     AND age_group     = '15-74'
-    AND population_segment IS NULL
     AND period_sort   >= 20243
     AND quarter       IN (1, 3)
   GROUP BY period_sort, period_label, kpi_dimension

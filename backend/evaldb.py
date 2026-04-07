@@ -124,6 +124,16 @@ def save_log(id, prompt, system_prompt, messages, response, model, usage, user="
     conn.close()
 
 
+def update_result_data(log_id, result_data):
+    conn = _conn()
+    conn.execute(
+        "UPDATE llm_logs SET result_data=? WHERE id=?",
+        (json.dumps(result_data) if isinstance(result_data, dict) else result_data, log_id)
+    )
+    conn.commit()
+    conn.close()
+
+
 def save_evaluation(log_id, rating, user="", comment=""):
     conn = _conn()
     conn.execute(

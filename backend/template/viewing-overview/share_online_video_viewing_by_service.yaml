@@ -19,19 +19,14 @@ sql: |
     WHERE
       vt.category            = 'online_video'
       AND vt.kpi_type        = 'viewing_time'
-      AND vt.population_segment = 'viewers'
       AND vt.kpi_dimension   IS NULL
       AND vt.age_group       = '15-74'
       AND vt.canonical_name  IS NOT NULL
       AND r.category         = 'online_video'
       AND r.kpi_type         = 'reach'
-      AND r.population_segment IS NULL
       AND r.kpi_dimension    IS NULL
       AND r.age_group        = '15-74'
-      AND r.canonical_name IN (
-        SELECT canonical_name FROM macro.dim_service
-        WHERE is_streaming_service OR is_avod OR is_fast OR is_public_service
-      )
+      AND (r.is_streaming_service OR r.is_avod OR r.is_fast OR r.is_public_service)
       AND vt.period_sort     >= 20243
       AND vt.quarter         IN (1, 3)
   ),

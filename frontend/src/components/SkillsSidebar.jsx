@@ -57,6 +57,7 @@ function SkillsSidebar(options) {
 						<div className="skill-item eval-empty">No evaluations yet</div>
 					)}
 					{evalSessions.map(function (s) {
+
 						return (
 							<div
 								key={s.id}

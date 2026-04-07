@@ -22,14 +22,12 @@ sql: |
           AND n.kpi_dimension = 'svod'
           AND n.canonical_name IS NOT NULL
           AND n.age_group = '15-74'
-          AND n.population_segment IS NULL
           AND n.value IS NOT NULL
           AND n.value > 0
           AND n.quarter IN (1, 3)
           [[ AND {{country_label}} ]]
           [[ AND {{year}} ]]
           [[ AND {{quarter_label}} ]]
-          [[ AND {{period_label}} ]]
           [[ AND {{service}} ]]
   ),
   penetration_weighted AS (

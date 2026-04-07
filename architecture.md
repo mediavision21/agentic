@@ -65,14 +65,16 @@ User prompt is matched against this list. Model returns up to 6 candidates with 
 ### Stage 2 — Template-Guided SQL Generation (Sonnet)
 Runs only when Stage 1 found partial matches. Does at most 2 tries:
 
-- **Try 1**: system prompt = role + schema + top 3 template matches as few-shot examples. Streams LLM response. If query returns rows → done.
+- **Try 1**: system prompt = role + schema + sample data CSV + top 3 template matches as few-shot examples. Streams LLM response. If query returns rows → done.
 - **Try 2**: same but uses template matches 4–6 as examples (non-streaming). If query returns rows → done.
 - If both tries return 0 rows → hand off to Stage 3.
 
 ### Stage 3 — Full Schema Fallback (Sonnet)
 Runs when Stage 1 found no matches, or Stage 2 returned no data.
-System prompt contains: role + complete SKILL.md schema description (no template hints).
+System prompt contains: role + complete SKILL.md schema description + sample data CSV (no template hints).
 Model generates SQL and an Observable Plot config from scratch. SQL is executed and results are returned.
+
+> **Sample data**: `load_data_examples()` in `stage2.py` runs a one-time query against `macro.nordic` (latest quarter, sweden + norway, 5 KPI types, ≤5 rows each ≈ 50 rows). Result cached in-process as CSV and appended to both Stage 2 and Stage 3 system prompts.
 
 > **Note:** The `skills/` directory files (per-column stats) are generated at startup and kept on disk for reference, but are **not injected** into any prompt. Templates and the `nordic.sql` schema description serve as the primary context.
 

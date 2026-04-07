@@ -14,7 +14,6 @@ sql: |
       AND canonical_name    IS NOT NULL
       AND kpi_dimension     IS NULL
       AND age_group         = '15-74'
-      AND population_segment IS NULL
       AND quarter           IN (1, 3)
       AND period_sort       >= 20133
     GROUP BY period_sort, period_label, year, quarter_label, canonical_name

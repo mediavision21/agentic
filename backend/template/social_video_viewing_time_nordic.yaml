@@ -13,12 +13,10 @@ sql: |
       AND n.kpi_dimension = 'social'
       -- AND n.canonical_name IS NULL
       AND n.age_group = '15-74'
-      -- AND n.population_segment IS NULL
       AND n.quarter IN (1, 3)
       [[ AND {{country_label}} ]]
       [[ AND {{year}} ]]
       [[ AND {{quarter_label}} ]]
-      [[ AND {{period_label}} ]]
   GROUP BY
       n.period_sort,
       n.period_label,

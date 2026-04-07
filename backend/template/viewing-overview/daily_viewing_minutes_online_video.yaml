@@ -1,8 +1,8 @@
 description: Daily viewing minutes of online video (Social video + Other online video) — population-weighted Nordic average
 sql: |
   SELECT
-    p.period_sort,
-    p.period_label,
+    vt.period_sort,
+    vt.period_label,
     CASE vt.kpi_dimension
       WHEN 'social'                  THEN 'Social video'
       WHEN 'online_excluding_social' THEN 'Other online video'
@@ -12,42 +12,28 @@ sql: |
       WHEN 'online_excluding_social' THEN 2
     END AS series_order,
     -- viewing_time_population = reach × viewing_time_viewers, weighted by population
-    SUM(
-      vt.value * r.value * pop.value
-    ) / NULLIF(SUM(pop.value), 0) AS viewing_time_population
-  FROM macro.nordic_long_v2 vt
-  -- Join reach for the same country/period/dimension
-  JOIN macro.nordic_long_v2 r
+    SUM(vt.value * r.value * vt.population_1574)
+        / NULLIF(SUM(vt.population_1574), 0) AS viewing_time_population
+  FROM macro.nordic vt
+  JOIN macro.nordic r
     ON  vt.country       = r.country
     AND vt.year          = r.year
     AND vt.quarter       = r.quarter
     AND vt.kpi_dimension = r.kpi_dimension
-  -- Period dimension for sort order and labels
-  JOIN macro.dim_period p
-    ON  vt.year    = p.year
-    AND vt.quarter = p.quarter
-  -- Population weight (individuals 15-74, annual)
-  JOIN macro.fact_population pop
-    ON  vt.country      = pop.country
-    AND vt.year         = pop.year::text
-    AND pop.population_type = 'individuals'
-    AND pop.age             = '15-74'
   WHERE
-    vt.category          = 'online_video'
-    AND vt.kpi_type      = 'viewing_time'
-    AND vt.kpi_dimension IN ('social', 'online_excluding_social')
-    AND vt.population_segment = 'viewers'
-    AND (vt.service_id IS NULL OR vt.service_id = '')
-    AND (vt.age_group  IS NULL OR vt.age_group  = '')
-    AND r.category       = 'online_video'
-    AND r.kpi_type       = 'reach'
-    AND r.kpi_dimension IN ('social', 'online_excluding_social')
-    AND (r.service_id IS NULL OR r.service_id = '')
-    AND (r.age_group  IS NULL OR r.age_group  = '')
-    AND p.period_sort   >= 20243
-    AND vt.quarter      IN ('q1', 'q3')
-  GROUP BY p.period_sort, p.period_label, vt.kpi_dimension
-  ORDER BY p.period_sort, series_order
+    vt.category           = 'online_video'
+    AND vt.kpi_type       = 'viewing_time'
+    AND vt.kpi_dimension  IN ('social', 'online_excluding_social')
+    AND vt.canonical_name IS NULL
+    AND vt.age_group      = '15-74'
+    AND r.category        = 'online_video'
+    AND r.kpi_type        = 'reach'
+    AND r.canonical_name  IS NULL
+    AND r.age_group       = '15-74'
+    AND vt.period_sort   >= 20243
+    AND vt.quarter        IN (1, 3)
+  GROUP BY vt.period_sort, vt.period_label, vt.kpi_dimension
+  ORDER BY vt.period_sort, series_order
 
 plots:
   - id: daily_viewing_minutes_stacked

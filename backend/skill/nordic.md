@@ -52,11 +52,25 @@ Internal analyst notes — not for display. Key patterns:
 Check `comment` if a time series looks unexpectedly broken.
 
 ## population columns
-- `population`: individuals aged 15-74 for this country/year — use for individual-weighted cross-country averages
+- `population`: individuals for this row's `age_group` and country/year — correct for age-group-specific weighting
+- `population_1574`: always individuals aged 15-74, regardless of row's age_group — use for country-weighting when aggregating across age groups
 - `population_household`: households aged 15-74 for this country/year — use for household-weighted averages
 
-Both columns are already present on every row in `macro.nordic`.
+All three columns are already present on every row in `macro.nordic`.
 **NEVER** join `macro.population`, `fact_population`, or any external population table — the data is already here.
+
+## service flag columns
+Denormalized from `dim_service`. NULL on rows with no service (`canonical_name IS NULL`).
+- `is_social_video`: TRUE for social video platforms (YouTube, TikTok, etc.)
+- `is_streaming_service`: TRUE for SVOD/streaming services
+- `is_avod`: TRUE for ad-supported VOD
+- `is_fast`: TRUE for free ad-supported streaming TV channels
+- `is_public_service`: TRUE for public broadcaster services
+
+Use these directly in WHERE instead of subqueries on `dim_service`.
+
+## kpi_detail
+Granular sub-dimension for genre breakdowns (e.g. `drama_foreign`, `news_debate`, `factual_documentary`, `drama_local`, `sports_foreign`). NULL on non-genre rows.
 
 ## population_segment
 Filters the base population — does not indicate household vs individual:
@@ -66,9 +80,9 @@ Filters the base population — does not indicate household vs individual:
 
 ## age_group
 
-When the user asks for all age groups, means year include the '15-74'.
-When the user does NOT ask for age groups, add `AND (age_group  != '15-74')` to filter to totals only.
-This column can link as foreign key to population if the age_group is '15-74'
+When the user does NOT ask for age groups, add `AND age_group = '15-74'` to get the total population row.
+When the user asks for age group breakdown, filter `AND age_group == '{age_group}'` to get individual age bands.
+// This column can link as foreign key to population if the age_group is '15-74'
 
 values
 - 15-24
