@@ -15,6 +15,12 @@ Prefer derived signals when possible: growth trend (not just raw value), engagem
 - Wrong: `y: "year"` — this makes a meaningless vertical year scale
 - Right: `y: "reach_pct"`, `y: "viewing_time_minutes"`, `y: "penetration"`, `y: "value"`
 
+## Percentage formatting rule
+
+- When the metric is a ratio (reach_pct, penetration, household_penetration, share, etc.) and values are between 0 and 1, format the y-axis as percentage: `"y": {"label": "Reach %", "tickFormat": ".0%"}` or `".1%"` for one decimal
+- This applies to any column whose name contains `pct`, `penetration`, `share`, or `reach` and whose values are ≤ 1
+- Display "42%" not "0.42" — percentages are far more readable
+
 ## Period/time axis rules
 
 - **Always use `period_label` for the x-axis** — never `year`, `quarter_label`, `period_sort`, or `period_date` directly
@@ -44,6 +50,7 @@ var subset = rows.filter(d => +d.period_sort === latest || +d.period_sort === ye
 
 - **Trend (multiple periods)** → `Plot.line()` with `curve: "catmull-rom"` + `Plot.dot()` marks, x = `period_label`, domain sorted by `period_sort`
 - **Comparison (snapshot)** → `Plot.barY()` with x = `period_label`, use year-over-year subset
+- **Ranking / "top N" / single-period comparison** → `Plot.barY()` with x = category column (e.g. `service_name`), y = metric. The frontend will sort bars by y-value descending automatically. Use this when the user asks "top services", "ranking", or compares categories in a single period.
 - **Multi-category trend** → `Plot.line()` with `stroke = categoryColumn`; always set `color: { legend: true }`
 - **Faceted by service/genre/age_group** → use `fx` for facet, `x = period_label` with `axis: null`, `fill = period_label`
 - **Single series** → no stroke needed

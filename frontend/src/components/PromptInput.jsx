@@ -4,7 +4,9 @@ function PromptInput(options) {
 	const { onSubmit, loading } = options
 	// const [prompt, setPrompt] = useState("Quarterly trend of usage of on demand video playing country by country in nordic?")
 	// const [prompt, setPrompt] = useState("what is the viewing time of the social video in nordics?")
-	const [prompt, setPrompt] = useState("how many people are watch youtube today?")
+	// const [prompt, setPrompt] = useState("how many people are watch youtube today?")
+	// const [prompt, setPrompt] = useState("What is the reach of netflix across the nordics?")
+	const [prompt, setPrompt] = useState("Top services by SVOD penetration in in denmark (latest period)?")
 	const [backend, setBackend] = useState("claude")
 	const $textarea = useRef(null)
 

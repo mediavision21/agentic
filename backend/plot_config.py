@@ -21,7 +21,7 @@ _PROMPT_HEADER = """You are a data analyst. Given a user question and sample que
       {"type": "lineY|barY|dot|areaY", "x": "<col>", "y": "<col>", "stroke": "<col or null>", "fill": "<col or null>", "curve": "catmull-rom"}
     ],
     "x": {"label": "<text>"},
-    "y": {"label": "<text>", "grid": true},
+    "y": {"label": "<text>", "grid": true, "tickFormat": ".0% when ratio values 0-1"},
     "color": {"legend": true}
   },
   "summary": "<2-4 sentence summary of key trends, totals, or notable values>"

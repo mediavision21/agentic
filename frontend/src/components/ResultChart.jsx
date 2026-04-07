@@ -73,20 +73,45 @@ function sortedXDomain(options) {
 // when many x-axis labels, rotate and thin them so they don't overlap
 function applyTickDensity(xOpts, domain) {
     const count = domain ? domain.length : 0
-    if (count > 12) {
+    if (count > 6) {
         xOpts.tickRotate = -45
-        // show every Nth label to avoid overlap
-        const step = Math.ceil(count / 12)
-        const keep = new Set(domain.filter(function (_, i) { return i % step === 0 }))
-        xOpts.tickFormat = function (d) { return keep.has(d) ? d : "" }
+        if (count > 12) {
+            // show every Nth label to avoid overlap
+            const step = Math.ceil(count / 12)
+            const keep = new Set(domain.filter(function (_, i) { return i % step === 0 }))
+            xOpts.tickFormat = function (d) { return keep.has(d) ? d : "" }
+        }
     }
+}
+
+// for bar charts, sort x-domain by y-value descending (highest first)
+function sortedBarDomain(options) {
+    const { rows, xCol, yCol } = options
+    const agg = new Map()
+    for (const r of rows) {
+        const key = r[xCol]
+        const val = Number(r[yCol]) || 0
+        if (!agg.has(key)) {
+            agg.set(key, val)
+        } else {
+            agg.set(key, agg.get(key) + val)
+        }
+    }
+    return Array.from(agg.entries())
+        .sort(function (a, b) { return b[1] - a[1] })
+        .map(function (e) { return e[0] })
 }
 
 function buildFromConfig(options) {
     const { config, rows, columns, width } = options
     const marks = []
     const xCol = config.marks[0] ? config.marks[0].x : null
-    const xDomain = xCol ? sortedXDomain({ rows, xCol }) : undefined
+    const yCol = config.marks[0] ? config.marks[0].y : null
+    const isBar = config.marks[0] && config.marks[0].type === "barY"
+    // for bar charts without time axis, sort by y-value descending
+    const xDomain = isBar && xCol !== "period_label"
+        ? sortedBarDomain({ rows, xCol, yCol })
+        : xCol ? sortedXDomain({ rows, xCol }) : undefined
 
     for (const m of config.marks) {
         const fn = MARK_FN[m.type]
@@ -120,6 +145,13 @@ function buildFromConfig(options) {
     if (xDomain) {
         xOpts.domain = xDomain
         applyTickDensity(xOpts, xDomain)
+    }
+    // bar charts with long categorical labels need rotation even without explicit domain
+    if (isBar && !xDomain) {
+        const uniqueX = new Set(rows.map(function (r) { return r[xCol] }))
+        if (uniqueX.size > 6) {
+            xOpts.tickRotate = -45
+        }
     }
 
     const colorCfg = normalizeColorConfig(config.color) || {}
@@ -189,8 +221,10 @@ function buildFallback(options) {
         return d
     })
 
-    // sort x-axis domain by period_sort when available
-    const xDomain = sortedXDomain({ rows, xCol: chartInfo.x })
+    // for bar charts with categorical x, sort by y-value; otherwise sort by period_sort
+    const xDomain = chartInfo.type === "bar" && chartInfo.x !== "period_label"
+        ? sortedBarDomain({ rows, xCol: chartInfo.x, yCol: chartInfo.y })
+        : sortedXDomain({ rows, xCol: chartInfo.x })
 
     const tipChannels = { x: chartInfo.x, y: chartInfo.y }
     if (chartInfo.stroke) tipChannels.stroke = chartInfo.stroke
