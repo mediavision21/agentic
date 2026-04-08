@@ -69,10 +69,10 @@ sql: |
       JOIN macro.fact_fx_rate_quarterly fx
         ON fx.period_key = '2025q4'
        AND fx.currency_code = CASE s.country
-              WHEN 'se' THEN 'SEK'
-              WHEN 'no' THEN 'NOK'
-              WHEN 'dk' THEN 'DKK'
-              WHEN 'fi' THEN 'EUR'
+              WHEN 'sweden' THEN 'SEK'
+              WHEN 'norway' THEN 'NOK'
+              WHEN 'denmark' THEN 'DKK'
+              WHEN 'finland' THEN 'EUR'
            END
       WHERE p.penetration >= 0
   ),
