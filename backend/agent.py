@@ -17,6 +17,7 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
 
     # stage 1: direct template execution on high-confidence match
     if matches and matches[0]["score"] >= 0.95:
+        distilled = ""
         async for event in run_matched_template({
             "prompt": prompt,
             "match": matches[0],
@@ -27,12 +28,19 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
             "conversation_id": conversation_id,
             "generate_summary": generate_summary,
         }):
+            if event.get("type") == "summary":
+                distilled = event.get("text", "")
+            elif event.get("type") == "text" and not distilled:
+                distilled = event.get("text", "")[:500]
             yield event
+        if distilled:
+            yield {"type": "distilled_summary", "text": distilled}
         return
 
     # stage 2: template-guided LLM generation (2 tries × 3 templates)
     if matches:
         stage2_handled = False
+        distilled = ""
         async for event in stage2.run({
             "prompt": prompt,
             "matches": matches,
@@ -45,6 +53,10 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
         }):
             if event.get("type") == "__stage2_no_data__":
                 break
+            if event.get("type") == "summary":
+                distilled = event.get("text", "")
+            elif event.get("type") == "text" and not distilled:
+                distilled = event.get("text", "")[:500]
             yield event
             # stage2 handled: either found data rows, or gave a conversational reply
             if event.get("type") == "rows" and len(event.get("rows", [])) > 0:
@@ -52,9 +64,12 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
             if event.get("type") == "text":
                 stage2_handled = True
         if stage2_handled:
+            if distilled:
+                yield {"type": "distilled_summary", "text": distilled}
             return
 
     # stage 3: full schema/skills prompt, no template hints
+    distilled = ""
     async for event in stage3.run({
         "prompt": prompt,
         "backend": backend,
@@ -63,4 +78,10 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
         "user": user,
         "conversation_id": conversation_id,
     }):
+        if event.get("type") == "summary":
+            distilled = event.get("text", "")
+        elif event.get("type") == "text" and not distilled:
+            distilled = event.get("text", "")[:500]
         yield event
+    if distilled:
+        yield {"type": "distilled_summary", "text": distilled}

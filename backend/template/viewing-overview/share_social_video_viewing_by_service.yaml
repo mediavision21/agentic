@@ -3,33 +3,33 @@ description: Share of social video viewing time by service — population-weight
 sql: |
   WITH base AS (
     SELECT
-      vt.period_sort,
-      vt.period_label,
-      vt.year,
-      vt.quarter_label,
-      vt.country,
-      vt.canonical_name AS service,
-      vt.value * r.value AS viewing_time_per_individual,
-      vt.population
-    FROM macro.nordic vt
+      n.period_sort,
+      n.period_label,
+      n.year,
+      n.quarter_label,
+      n.country,
+      n.canonical_name AS service,
+      n.value * r.value AS viewing_time_per_individual,
+      n.population
+    FROM macro.nordic n
     JOIN macro.nordic r
-      ON  vt.country        = r.country
-      AND vt.year           = r.year
-      AND vt.quarter        = r.quarter
-      AND vt.canonical_name = r.canonical_name
+      ON  n.country        = r.country
+      AND n.year           = r.year
+      AND n.quarter        = r.quarter
+      AND n.canonical_name = r.canonical_name
     WHERE
-      vt.category            = 'online_video'
-      AND vt.kpi_type        = 'viewing_time'
-      AND vt.kpi_dimension   IS NULL
-      AND vt.age_group       = '15-74'
-      AND vt.canonical_name  IS NOT NULL
+      n.category            = 'online_video'
+      AND n.kpi_type        = 'viewing_time'
+      AND n.kpi_dimension   IS NULL
+      AND n.age_group       = '15-74'
+      AND n.canonical_name  IS NOT NULL
       AND r.category         = 'online_video'
       AND r.kpi_type         = 'reach'
       AND r.kpi_dimension    IS NULL
       AND r.age_group        = '15-74'
       AND r.is_social_video = TRUE
-      AND vt.period_sort     >= 20243
-      AND vt.quarter         IN (1, 3)
+      AND n.period_sort     >= 20243
+      AND n.quarter         IN (1, 3)
   ),
   service_time_country AS (
     SELECT

@@ -9,6 +9,10 @@ Think in 3 layers:
 
 Prefer derived signals when possible: growth trend (not just raw value), engagement rate, year-over-year delta. Use spline smoothing to reveal trends, not noise.
 
+## bar mark
+
+- shall NEVER stack a bar on top of another one
+
 ## Y-axis rule (CRITICAL)
 
 - Y-axis MUST be the value/metric column — NEVER use year, period_sort, period_label, or any date/time column on Y
@@ -51,6 +55,7 @@ var subset = rows.filter(d => +d.period_sort === latest || +d.period_sort === ye
 - **Trend (multiple periods)** → `Plot.line()` with `curve: "catmull-rom"` + `Plot.dot()` marks, x = `period_label`, domain sorted by `period_sort`
 - **Comparison (snapshot)** → `Plot.barY()` with x = `period_label`, use year-over-year subset
 - **Ranking / "top N" / single-period comparison** → `Plot.barY()` with x = category column (e.g. `service_name`), y = metric. The frontend will sort bars by y-value descending automatically. Use this when the user asks "top services", "ranking", or compares categories in a single period.
+- **Grouped comparison (top N per group)** → when data has a primary grouping (e.g. country) and a ranked secondary category (e.g. top 5 services), use `fx` = primary group, `x` = rank column (with `axis: null`), `fill` = category name for the legend. The rank column ensures uniform bar positioning across facets, while the category name appears in the color legend. Example: top 5 services per country → `fx: "country"`, `x: "rnk"`, `y: "penetration_pct"`, `fill: "canonical_name"`, `x: {axis: null}`. The SQL should include a rank column via `ROW_NUMBER() OVER (PARTITION BY group ORDER BY metric DESC) AS rnk`.
 - **Multi-category trend** → `Plot.line()` with `stroke = categoryColumn`; always set `color: { legend: true }`
 - **Faceted by service/genre/age_group** → use `fx` for facet, `x = period_label` with `axis: null`, `fill = period_label`
 - **Single series** → no stroke needed
@@ -89,4 +94,5 @@ var subset = rows.filter(d => shown.indexOf(+d.period_sort) !== -1);
 - For bar charts: `tip: true`, `insetLeft`/`insetRight` for spacing
 - Width: `Math.max(700, periods.length * 60)` for trend charts; fixed width for comparisons
 - `tickRotate: -45` and `marginBottom: 80` when many period labels on x-axis
+- All x label shall be show if the x axis is not time related, for service, kpi_type, kpi_dimension, shall show all the labels
 - Never use `year` as Y-axis for any chart — it produces meaningless vertical layout

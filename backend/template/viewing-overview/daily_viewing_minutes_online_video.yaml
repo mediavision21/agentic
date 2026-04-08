@@ -1,39 +1,38 @@
 description: Daily viewing minutes of online video (Social video + Other online video) — population-weighted Nordic average
 sql: |
   SELECT
-    vt.period_sort,
-    vt.period_label,
-    CASE vt.kpi_dimension
+    n.period_sort,
+    n.period_label,
+    CASE n.kpi_dimension
       WHEN 'social'                  THEN 'Social video'
       WHEN 'online_excluding_social' THEN 'Other online video'
     END AS business_model,
-    CASE vt.kpi_dimension
+    CASE n.kpi_dimension
       WHEN 'social'                  THEN 1
       WHEN 'online_excluding_social' THEN 2
     END AS series_order,
     -- viewing_time_population = reach × viewing_time_viewers, weighted by population
-    SUM(vt.value * r.value * vt.population_1574)
-        / NULLIF(SUM(vt.population_1574), 0) AS viewing_time_population
-  FROM macro.nordic vt
+    SUM(n.value * r.value * n.population_1574)
+        / NULLIF(SUM(n.population_1574), 0) AS viewing_time_population
+  FROM macro.nordic n
   JOIN macro.nordic r
-    ON  vt.country       = r.country
-    AND vt.year          = r.year
-    AND vt.quarter       = r.quarter
-    AND vt.kpi_dimension = r.kpi_dimension
+    ON  n.country       = r.country
+    AND n.year          = r.year
+    AND n.quarter       = r.quarter
+    AND n.kpi_dimension = r.kpi_dimension
   WHERE
-    vt.category           = 'online_video'
-    AND vt.kpi_type       = 'viewing_time'
-    AND vt.kpi_dimension  IN ('social', 'online_excluding_social')
-    AND vt.canonical_name IS NULL
-    AND vt.age_group      = '15-74'
+    n.category           = 'online_video'
+    AND n.kpi_type       = 'viewing_time'
+    AND n.kpi_dimension  IN ('social', 'online_excluding_social')
+    AND n.canonical_name IS NULL
+    AND n.age_group      = '15-74'
     AND r.category        = 'online_video'
     AND r.kpi_type        = 'reach'
-    AND r.canonical_name  IS NULL
     AND r.age_group       = '15-74'
-    AND vt.period_sort   >= 20243
-    AND vt.quarter        IN (1, 3)
-  GROUP BY vt.period_sort, vt.period_label, vt.kpi_dimension
-  ORDER BY vt.period_sort, series_order
+    AND n.period_sort   >= 20243
+    AND n.quarter        IN (1, 3)
+  GROUP BY n.period_sort, n.period_label, n.kpi_dimension
+  ORDER BY n.period_sort, series_order
 
 plots:
   - id: daily_viewing_minutes_stacked

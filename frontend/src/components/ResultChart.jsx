@@ -118,6 +118,7 @@ function buildFromConfig(options) {
         if (!fn) continue
         const data = prepareData({ rows, columns, mark: m })
         const opts = { x: m.x, y: m.y }
+        if (m.fx) opts.fx = m.fx
         if (m.stroke) opts.stroke = m.stroke
         if (m.fill) opts.fill = m.fill
         // always use spline for lines
@@ -166,6 +167,7 @@ function buildFromConfig(options) {
         color: { ...voiTheme.color, legend: true, ...colorCfg },
         marks,
     }
+    if (config.fx) plotOpts.fx = config.fx
     return Plot.plot(plotOpts)
 }
 

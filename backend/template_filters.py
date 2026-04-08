@@ -91,7 +91,7 @@ def apply_filters(sql, resolved):
         values = resolved.get(name)
         if values:
             quoted = ", ".join(f"'{v}'" for v in values)
-            return f"AND {name} IN ({quoted})"
+            return f"AND n.{name} IN ({quoted})"
         return ""
 
     result = re.sub(r"\[\[.*?\]\]", replace_block, sql, flags=re.DOTALL)

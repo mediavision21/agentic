@@ -194,16 +194,24 @@ function App() {
 	}
 
 	function buildHistory(messages) {
-		const history = []
+		const all = []
 		for (const msg of messages) {
 			if (msg.role === "user") {
-				history.push({ role: "user", text: msg.text })
+				all.push({ role: "user", text: msg.text })
 			} else if (msg.role === "assistant" && msg.content && !msg.content.loading) {
-				const raw = msg.content.raw_text || msg.content.streaming_text || ""
-				if (raw) history.push({ role: "assistant", text: raw })
+				const text = msg.content.distilled_summary
+					|| msg.content.summary
+					|| msg.content.raw_text
+					|| msg.content.streaming_text
+					|| ""
+				if (text) all.push({ role: "assistant", text: text })
 			}
 		}
-		return history
+		// keep last 5 exchanges (10 messages: 5 user + 5 assistant)
+		if (all.length > 10) {
+			return all.slice(all.length - 10)
+		}
+		return all
 	}
 
 	async function handleSubmit(options) {
@@ -297,6 +305,8 @@ function App() {
 							patchLastMsg(sessionId, function (c) { return { ...c, plot_config: event.plot_config } })
 						} else if (event.type === "template_plots") {
 							patchLastMsg(sessionId, function (c) { return { ...c, template_plots: event.plots } })
+						} else if (event.type === "distilled_summary") {
+							patchLastMsg(sessionId, function (c) { return { ...c, distilled_summary: event.text } })
 						} else if (event.type === "error") {
 							patchLastMsg(sessionId, function (c) { return { ...c, loading: false, error: event.error } })
 						}
