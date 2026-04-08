@@ -80,8 +80,16 @@ async def load_filter_choices(names, yaml_filters=None):
 def apply_filters(sql, resolved):
     # resolved: {name: [values]} — values already validated/quoted
     # For each [[ AND {{name}} ]]:
-    #   - if name in resolved with values: replace with AND name IN ('v1','v2')
+    #   - if name in resolved with values: replace with AND n.name IN ('v1','v2')
     #   - otherwise: remove the block
+    # All templates use macro.nordic aliased as n, so columns are prefixed n.
+    # Exception: columns not on macro.nordic (e.g. currency_code on fact_fx_rate_quarterly)
+    NORDIC_COLUMNS = {
+        'country', 'year', 'quarter', 'quarter_label', 'period_label',
+        'period_sort', 'category', 'kpi_type', 'kpi_dimension', 'kpi_detail',
+        'age_group', 'population_segment', 'canonical_name',
+    }
+
     def replace_block(m):
         full = m.group(0)
         name_match = re.search(r"\{\{(\w+)\}\}", full)
@@ -91,7 +99,8 @@ def apply_filters(sql, resolved):
         values = resolved.get(name)
         if values:
             quoted = ", ".join(f"'{v}'" for v in values)
-            return f"AND n.{name} IN ({quoted})"
+            col = f"n.{name}" if name in NORDIC_COLUMNS else name
+            return f"AND {col} IN ({quoted})"
         return ""
 
     result = re.sub(r"\[\[.*?\]\]", replace_block, sql, flags=re.DOTALL)

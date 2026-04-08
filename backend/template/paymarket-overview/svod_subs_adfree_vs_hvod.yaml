@@ -1,0 +1,175 @@
+description: Number of SVOD subscriptions (millions) split into Ad-free and HVOD — Nordic total
+filters:
+  quarter_label:
+    choices: [Q1]
+    default: [Q1]
+sql: |
+  WITH svod AS (
+      SELECT n.country, n.year, n.quarter, n.period_sort, n.period_label,
+             n.value AS penetration_svod, n.population_household
+      FROM macro.nordic n
+      WHERE n.category = 'online_video'
+        AND n.kpi_type = 'penetration'
+        AND n.kpi_dimension = 'svod'
+        AND n.canonical_name IS NULL
+        AND n.age_group = '15-74'
+        AND n.value IS NOT NULL
+        [[ AND {{country}} ]]
+        [[ AND {{year}} ]]
+        [[ AND {{quarter_label}} ]]
+  ),
+  svod_stacking AS (
+      SELECT n.country, n.year, n.quarter, n.value AS stacking_svod
+      FROM macro.nordic n
+      WHERE n.category = 'online_video'
+        AND n.kpi_type = 'stacking'
+        AND n.kpi_dimension = 'svod'
+        AND n.population_segment = 'subscribers'
+        AND n.canonical_name IS NULL
+        AND n.age_group = '15-74'
+        AND n.value IS NOT NULL
+  ),
+  hvod AS (
+      SELECT n.country, n.year, n.quarter, n.value AS penetration_hvod
+      FROM macro.nordic n
+      WHERE n.category = 'online_video'
+        AND n.kpi_type = 'penetration'
+        AND n.kpi_dimension = 'hvod'
+        AND n.canonical_name IS NULL
+        AND n.age_group = '15-74'
+        AND n.value IS NOT NULL
+  ),
+  hvod_stacking AS (
+      SELECT n.country, n.year, n.quarter, n.value AS stacking_hvod
+      FROM macro.nordic n
+      WHERE n.category = 'online_video'
+        AND n.kpi_type = 'stacking'
+        AND n.kpi_dimension = 'hvod'
+        AND n.population_segment = 'subscribers'
+        AND n.canonical_name IS NULL
+        AND n.age_group = '15-74'
+        AND n.value IS NOT NULL
+  ),
+  base AS (
+      SELECT
+          sv.period_sort,
+          sv.period_label,
+          sv.country,
+          sv.penetration_svod * svs.stacking_svod * sv.population_household AS svod_subs,
+          hv.penetration_hvod * hvs.stacking_hvod * sv.population_household AS hvod_subs
+      FROM svod sv
+      JOIN svod_stacking svs
+        ON sv.country = svs.country AND sv.year = svs.year AND sv.quarter = svs.quarter
+      JOIN hvod hv
+        ON sv.country = hv.country AND sv.year = hv.year AND sv.quarter = hv.quarter
+      JOIN hvod_stacking hvs
+        ON sv.country = hvs.country AND sv.year = hvs.year AND sv.quarter = hvs.quarter
+      WHERE sv.period_sort >= 20243
+  ),
+  agg AS (
+      SELECT
+          period_sort,
+          period_label,
+          SUM(hvod_subs) AS hvod_total,
+          SUM(svod_subs - hvod_subs) AS adfree_total
+      FROM base
+      GROUP BY period_sort, period_label
+  )
+  SELECT period_sort, period_label, 'Ad-free' AS subscription_type, adfree_total AS subscriptions FROM agg
+  UNION ALL
+  SELECT period_sort, period_label, 'HVOD' AS subscription_type, hvod_total AS subscriptions FROM agg
+  ORDER BY period_sort, subscription_type
+
+plots:
+  - id: svod_subs_adfree_vs_hvod
+    title: "Number of SVOD subs (million): Ad-free vs HVOD"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          value: +d.subscriptions / 1000,
+          period_sort: +d.period_sort
+        });
+      });
+
+      // YoY comparison
+      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
+        .sort(function(a, b) { return b - a; });
+      var latest = sortedPeriods[0];
+      var yearAgo = sortedPeriods.find(function(s) {
+        return Math.floor(s / 10) === Math.floor(latest / 10) - 1 &&
+               (s % 10) === (latest % 10);
+      }) || sortedPeriods[1];
+
+      var subset = rows.filter(function(d) {
+        return d.period_sort === latest || d.period_sort === yearAgo;
+      });
+
+      var latestLabel  = (rows.find(function(d) { return d.period_sort === latest; }) || {}).period_label || "";
+      var yearAgoLabel = (rows.find(function(d) { return d.period_sort === yearAgo; }) || {}).period_label || "";
+      var periodOrder = [yearAgoLabel, latestLabel].filter(Boolean);
+
+      // Stack order: Ad-free bottom, HVOD top
+      var stackOrder = ["Ad-free", "HVOD"];
+
+      var stackedRows = [];
+      var totals = {};
+      periodOrder.forEach(function(period) {
+        var cum = 0;
+        stackOrder.forEach(function(type) {
+          var row = subset.find(function(d) { return d.period_label === period && d.subscription_type === type; });
+          var v = row ? row.value : 0;
+          stackedRows.push({
+            period_label: period,
+            subscription_type: type,
+            y1: cum,
+            y2: cum + v,
+            mid: cum + v / 2,
+            value: v
+          });
+          cum += v;
+        });
+        totals[period] = cum;
+      });
+
+      var maxY = Math.ceil(Math.max.apply(null, Object.values(totals)) * 1.15);
+
+      return Plot.plot({
+        width: 500,
+        height: 420,
+        x: { label: null, domain: periodOrder },
+        y: { label: "Million subscriptions", grid: true, domain: [0, maxY] },
+        color: {
+          legend: true,
+          domain: ["HVOD", "Ad-free"],
+          range: ["#d9dcdf", "#3d4952"]
+        },
+        marks: [
+          Plot.barY(stackedRows, {
+            x: "period_label",
+            y1: "y1",
+            y2: "y2",
+            fill: "subscription_type",
+            insetLeft: 40,
+            insetRight: 40,
+            tip: true,
+            title: function(d) { return d.subscription_type + ": " + d.value.toFixed(1) + " M"; }
+          }),
+          Plot.text(
+            periodOrder.map(function(p) { return { period_label: p, total: totals[p] }; }),
+            {
+              x: "period_label",
+              y: "total",
+              text: function(d) { return d.total.toFixed(1) + " M"; },
+              fontSize: 14,
+              fontWeight: "bold",
+              fill: "#111",
+              dy: -12
+            }
+          ),
+          Plot.ruleY([0])
+        ],
+        marginTop: 40,
+        marginBottom: 50,
+        marginLeft: 55,
+        marginRight: 20
+      });
