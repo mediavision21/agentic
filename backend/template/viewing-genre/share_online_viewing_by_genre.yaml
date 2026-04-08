@@ -1,0 +1,271 @@
+description: Share of online viewing by genre — population-weighted Nordic average, 100% stacked
+sql: |
+  WITH base_reach AS (
+    SELECT
+      n.period_sort,
+      n.period_label,
+      n.country,
+      n.kpi_detail AS genre_code,
+      g.genre_label AS genre,
+      n.value AS reach_viewers,
+      n.population_1574
+    FROM macro.nordic n
+    JOIN macro.dim_genre g
+      ON n.kpi_detail = g.genre_code
+    WHERE n.category = 'online_video'
+      AND n.kpi_type = 'reach'
+      AND n.kpi_dimension = 'genre'
+      AND n.population_segment = 'viewers'
+      -- AND n.canonical_name IS NULL
+      AND n.kpi_detail IN (
+        'drama_foreign',
+        'drama_local',
+        'factual_documentary',
+        'news_debate',
+        'sports_foreign'
+      )
+      AND n.period_sort >= 20221
+      AND n.quarter IN (1)
+      [[ AND {{country}} ]]
+      [[ AND {{year}} ]]
+      [[ AND {{quarter_label}} ]]
+      -- [[ AND {{period_label}} ]]
+  ),
+  genre_reach_country AS (
+    SELECT
+      period_sort,
+      period_label,
+      country,
+      genre_code,
+      genre,
+      SUM(reach_viewers * population_1574) / NULLIF(SUM(population_1574), 0) AS genre_reach_viewers_weighted,
+      SUM(population_1574) AS country_population
+    FROM base_reach
+    GROUP BY period_sort, period_label, country, genre_code, genre
+  ),
+  online_total AS (
+    SELECT
+      n.country,
+      n.period_sort,
+      n.value AS online_total_reach
+    FROM macro.nordic n
+    WHERE n.category = 'online_video'
+      AND n.kpi_type = 'reach'
+      AND n.kpi_dimension = 'online_total'
+      -- AND n.kpi_detail IS NULL
+      -- AND n.canonical_name IS NULL
+      AND n.age_group = '15-74'
+  ),
+  genre_reach_pop_country AS (
+    SELECT
+      g.period_sort,
+      g.period_label,
+      g.country,
+      g.genre_code,
+      g.genre,
+      g.genre_reach_viewers_weighted * ot.online_total_reach AS genre_reach_population,
+      g.country_population
+    FROM genre_reach_country g
+    JOIN online_total ot
+      ON g.country = ot.country
+     AND g.period_sort = ot.period_sort
+  ),
+  base_vt AS (
+    SELECT
+      n.period_sort,
+      n.period_label,
+      n.country,
+      n.kpi_detail AS genre_code,
+      g.genre_label AS genre,
+      n.value AS viewing_time_genre_viewers,
+      n.population_1574
+    FROM macro.nordic n
+    JOIN macro.dim_genre g
+      ON n.kpi_detail = g.genre_code
+    WHERE n.category = 'online_video'
+      AND n.kpi_type = 'viewing_time'
+      AND n.kpi_dimension = 'genre'
+      AND n.population_segment = 'genre_viewers'
+      AND n.canonical_name IS NULL
+      AND n.kpi_detail IN (
+        'drama_foreign',
+        'drama_local',
+        'factual_documentary',
+        'news_debate',
+        'sports_foreign'
+      )
+      AND n.period_sort >= 20221
+      AND n.quarter IN (1)
+      [[ AND {{country}} ]]
+      [[ AND {{year}} ]]
+      [[ AND {{quarter_label}} ]]
+      -- [[ AND {{period_label}} ]]
+  ),
+  genre_vt_country AS (
+    SELECT
+      period_sort,
+      period_label,
+      country,
+      genre_code,
+      genre,
+      SUM(viewing_time_genre_viewers * population_1574) / NULLIF(SUM(population_1574), 0) AS vt_weighted,
+      SUM(population_1574) AS country_population
+    FROM base_vt
+    GROUP BY period_sort, period_label, country, genre_code, genre
+  ),
+  genre_combined_country AS (
+    SELECT
+      r.period_sort,
+      r.period_label,
+      r.country,
+      r.genre_code,
+      r.genre,
+      r.genre_reach_population * vt.vt_weighted AS viewing_time_population,
+      r.country_population
+    FROM genre_reach_pop_country r
+    JOIN genre_vt_country vt
+      ON r.country = vt.country
+     AND r.period_sort = vt.period_sort
+     AND r.genre_code = vt.genre_code
+  ),
+  genre_nordic AS (
+    SELECT
+      period_sort,
+      period_label,
+      genre_code,
+      genre,
+      SUM(viewing_time_population * country_population)
+        / NULLIF(SUM(country_population), 0) AS viewing_time_population
+    FROM genre_combined_country
+    GROUP BY period_sort, period_label, genre_code, genre
+  ),
+  normalized AS (
+    SELECT
+      period_sort,
+      period_label,
+      genre_code,
+      genre,
+      viewing_time_population,
+      SUM(viewing_time_population) OVER (PARTITION BY period_sort) AS total_selected
+    FROM genre_nordic
+  ),
+  shares AS (
+    SELECT
+      period_sort,
+      period_label,
+      genre_code,
+      genre,
+      (viewing_time_population / NULLIF(total_selected, 0)) AS share
+    FROM normalized
+  ),
+  genre_rank AS (
+    SELECT
+      genre_code,
+      ROW_NUMBER() OVER (ORDER BY SUM(share) DESC) AS genre_rank_desc
+    FROM shares
+    GROUP BY genre_code
+  )
+  SELECT
+    s.period_label,
+    s.period_sort,
+    s.genre,
+    s.share AS viewing_time_population_share
+  FROM shares s
+  JOIN genre_rank r
+    ON s.genre_code = r.genre_code
+  ORDER BY r.genre_rank_desc DESC, s.period_sort
+
+plots:
+  - id: share_online_viewing_by_genre
+    title: "Share of online viewing by genre"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          period_sort: +d.period_sort,
+          share: +d.viewing_time_population_share
+        });
+      });
+
+      if (!rows.length) {
+        return Plot.plot({
+          width: 700,
+          height: 220,
+          marks: [Plot.text(["No data"], {x: [0], y: [0], text: function(d) { return d; }, fontSize: 18})],
+          x: { axis: null },
+          y: { axis: null }
+        });
+      }
+
+      var periods = Array.from(new Set(
+        rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort; }).map(function(d) { return d.period_label; })
+      ));
+
+      // Stack order: bottom-to-top by descending total share (largest at bottom)
+      var genreTotals = {};
+      rows.forEach(function(d) {
+        genreTotals[d.genre] = (genreTotals[d.genre] || 0) + d.share;
+      });
+      var stackOrder = Object.keys(genreTotals).sort(function(a, b) {
+        return genreTotals[b] - genreTotals[a];
+      });
+
+      var stackedRows = [];
+      periods.forEach(function(period) {
+        var cum = 0;
+        stackOrder.forEach(function(genre) {
+          var row = rows.find(function(d) { return d.period_label === period && d.genre === genre; });
+          var v = row ? row.share : 0;
+          stackedRows.push({
+            period_label: period,
+            genre: genre,
+            y1: cum,
+            y2: cum + v,
+            mid: cum + v / 2,
+            share: v
+          });
+          cum += v;
+        });
+      });
+
+      return Plot.plot({
+        width: Math.max(600, periods.length * 120),
+        height: 520,
+        x: { label: null, domain: periods },
+        y: {
+          label: null,
+          grid: false,
+          domain: [0, 1],
+          ticks: 6,
+          tickFormat: ".0%"
+        },
+        color: {
+          legend: true,
+          domain: stackOrder,
+          range: ["#1a5c38", "#7aafc4", "#c05a2c", "#52b788", "#1b3a2a"]
+        },
+        marks: [
+          Plot.barY(stackedRows, {
+            x: "period_label",
+            y1: "y1",
+            y2: "y2",
+            fill: "genre",
+            insetLeft: 20,
+            insetRight: 20,
+            tip: true,
+            title: function(d) { return d.genre + ": " + (d.share * 100).toFixed(0) + "%"; }
+          }),
+          Plot.text(stackedRows.filter(function(d) { return d.share >= 0.05; }), {
+            x: "period_label",
+            y: "mid",
+            text: function(d) { return (d.share * 100).toFixed(0) + "%"; },
+            fontSize: 13,
+            fontWeight: "bold",
+            fill: "white"
+          }),
+          Plot.ruleY([0])
+        ],
+        marginTop: 30,
+        marginBottom: 60,
+        marginLeft: 50,
+        marginRight: 20
+      });
