@@ -137,7 +137,10 @@ async def run_matched_template(options):
             lines = ["To show this chart, please specify the filters:"]
             suggestions = []
             for name in placeholders:
-                spec = FILTER_REGISTRY.get(name, {})
+                if name not in FILTER_REGISTRY:
+                    print(f"[template_router] ERROR: SQL placeholder '{name}' not found in FILTER_REGISTRY")
+                    continue
+                spec = FILTER_REGISTRY[name]
                 label = spec.get("label", name)
                 choices = choices_map.get(name, [])
                 lines.append(f"- **{label}**: {', '.join(str(c) for c in choices)}")

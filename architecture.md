@@ -1,7 +1,7 @@
 # MediaVision - Architecture
 
 ## Overview
-Agentic data analytics tool. User asks natural language questions → LLM generates SQL → executes against Supabase PostgreSQL → results displayed as table + Observable Plot chart.
+Agentic data analytics tool. User asks natural language questions → LLM generates SQL → executes against Supabase PostgreSQL → results displayed as table + Observable Plot chart + summary.
 
 ## Stack
 - **Backend**: Python 3.13 / FastAPI / asyncpg / uv

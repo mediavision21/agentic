@@ -22,7 +22,7 @@ sql: |
           AND n.value > 0
           AND n.year::int >= 2023
           AND n.quarter IN (1, 3)
-          [[ AND {{country_label}} ]]
+          [[ AND {{country}} ]]
           [[ AND {{year}} ]]
           [[ AND {{quarter_label}} ]]          
   ),

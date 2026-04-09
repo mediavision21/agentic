@@ -14,7 +14,7 @@ sql: |
       -- AND n.canonical_name IS NULL
       AND n.age_group = '15-74'
       AND n.quarter IN (1, 3)
-      [[ AND {{country_label}} ]]
+      [[ AND {{country}} ]]
       [[ AND {{year}} ]]
       [[ AND {{quarter_label}} ]]
   GROUP BY

@@ -21,7 +21,7 @@ WHERE
     AND (n.service_id IS NULL OR n.service_id = '')
     AND (n.age_group IS NULL OR n.age_group = '')
     AND n.period_date >= '2024-07-01'
-    [[ AND {{country_label}} ]]
+    [[ AND {{country}} ]]
     [[ AND {{year}} ]]
     [[ AND {{quarter_label}} ]]
     [[ AND {{period_label}} ]]
@@ -66,7 +66,7 @@ WHERE
     AND (r.service_id IS NULL OR r.service_id = '')
     AND (r.age_group  IS NULL OR r.age_group  = '')
     AND r.period_date >= '2024-07-01'
-    [[ AND {{country_label}} ]]
+    [[ AND {{country}} ]]
     [[ AND {{year}} ]]
     [[ AND {{quarter_label}} ]]
     [[ AND {{period_label}} ]]
@@ -102,7 +102,7 @@ WHERE
     AND (n.age_group     IS NULL OR n.age_group     = '')
     AND n.period_date >= '2013-07-01'
     [[ AND {{service}} ]]
-    [[ AND {{country_label}} ]]
+    [[ AND {{country}} ]]
     [[ AND {{year}} ]]
     [[ AND {{quarter_label}} ]]
     [[ AND {{period_label}} ]]
@@ -132,7 +132,7 @@ WHERE
     AND (n.kpi_dimension IS NULL OR n.kpi_dimension = '')
     AND (n.age_group     IS NULL OR n.age_group     = '')
     AND n.period_date >= '2020-01-01'
-    [[ AND {{country_label}} ]]
+    [[ AND {{country}} ]]
     [[ AND {{year}} ]]
     [[ AND {{quarter_label}} ]]
     [[ AND {{period_label}} ]]
@@ -174,7 +174,7 @@ WITH country_service AS (
         AND (r.kpi_dimension IS NULL OR r.kpi_dimension = '')
         AND (r.age_group     IS NULL OR r.age_group     = '')
         AND r.period_date >= '2024-07-01'
-        [[ AND {{country_label}} ]]
+        [[ AND {{country}} ]]
         [[ AND {{year}} ]]
         [[ AND {{quarter_label}} ]]
         [[ AND {{period_label}} ]]
@@ -226,7 +226,7 @@ WITH country_service AS (
         AND (r.kpi_dimension IS NULL OR r.kpi_dimension = '')
         AND (r.age_group     IS NULL OR r.age_group     = '')
         AND r.period_date >= '2024-07-01'
-        [[ AND {{country_label}} ]]
+        [[ AND {{country}} ]]
         [[ AND {{year}} ]]
         [[ AND {{quarter_label}} ]]
         [[ AND {{period_label}} ]]

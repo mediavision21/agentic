@@ -1,5 +1,5 @@
 import re
-from db import execute_query
+from db import query_single_column
 
 # Central registry of all known template filter placeholders.
 # "choices": static list
@@ -23,11 +23,28 @@ FILTER_REGISTRY = {
         "choices": ["Q1", "Q2", "Q3", "Q4"],
         "default": ["Q1", "Q3"],  # odd quarters (standard reporting periods)
     },
+    "country_label": {
+        "label": "Country",
+        "multiple": True,
+        "dynamic_sql": "SELECT DISTINCT country_label FROM macro.nordic ORDER BY country_label",
+        "default": ["Denmark", "Finland", "Sweden", "Norway"],
+    },
     "year": {
         "label": "Year",
         "multiple": True,
-        "dynamic_sql": "SELECT DISTINCT year::text FROM macro.dim_period ORDER BY year::int DESC",
-        "default": [2021, 2022, 2023, 2024, 2025],
+        "dynamic_sql": "SELECT DISTINCT year FROM macro.nordic ORDER BY year DESC LIMIT 6",
+        "default": [2021, 2022, 2023, 2024, 2025, 2026],
+    },
+    "service": {
+        "label": "Service",
+        "multiple": True,
+        "dynamic_sql": "SELECT DISTINCT canonical_name FROM macro.nordic WHERE canonical_name IS NOT NULL ORDER BY canonical_name",
+    },
+    "currency_code": {
+        "label": "Currency",
+        "multiple": False,
+        "default": ["DKK", "EUR", "NOK", "SEK"],
+        "dynamic_sql": "SELECT DISTINCT currency_code FROM macro.fact_fx_rate_quarterly ORDER BY currency_code",
     },
 }
 
@@ -69,8 +86,7 @@ async def load_filter_choices(names, yaml_filters=None):
             result[name] = spec["choices"]
         elif "dynamic_sql" in spec:
             try:
-                data = await execute_query(spec["dynamic_sql"])
-                result[name] = [row[0] for row in data["rows"]]
+                result[name] = await query_single_column(spec["dynamic_sql"])
             except Exception as e:
                 print(f"[template_filters] failed to load choices for {name}: {e}")
                 result[name] = []

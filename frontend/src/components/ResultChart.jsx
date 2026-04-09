@@ -30,13 +30,13 @@ function prepareData(options) {
         for (const col of columns) {
             d[col] = row[col]
         }
-        if (mark.type === "lineY" && isDateLike(d[mark.x])) {
+        if (isDateLike(d[mark.x])) {
             d[mark.x] = new Date(d[mark.x])
         }
         if (isNumeric(d[mark.y])) {
             d[mark.y] = Number(d[mark.y])
         }
-        if (mark.type === "dot" && isNumeric(d[mark.x])) {
+        if (isNumeric(d[mark.x]) && !isDateLike(rows[0][mark.x])) {
             d[mark.x] = Number(d[mark.x])
         }
         return d
@@ -143,6 +143,10 @@ function buildFromConfig(options) {
     marks.unshift(Plot.gridY({ stroke: voiColors.grid, strokeWidth: 1 }))
 
     const xOpts = { ...voiTheme.x, ...(config.x || {}) }
+    // use time scale when x values are dates
+    if (xCol && rows.length > 0 && isDateLike(rows[0][xCol]) && !isBar) {
+        xOpts.type = xOpts.type || "time"
+    }
     if (xDomain) {
         xOpts.domain = xDomain
         applyTickDensity(xOpts, xDomain)

@@ -193,3 +193,27 @@ async def execute_query(sql):
 				row[k] = str(v)
 		data.append(row)
 	return {"columns": columns, "rows": data}
+
+async def query_single_column(sql):
+	# execute query, return list of first column values. warns if multiple columns.
+	print('executing: ', sql)
+	if not _is_read_only(sql):
+		raise ValueError("Only SELECT / WITH queries are allowed")
+	async with pool.acquire() as conn:
+		await conn.execute(f"SET search_path TO {schema}, public")
+		rows = await conn.fetch(sql)
+	print('num rows: ', len(rows))
+	if not rows:
+		return []
+	columns = list(rows[0].keys())
+	if len(columns) > 1:
+		print(f"[db] WARNING: query_single_column got {len(columns)} columns, using only first: {columns}")
+	data = []
+	for r in rows:
+		v = r[0]
+		if isinstance(v, (int, float, str, bool, type(None))):
+			data.append(v)
+		else:
+			data.append(str(v))
+	return data
+
