@@ -1,5 +1,4 @@
 import os
-import uuid
 import yaml
 import anthropic
 import evaldb
@@ -23,7 +22,7 @@ def _write_log(label, system_prompt, messages, full_text, meta, log_id=None, use
         }, f, default_flow_style=False, allow_unicode=True)
     prompt = messages[-1]["content"] if messages else ""
     evaldb.save_log(
-        log_id or str(uuid.uuid4()),
+        log_id or datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f".{datetime.now().microsecond * 1000:09d}",
         prompt, system_prompt, messages, full_text,
         meta.get("model", ""), meta.get("usage", {}),
         user=user, conversation_id=conversation_id,

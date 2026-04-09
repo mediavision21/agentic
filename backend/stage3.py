@@ -14,18 +14,22 @@ async def run(options):
     msg_id = options["msg_id"]
     user = options["user"]
     conversation_id = options["conversation_id"]
+    intent_block = options.get("intent_block", "")
 
     # full skills/schema prompt — no template hints
     data_examples = await load_data_examples()
     kpi_combinations = await load_kpi_combinations()
-    system_prompt = build_system_prompt(data_examples, kpi_combinations)
+    system_prompt = await build_system_prompt(data_examples, kpi_combinations, intent_block)
     messages = build_messages(history, prompt)
     print(f"[stage3] full schema prompt, no template hints")
 
+    yield {"type": "step", "label": "SQL"}
     full_text = ""
     async for chunk in llm.complete_stream(system_prompt, messages, {"backend": backend, "label": "stage3", "log_id": msg_id, "user": user, "conversation_id": conversation_id}):
         if isinstance(chunk, dict):
-            break
+            if chunk.get("type"):
+                yield chunk
+            continue
         full_text += chunk
         print(chunk, end="", flush=True)
         yield {"type": "token", "text": chunk}
@@ -70,10 +74,14 @@ async def run(options):
 
     yield {"type": "rows", "columns": data["columns"], "rows": data["rows"]}
 
+    yield {"type": "step", "label": "Plot & Summary"}
     plot_config = None
     summary = None
     try:
-        plot_config, summary = await generate_plot_and_summary({"user_prompt": prompt, "columns": data["columns"], "rows": data["rows"], "backend": backend, "label": "stage3-plot", "log_id": msg_id, "user": user, "conversation_id": conversation_id})
+        plot_config, summary, plot_debug = await generate_plot_and_summary({"user_prompt": prompt, "columns": data["columns"], "rows": data["rows"], "backend": backend, "label": "stage3-plot", "log_id": msg_id, "user": user, "conversation_id": conversation_id})
+        yield {"type": "prompt", "text": plot_debug["prompt"]}
+        yield {"type": "messages", "messages": plot_debug["messages"]}
+        yield {"type": "response", "text": plot_debug["response"]}
         if plot_config:
             yield {"type": "plot_config", "plot_config": plot_config}
         if summary:

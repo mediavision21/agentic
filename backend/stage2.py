@@ -1,28 +1,17 @@
-import os
 import re
 import llm
 import evaldb
-from db import execute_query
+from db import execute_query, fetch_schema_text
 from data_examples import load_data_examples, load_kpi_combinations
 from plot_config import generate_plot_and_summary
-
-SKILLS_DIR = os.path.join(os.path.dirname(__file__), "..", "skills")
-
-
-def _load_schema():
-    path = os.path.join(SKILLS_DIR, "SKILL.md")
-    if os.path.exists(path):
-        with open(path) as f:
-            return f.read()
-    return ""
 
 
 SYSTEM_PROMPT_TEMPLATE = """You are a data analyst assistant for MediaVision, a media intelligence platform with a PostgreSQL database of Nordic TV and streaming viewership data.
 
 ## Your behaviour
-- If the user asks a question that requires data, generate SQL and a plot config.
+- If the user asks a question that requires data, generate SQL.
 - If the question is conversational, asks for clarification, or can be answered without data, reply in plain text (markdown supported). Do NOT generate SQL in that case.
-- If the request is ambiguous, ask a clarifying question instead of guessing.
+- If a "Resolved Query Intent" block is provided below, use those values exactly for your SQL. Never ask a clarifying question when intent has been resolved.
 - When offering the user a list of options to choose from, append this exact block at the very end of your response (after all other text):
 
 <!--suggestions
@@ -86,27 +75,27 @@ Do NOT generate a plot config — that will be handled separately.
 """
 
 
-def build_system_prompt(data_examples="", kpi_combinations=""):
-    base = SYSTEM_PROMPT_TEMPLATE.format(schema=_load_schema())
+async def build_system_prompt(data_examples="", kpi_combinations="", intent_block=""):
+    schema = await fetch_schema_text()
+    base = SYSTEM_PROMPT_TEMPLATE.format(schema=schema)
     if kpi_combinations:
         base += f"\n\n## Valid KPI combinations (CSV: category,kpi_type,kpi_dimension)\nOnly use combinations from this list:\n{kpi_combinations}"
     if data_examples:
         base += f"\n\n## Sample data (latest quarter, sweden + norway, key KPI types)\n{data_examples}"
+    if intent_block:
+        base += f"\n\n{intent_block}"
     return base
 
 
-def build_guided_system_prompt(matches, templates, data_examples="", kpi_combinations=""):
-    schema = _load_schema()
+async def build_guided_system_prompt(matches, templates, data_examples="", kpi_combinations="", intent_block=""):
+    schema = await fetch_schema_text()
     example_parts = []
     for m in matches:
         t = templates[m["file"]]
         desc = t.get("description", m["file"])
         sql = t.get("sql", "").strip()
-        plots = t.get("plots", [])
         score_pct = int(m["score"] * 100)
         part = f"### {m['file']} (similarity: {score_pct}%)\nDescription: {desc}\n```sql\n{sql}\n```"
-        if plots:
-            part += f"\nPlot example:\n```js\n{plots[0].get('code','').strip()}\n```"
         example_parts.append(part)
     examples_section = "\n\n".join(example_parts)
     base = SYSTEM_PROMPT_TEMPLATE.format(schema=schema)
@@ -114,7 +103,9 @@ def build_guided_system_prompt(matches, templates, data_examples="", kpi_combina
         base += f"\n\n## Valid KPI combinations (CSV: category,kpi_type,kpi_dimension)\nOnly use combinations from this list:\n{kpi_combinations}"
     if data_examples:
         base += f"\n\n## Sample data (latest quarter, sweden + norway, key KPI types)\n{data_examples}"
-    return base + f"\n\n## Similar templates for reference\nUse these as examples to guide your SQL and plot style:\n\n{examples_section}"
+    if intent_block:
+        base += f"\n\n{intent_block}"
+    return base + f"\n\n## Similar templates for reference\nUse these as examples to guide your SQL style:\n\n{examples_section}"
 
 
 def extract_sql(text):
@@ -199,19 +190,23 @@ async def run(options):
     msg_id = options["msg_id"]
     user = options["user"]
     conversation_id = options["conversation_id"]
+    intent_block = options.get("intent_block", "")
 
     # try 1: top 3 template matches, streaming
     try1_matches = matches[:3]
     print(f"[stage2] try1 guided generation with {[m['file'] for m in try1_matches]}")
     data_examples = await load_data_examples()
     kpi_combinations = await load_kpi_combinations()
-    system_prompt = build_guided_system_prompt(try1_matches, templates, data_examples, kpi_combinations)
+    system_prompt = await build_guided_system_prompt(try1_matches, templates, data_examples, kpi_combinations, intent_block)
     messages = build_messages(history, prompt)
 
+    yield {"type": "step", "label": "SQL"}
     full_text = ""
     async for chunk in llm.complete_stream(system_prompt, messages, {"backend": backend, "label": "stage2", "log_id": msg_id, "user": user, "conversation_id": conversation_id}):
         if isinstance(chunk, dict):
-            break
+            if chunk.get("type"):
+                yield chunk
+            continue
         full_text += chunk
         print(chunk, end="", flush=True)
         yield {"type": "token", "text": chunk}
@@ -253,10 +248,14 @@ async def run(options):
 
     if data is not None:
         yield {"type": "rows", "columns": data["columns"], "rows": data["rows"]}
+        yield {"type": "step", "label": "Plot & Summary"}
         plot_config = None
         summary = None
         try:
-            plot_config, summary = await generate_plot_and_summary({"user_prompt": prompt, "columns": data["columns"], "rows": data["rows"], "backend": backend, "label": "stage2-plot", "log_id": msg_id, "user": user, "conversation_id": conversation_id})
+            plot_config, summary, plot_debug = await generate_plot_and_summary({"user_prompt": prompt, "columns": data["columns"], "rows": data["rows"], "backend": backend, "label": "stage2-plot", "log_id": msg_id, "user": user, "conversation_id": conversation_id})
+            yield {"type": "prompt", "text": plot_debug["prompt"]}
+            yield {"type": "messages", "messages": plot_debug["messages"]}
+            yield {"type": "response", "text": plot_debug["response"]}
             if plot_config:
                 yield {"type": "plot_config", "plot_config": plot_config}
             if summary:
@@ -270,7 +269,7 @@ async def run(options):
     if len(matches) > 3:
         try2_matches = matches[3:6]
         print(f"[stage2] try1 got 0 rows, try2 with {[m['file'] for m in try2_matches]}")
-        try2_prompt = build_guided_system_prompt(try2_matches, templates, data_examples, kpi_combinations)
+        try2_prompt = await build_guided_system_prompt(try2_matches, templates, data_examples, kpi_combinations, intent_block)
         try:
             retry_text = await llm.complete(try2_prompt, messages, {"backend": "claude", "label": "stage2-try2", "log_id": msg_id, "user": user, "conversation_id": conversation_id})
             retry_sqls_raw = extract_sqls(retry_text)
@@ -284,10 +283,14 @@ async def run(options):
                         print(f"[stage2] try2 sql[{i}] succeeded with {len(retry_data['rows'])} rows")
                         yield {"type": "sql", "sql": retry_sql, "plot_config": None, "explanation": retry_explanation}
                         yield {"type": "rows", "columns": retry_data["columns"], "rows": retry_data["rows"]}
+                        yield {"type": "step", "label": "Plot & Summary"}
                         retry_plot = None
                         retry_summary = None
                         try:
-                            retry_plot, retry_summary = await generate_plot_and_summary({"user_prompt": prompt, "columns": retry_data["columns"], "rows": retry_data["rows"], "backend": backend, "label": "stage2-try2-plot", "log_id": msg_id, "user": user, "conversation_id": conversation_id})
+                            retry_plot, retry_summary, retry_plot_debug = await generate_plot_and_summary({"user_prompt": prompt, "columns": retry_data["columns"], "rows": retry_data["rows"], "backend": backend, "label": "stage2-try2-plot", "log_id": msg_id, "user": user, "conversation_id": conversation_id})
+                            yield {"type": "prompt", "text": retry_plot_debug["prompt"]}
+                            yield {"type": "messages", "messages": retry_plot_debug["messages"]}
+                            yield {"type": "response", "text": retry_plot_debug["response"]}
                             if retry_plot:
                                 yield {"type": "plot_config", "plot_config": retry_plot}
                             if retry_summary:

@@ -53,6 +53,32 @@ Sample rows:
 {"plot":{"marks":[{"type":"lineY","x":"period_label","y":"viewing_time_minutes","curve":"catmull-rom"}],"x":{"label":null},"y":{"label":"Minutes per day","grid":true},"color":{"legend":false}},"summary":"Daily online video viewing time in Sweden has grown steadily, rising from 31.2 minutes in Q1 2022 to 36.1 minutes by Q3 2023."}
 ```
 
+Input columns: period_sort, period_label, service, penetration
+Sample rows:
+20251, Q1 2025, netflix, 0.42
+20251, Q1 2025, disney, 0.18
+20261, Q1 2026, netflix, 0.45
+20261, Q1 2026, disney, 0.21
+
+```json
+{"plot":{"marks":[{"type":"barY","fx":"service","x":"period_label","y":"penetration","fill":"period_label"}],"fx":{"label":null},"x":{"axis":null},"y":{"label":"Penetration %","grid":true,"tickFormat":".0%"},"color":{"legend":true}},"summary":"Netflix penetration grew from 42% to 45% between Q1 2025 and Q1 2026. Disney+ also increased from 18% to 21%."}
+```
+
+Input columns: period_sort, period_label, service, share_of_total
+Sample rows:
+20251, Q1 2025, Netflix, 0.35
+20251, Q1 2025, YouTube, 0.25
+20251, Q1 2025, Disney+, 0.15
+20251, Q1 2025, Others, 0.25
+20261, Q1 2026, Netflix, 0.32
+20261, Q1 2026, YouTube, 0.28
+20261, Q1 2026, Disney+, 0.16
+20261, Q1 2026, Others, 0.24
+
+```json
+{"plot":{"marks":[{"type":"barY","x":"period_label","y":"share_of_total","fill":"service"}],"x":{"label":null},"y":{"label":"Share of viewing","grid":true,"tickFormat":".0%"},"color":{"legend":true}},"summary":"YouTube gained share from 25% to 28%, while Netflix dropped from 35% to 32%. Disney+ remained stable."}
+```
+
 Respond with ONLY the ```json ... ``` block. No other text."""
 
 
@@ -78,13 +104,16 @@ async def generate_plot_and_summary(options):
     data_text = "\n".join(lines)
     user_msg = f"User question: {user_prompt}\n\nQuery result columns: {header}\nSample rows ({len(sample)}):\n{data_text}"
     system_prompt = _build_system_prompt()
-    text = await llm.complete(system_prompt, [{"role": "user", "content": user_msg}], {"backend": backend, "label": label, "log_id": log_id, "user": user, "conversation_id": conversation_id})
-    return extract_plot_and_summary(text)
+    messages = [{"role": "user", "content": user_msg}]
+    text = await llm.complete(system_prompt, messages, {"backend": backend, "label": label, "log_id": log_id, "user": user, "conversation_id": conversation_id})
+    plot, summary = extract_plot_and_summary(text)
+    debug = {"prompt": system_prompt, "messages": messages, "response": text}
+    return plot, summary, debug
 
 
 async def generate_summary(prompt, columns, rows, backend):
     """Summary-only call used by template matches (no plot needed)."""
-    _plot, summary = await generate_plot_and_summary({
+    _plot, summary, _debug = await generate_plot_and_summary({
         "user_prompt": prompt,
         "columns": columns,
         "rows": rows,

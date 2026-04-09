@@ -4,18 +4,26 @@ import llm_local
 
 async def complete_stream(system_prompt, messages, options):
     # options: {backend, label, log_id, user, conversation_id}
-    # yields text chunks, then {"__meta__": ...}
+    # yields text chunks, then {"__meta__": ...}, then prompt/messages/response events
     backend = options.get("backend", "claude")
     label = options.get("label", "llm")
     log_id = options.get("log_id")
     user = options.get("user", "")
     conversation_id = options.get("conversation_id", "")
+    yield {"type": "prompt", "text": system_prompt}
+    yield {"type": "messages", "messages": messages}
+    full_text = ""
     if backend == "local":
         async for chunk in llm_local.complete_stream(system_prompt, messages, label=label, log_id=log_id, user=user, conversation_id=conversation_id):
+            if isinstance(chunk, str):
+                full_text += chunk
             yield chunk
     else:
         async for chunk in llm_claude.complete_stream(system_prompt, messages, label=label, log_id=log_id, user=user, conversation_id=conversation_id):
+            if isinstance(chunk, str):
+                full_text += chunk
             yield chunk
+    yield {"type": "response", "text": full_text}
 
 
 async def complete(system_prompt, messages, options):

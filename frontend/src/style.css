@@ -347,6 +347,32 @@ body {
 	margin-top: 6px;
 }
 
+.debug-stage {
+	border-left: 2px solid var(--color-gray-mid);
+	margin-bottom: 6px;
+	padding-left: 8px;
+}
+
+.debug-stage-label {
+	color: var(--color-gray-mid);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.5px;
+	margin-bottom: 4px;
+	text-transform: uppercase;
+}
+
+.debug-step {
+	margin-left: 12px;
+}
+
+.debug-pre {
+	font-size: 12px;
+	max-height: 400px;
+	overflow: auto;
+	white-space: pre-wrap;
+}
+
 /* ── sql block ── */
 
 .sql-block {
@@ -533,6 +559,13 @@ body {
 .error-msg {
 	color: var(--color-red-500);
 	font-size: 13px;
+}
+
+.preamble {
+	color: var(--color-gray-mid);
+	font-size: 13px;
+	font-style: italic;
+	margin: 4px 0 8px;
 }
 
 /* ── loading ── */
@@ -1104,37 +1137,37 @@ body {
 	width: 100%;
 }
 
-/* ── markdown highlight tokens (Monaco dark) ── */
+/* ── markdown highlight tokens (Monaco light) ── */
 
 .hl-h1 {
-	color: #4EC9B0;
+	color: #267f99;
 	font-weight: 700;
 }
 
 .hl-h2 {
-	color: #9CDCFE;
+	color: #795e26;
 	font-weight: 600;
 }
 
 .hl-h3 {
-	color: #9CDCFE;
+	color: #795e26;
 	font-weight: 500;
 }
 
 .hl-fence {
-	color: #569CD6;
+	color: #0000ff;
 }
 
 .hl-code {
-	color: #CE9178;
+	color: #a31515;
 }
 
 .hl-list {
-	color: #C586C0;
+	color: #af00db;
 }
 
 .hl-bold {
-	color: #DCDCAA;
+	color: #795e26;
 	font-weight: 600;
 }
 
@@ -1220,46 +1253,66 @@ body {
 	margin-top: 4px;
 }
 
-/* ── JSON highlight tokens ── */
+/* ── JSON highlight tokens (Monaco light) ── */
 
 .json-key {
-	color: #9CDCFE;
+	color: #0451a5;
 }
 
 .json-str {
-	color: #CE9178;
+	color: #a31515;
 }
 
 .json-num {
-	color: #B5CEA8;
+	color: #098658;
 }
 
 .json-kw {
-	color: #569CD6;
+	color: #0000ff;
 }
 
-/* ── SQL highlight tokens (Monaco dark) ── */
+/* ── JS highlight tokens (Monaco light) ── */
+
+.js-kw {
+	color: #0000ff;
+	font-weight: 600;
+}
+
+.js-str {
+	color: #a31515;
+}
+
+.js-num {
+	color: #098658;
+}
+
+.js-comment {
+	color: #008000;
+	font-style: italic;
+}
+
+/* ── SQL highlight tokens (Monaco light) ── */
 
 .sql-kw {
-	color: #569CD6;
+	color: #0000ff;
 	font-weight: 600;
 }
 
 .sql-str {
-	color: #CE9178;
+	color: #a31515;
 }
 
 .sql-num {
-	color: #B5CEA8;
+	color: #098658;
 }
 
 .sql-comment {
-	color: #6A9955;
+	color: #008000;
 	font-style: italic;
 }
 
 .sql-id {
-	color: #9CDCFE;
+	color: #001080;
 }
 
 /* ── thin scrollbars (global) ── */

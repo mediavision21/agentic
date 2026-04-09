@@ -18,7 +18,8 @@ mediavision/
 │   ├── main.py                       # FastAPI app, lifespan, CORS, routes
 │   ├── db.py                         # asyncpg pool, schema introspection, query exec
 │   ├── skills.py                     # generates skill files from DB schema (files kept, not used in prompt)
-│   ├── agent.py                      # three-stage orchestrator: template → guided LLM → full schema LLM
+│   ├── intent.py                      # Stage 0: intent extraction + default resolution (pure Python, no LLM)
+│   ├── agent.py                      # pipeline orchestrator: intent → routing → generation (template / guided / open)
 │   ├── stage2.py                     # template-guided SQL generation (2 tries × 3 templates)
 │   ├── stage3.py                     # full-schema fallback SQL generation
 │   ├── plot_config.py                # plot+summary LLM call; loads rules from skill/plot.md at runtime
@@ -51,36 +52,55 @@ mediavision/
     └── {table_name}.txt              # columns with distinct values or range stats per column
 ```
 
-## Three-Stage LLM Pipeline
+## Pipeline: Intent Resolution → Routing → Generation
 
-### Stage 1 — Template Matching (Haiku, fast + cheap)
+### Stage 0 — Intent Resolution (Python, no LLM, <5ms)
+Before any LLM call, `intent.py` extracts structured intent from the user prompt using keyword matching:
+- Extracts: kpi_type, kpi_dimension, category, countries, services, time period, top_n
+- Detects service filter context (streaming/social/AVOD/FAST/public service) → maps to `is_*` boolean flags on `macro.nordic`
+- Detects "video type comparison" queries → sets multi-dimension mode (svod, ssvod, bsvod, hvod, tve, pay_tv_channel)
+- Fills missing slots with sensible defaults per `skills/IntentionResolution.md` rules
+- Emits a `preamble` SSE event describing what was assumed
+- Generates a "Resolved Query Intent" block injected into LLM system prompts
+- Generates contextual follow-on suggestions (geographic drill, time drill, metric switch)
+
+**Core principle: generate first, refine after.** Never block on a missing filter. Apply defaults, show data, offer refinements.
+
+**Key mapping note**: `macro.nordic` strips `_service` from kpi_type (via REGEXP_REPLACE). Service-level rows are identified by `canonical_name IS NOT NULL`.
+
+**Service flag columns** (denormalized from `dim_service` onto `macro.nordic`): `is_streaming_service`, `is_social_video`, `is_avod`, `is_fast`, `is_public_service`. Use directly in WHERE — no join needed.
+
+### Stage 1 — Routing (Haiku, fast + cheap)
 System prompt contains only: brief role description + list of all template filenames and their `description` fields.
 User prompt is matched against this list. Model returns up to 6 candidates with a similarity score (0.0–1.0).
 
-- **Score ≥ 0.95 (full match)**: use template SQL directly — no SQL generation needed.
-  - If template SQL has `[[ AND {{var}} ]]` placeholders, run filter resolution (see Template Filters below).
-  - Execute SQL, stream rows, render template plot code, generate summary.
-- **Score < 0.95**: proceed to Stage 2 with top matches as few-shot examples.
-- **No match**: skip Stage 2, go directly to Stage 3.
+- **Score >= 0.95**: Stage 2 variant = **Template Execution**
+- **Score < 0.95**: Stage 2 variant = **Guided Generation** (top matches as few-shot examples)
+- **No match**: Stage 2 variant = **Open Generation**
 
-### Stage 2 — Template-Guided SQL Generation (Sonnet)
-Runs only when Stage 1 found partial matches. Two-step LLM process:
+### Stage 2a — Template Execution
+Use template SQL directly — no SQL generation needed.
+- Step: SQL — if template SQL has `[[ AND {{var}} ]]` placeholders, resolve from: (1) user prompt via LLM, (2) intent defaults, (3) registry defaults. Execute SQL, stream rows.
+- Step: Plot & Summary — render template plot code, generate summary.
 
-**SQL step** (streaming): system prompt = role + schema + sample data CSV + top 3 template matches as few-shot examples. LLM returns PRIMARY sql block + optional ALTERNATIVE sql blocks. Each is tried in order until one returns rows.
-- If all alternatives return 0 rows: **Try 2** (non-streaming) repeats with template matches 4–6.
-- If all tries return 0 rows → hand off to Stage 3.
+### Stage 2b — Guided Generation (Sonnet)
+Runs only when Stage 1 found partial matches. Each stage has two steps:
 
-**Plot+summary step** (after rows confirmed): sample rows sent to a single LLM call that returns a combined JSON with `plot` (Observable Plot config) and `summary` (2-4 sentence text). Uses `skill/plot.md` rules: always `period_label` on x-axis, never `year`/`quarter_label`; `period_sort` used only for sorting.
+**Step: SQL** (streaming): system prompt = role + schema (fetched from DB, cached) + sample data CSV + resolved intent block + top 3 template SQL as few-shot examples (no plot code). LLM returns PRIMARY sql block + optional ALTERNATIVE sql blocks. Each is tried in order until one returns rows.
+- If all alternatives return 0 rows: **Try 2** (non-streaming) repeats with template matches 4-6.
+- If all tries return 0 rows -> hand off to Open Generation.
 
-### Stage 3 — Full Schema Fallback (Sonnet)
-Runs when Stage 1 found no matches, or Stage 2 returned no data. Same two-step process:
+**Step: Plot & Summary** (after rows confirmed): sample rows sent to a separate LLM call that returns a combined JSON with `plot` (Observable Plot config) and `summary` (2-4 sentence text). Uses `skill/plot.md` rules (chart type selection: grouped bars for period comparison via `fx`, stacked bars for share data, lines for trends). No schema/SQL rules are included in this prompt.
 
-**SQL step** (streaming): system prompt = role + complete SKILL.md schema (no template hints). LLM returns SQL + alternatives. Each tried until rows found.
-**Plot+summary step**: single LLM call generates Observable Plot config + summary from sample rows.
+### Stage 2c — Open Generation (Sonnet)
+Runs when Stage 1 found no matches, or Guided Generation returned no data. Same two steps:
 
-> **Sample data**: `load_data_examples()` in `stage2.py` runs a one-time query against `macro.nordic` (latest quarter, sweden + norway, 5 KPI types, ≤5 rows each ≈ 50 rows). Result cached in-process as CSV and appended to both Stage 2 and Stage 3 system prompts.
+**Step: SQL** (streaming): system prompt = role + schema from DB + resolved intent block (no template hints). LLM returns SQL + alternatives. Each tried until rows found.
+**Step: Plot & Summary**: separate LLM call generates Observable Plot config + summary from sample rows.
 
-> **Note:** The `skills/` directory files (per-column stats) are generated at startup and kept on disk for reference, but are **not injected** into any prompt. Templates and the `nordic.sql` schema description serve as the primary context.
+> **Schema source**: `fetch_schema_text()` in `db.py` queries `information_schema` for tables listed in `schema_tables` (currently `['nordic']`), builds a markdown table of columns/types/stats, and caches in-process. Shared by Stage 3 and Stage 4.
+
+> **Sample data**: `load_data_examples()` runs a one-time query against `macro.nordic` (latest quarter, sweden + norway, 5 KPI types, ≤5 rows each ≈ 50 rows). Result cached in-process as CSV and appended to both Stage 3 and Stage 4 system prompts.
 
 ## Template Format (YAML)
 ```yaml
@@ -106,50 +126,58 @@ Metabase-style `[[ AND {{name}} ]]` placeholders in SQL are resolved before exec
 **Global registry** (`template_filters.py`): defines choices + defaults for `country`, `year`, `quarter_label`.
 **Per-YAML override**: a template's `filters` key overrides specific fields (e.g. restrict `quarter_label` to `[Q1]` only).
 
-Two resolution paths:
-- **Right-panel click** (`GET /api/templates/{name}`): substitutes defaults automatically, no user input needed.
-- **Chat query** (full match in Stage 1): runs a fast LLM call to extract filter values from the user's message. If none found, asks the user with a `<!--suggestions-->` block.
+Three resolution paths (in priority order):
+1. **LLM extraction**: fast Haiku call extracts filter values from user message
+2. **Intent defaults**: resolved intent fills filters (country, year, quarter from intent)
+3. **Registry defaults**: global FILTER_REGISTRY defaults as last resort
+Only asks the user if all three fail (very rare).
 
 ## Data Flow
 ```
 User prompt
     → POST /api/query {prompt, backend, history, session_id}
 
-    [Stage 1 — Haiku]
+    [Stage 0 — Intent Resolution (Python, no LLM)]
+    → extract_intent(): keyword-match kpi_type, services, countries, time, top_n
+    → resolve_defaults(): fill missing slots per IntentionResolution.md rules
+    → emit preamble SSE event ("Showing SVOD penetration — Nordic average, latest vs year-ago")
+    → build intent_block for LLM system prompt injection
+
+    [Stage 1 — Routing (Haiku)]
     → template_router: load all YAML templates
     → Haiku matches prompt vs. template descriptions → top 6 with scores
 
-    [Full match ≥ 0.95]
-    → detect [[ {{placeholders}} ]] in template SQL
-    → if placeholders: fast LLM call extracts filter values from prompt
-        → if no values found: ask user (suggestions block), stop
-        → if values found: substitute into SQL
-    → execute SQL → stream rows + template plot code + summary
+    [Stage 2 — Template Execution (score >= 0.95)]
+    → Step: SQL — detect [[ {{placeholders}} ]] in template SQL
+        → resolve filters: LLM → intent defaults → registry defaults
+        → execute SQL → stream rows
+    → Step: Plot & Summary — render template plot code + generate summary
 
-    [Partial match → Stage 2 — Sonnet]
-    → SQL step (streaming): top 3 templates as examples → LLM returns SQL + alternatives
-    → try each SQL in order until rows found
-    → if all return 0 rows: try2 with templates 4-6 (non-streaming), same SQL-try loop
-    → if all tries return 0 rows: hand off to Stage 3
+    [Stage 2 — Guided Generation (partial match, Sonnet)]
+    → Step: SQL (streaming): top 3 templates + intent_block as context → LLM returns SQL
+        → try each SQL in order until rows found
+        → if all return 0 rows: try2 with templates 4-6 (non-streaming)
+        → if all tries return 0 rows: hand off to Open Generation
+    → Step: Plot & Summary: sample rows → separate LLM call → plot config + summary
 
-    [No match, or Stage 2 returned no data → Stage 3 — Sonnet]
-    → SQL step (streaming): full SKILL.md schema, no template hints → SQL + alternatives
-    → try each SQL in order until rows found
+    [Stage 2 — Open Generation (no match or Guided failed, Sonnet)]
+    → Step: SQL (streaming): full schema + intent_block → SQL + alternatives
+        → try each SQL in order until rows found
+    → Step: Plot & Summary: sample rows → separate LLM call → plot config + summary
 
-    [After rows found — Stage 2 or Stage 3]
-    → Plot step: sample rows sent to separate LLM call → Observable Plot config JSON
-    → generate summary
+    → emit intent-based suggestions ("Break down by country", "Show trend", "Switch to reach")
 
-    → SSE events: msg_id, token, sql, rows, plot_config, template_plots, summary, suggestions
+    → SSE events: conversation_id, msg_id, token, sql, rows, plot_config, template_plots, summary, suggestions, prompt, messages, response
     → llm_logs saved with user + conversation_id
     → frontend: user bubble (right) + assistant bubble (left)
-    → assistant bubble: SQL collapsible, table, chart inline
+    → assistant bubble: SQL collapsible, table, chart inline, debug expandables (Prompt/Messages/Response)
 ```
 
 ## Persistence
 - **SQLite** (`mediavision.db`): llm_logs, evaluations, users, conversations
 - **conversations** table: id, user, title, created_at — groups messages by session
 - **llm_logs**: each row has conversation_id + user for filtering
+- **ID format**: both `conversation_id` and `llm_logs.id` (msg_id) use server-generated timestamps `yyyy-mm-dd HH:mm:ss.nnnnnnnnn` (nanosecond precision via microsecond×1000). `conversation_id` is generated on the first message of a session and reused for all subsequent messages. `msg_id` is generated per LLM interaction.
 - Chat history loaded per-user on login, lazy-loaded on click
 - Eval view loads full conversation from conversation_id
 

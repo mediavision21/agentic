@@ -61,13 +61,14 @@ All three columns are already present on every row in `macro.nordic`.
 
 ## service flag columns
 Denormalized from `dim_service`. NULL on rows with no service (`canonical_name IS NULL`).
-- `is_social_video`: TRUE for social video platforms (YouTube, TikTok, etc.)
-- `is_streaming_service`: TRUE for SVOD/streaming services
-- `is_avod`: TRUE for ad-supported VOD
-- `is_fast`: TRUE for free ad-supported streaming TV channels
-- `is_public_service`: TRUE for public broadcaster services
+- `is_streaming_service`: TRUE for paid SVOD/streaming services (Netflix, Disney+, HBO Max, Viaplay, Prime Video, etc.)
+- `is_social_video`: TRUE for social video platforms (YouTube, TikTok, Instagram, Snapchat, Facebook, Twitch)
+- `is_avod`: TRUE for free ad-supported VOD services (Pluto TV, Tubi, etc.)
+- `is_fast`: TRUE for free ad-supported streaming TV channels (linear-style streaming)
+- `is_public_service`: TRUE for public broadcaster streaming services (SVT Play, NRK, DR, Yle Areena, TV4 Play)
 
-Use these directly in WHERE instead of subqueries on `dim_service`.
+Use these directly in WHERE clauses on `macro.nordic` — no join to `dim_service` needed.
+Note: There are no `is_tve` or `is_tv_operator` flags. To filter for TVE, use `kpi_dimension = 'tve'` instead.
 
 ## kpi_detail
 Granular sub-dimension for genre breakdowns (e.g. `drama_foreign`, `news_debate`, `factual_documentary`, `drama_local`, `sports_foreign`). NULL on non-genre rows.

@@ -48,7 +48,7 @@ Return only the lines above, nothing else."""
 
 
 async def match_top_templates(prompt, templates):
-    # returns list of {"file": str, "score": float} sorted by score desc, or []
+    # returns (results, debug) where results = list of {"file": str, "score": float}, debug = {"prompt": str, "messages": list, "response": str}
     lines = []
     for fname, data in templates.items():
         desc = data.get("description", fname)
@@ -56,11 +56,13 @@ async def match_top_templates(prompt, templates):
     template_list = "\n".join(lines)
 
     messages = [{"role": "user", "content": f"Templates:\n{template_list}\n\nUser question: {prompt}"}]
+    debug = {"prompt": MATCH_SYSTEM_PROMPT, "messages": messages, "response": ""}
     try:
         answer = await llm.complete_fast(MATCH_SYSTEM_PROMPT, messages)
+        debug["response"] = answer
         print(f"[template_router] match result:\n{answer}")
         if answer == "NONE":
-            return []
+            return [], debug
         results = []
         for line in answer.splitlines():
             line = line.strip()
@@ -77,10 +79,10 @@ async def match_top_templates(prompt, templates):
             if fname in templates:
                 results.append({"file": fname, "score": score})
         results.sort(key=lambda x: x["score"], reverse=True)
-        return results[:6]
+        return results[:6], debug
     except Exception as e:
         print(f"[template_router] match error: {e}")
-        return []
+        return [], debug
 
 
 FILTER_RESOLVE_PROMPT = """You are given a user message and a list of SQL template filter placeholders with their available choices.
@@ -112,6 +114,26 @@ async def _resolve_filters(prompt, placeholders, choices_map):
         return None
 
 
+def _build_filter_defaults_from_intent(intent, placeholders):
+    """Map resolved intent fields to template filter placeholder values."""
+    resolved = {}
+    countries = intent.get("countries", [])
+    if countries:
+        if "country" in placeholders:
+            resolved["country"] = countries
+        if "country_label" in placeholders:
+            resolved["country_label"] = [c.title() for c in countries]
+    if intent.get("year") and "year" in placeholders:
+        resolved["year"] = [int(intent["year"])]
+    if intent.get("quarter") and "quarter_label" in placeholders:
+        resolved["quarter_label"] = [f"Q{intent['quarter']}"]
+    if intent.get("quarter") and "period_label" in placeholders:
+        resolved["period_label"] = [f"Q{intent['quarter']}"]
+    if intent.get("service_ids") and "service" in placeholders:
+        resolved["service"] = intent["service_ids"]
+    return resolved
+
+
 async def run_matched_template(options):
     prompt = options["prompt"]
     match = options["match"]
@@ -121,6 +143,7 @@ async def run_matched_template(options):
     user = options["user"]
     conversation_id = options["conversation_id"]
     generate_summary = options["generate_summary"]
+    intent = options.get("intent")
 
     matched_file = match["file"]
     sql = template["sql"].strip()
@@ -133,6 +156,24 @@ async def run_matched_template(options):
         yaml_filters = template.get("filters")
         choices_map = await load_filter_choices(placeholders, yaml_filters)
         result = await _resolve_filters(prompt, placeholders, choices_map)
+        if result is None and intent:
+            # use intent defaults instead of asking user
+            intent_resolved = _build_filter_defaults_from_intent(intent, placeholders)
+            if intent_resolved:
+                print(f"[template_router] using intent defaults: {intent_resolved}")
+                sql = apply_filters(sql, intent_resolved)
+                result = (intent_resolved, [])
+        if result is None:
+            # fallback: use registry defaults
+            registry_defaults = {}
+            for name in placeholders:
+                spec = FILTER_REGISTRY.get(name, {})
+                if spec.get("default"):
+                    registry_defaults[name] = spec["default"]
+            if registry_defaults:
+                print(f"[template_router] using registry defaults: {registry_defaults}")
+                sql = apply_filters(sql, registry_defaults)
+                result = (registry_defaults, [])
         if result is None:
             lines = ["To show this chart, please specify the filters:"]
             suggestions = []
@@ -152,6 +193,7 @@ async def run_matched_template(options):
         sql = apply_filters(sql, resolved)
         print(f"[template_router] filters applied: {resolved}")
 
+    yield {"type": "step", "label": "SQL"}
     yield {"type": "sql", "sql": sql, "plot_config": None, "explanation": description}
 
     try:
@@ -166,6 +208,7 @@ async def run_matched_template(options):
         )
         return
 
+    yield {"type": "step", "label": "Plot & Summary"}
     if template.get("plots"):
         yield {"type": "template_plots", "plots": template["plots"]}
 

@@ -48,7 +48,7 @@ function App() {
 				.then(function (r) { return r.json() })
 				.then(function (data) {
 					const history = (data.conversations || []).map(function (c) {
-						return { id: c.id, title: c.title, messages: [], loaded: false }
+						return { id: c.id, serverId: c.id, title: c.title, messages: [], loaded: false }
 					})
 					const fresh = { id: makeSessionId(), title: "New chat", messages: [] }
 					setSessions([...history, fresh])
@@ -268,7 +268,7 @@ function App() {
 				const resp = await fetch("/api/query", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ prompt, backend, history, session_id: String(sessionId) }),
+					body: JSON.stringify({ prompt, backend, history, session_id: currentSession_?.serverId || "" }),
 					credentials: "include",
 				})
 				const reader = resp.body.getReader()
@@ -287,8 +287,17 @@ function App() {
 						const event = JSON.parse(line.slice(6))
 						console.log("[sse]", event.type, event)
 
-						if (event.type === "msg_id") {
+						if (event.type === "conversation_id") {
+							setSessions(function (prev) {
+								return prev.map(function (s) {
+									if (s.id !== sessionId) return s
+									return { ...s, serverId: event.id }
+								})
+							})
+						} else if (event.type === "msg_id") {
 							patchLastMsg(sessionId, function (c) { return { ...c, msg_id: event.id } })
+						} else if (event.type === "preamble") {
+							patchLastMsg(sessionId, function (c) { return { ...c, preamble: event.text } })
 						} else if (event.type === "token") {
 							patchLastMsg(sessionId, function (c) { return { ...c, streaming_text: (c.streaming_text || "") + event.text } })
 						} else if (event.type === "text") {
@@ -307,6 +316,59 @@ function App() {
 							patchLastMsg(sessionId, function (c) { return { ...c, template_plots: event.plots } })
 						} else if (event.type === "distilled_summary") {
 							patchLastMsg(sessionId, function (c) { return { ...c, distilled_summary: event.text } })
+						} else if (event.type === "stage") {
+							patchLastMsg(sessionId, function (c) {
+								const stages = (c.stages || []).concat({ stage: event.stage, label: event.label, matches: event.matches })
+								return { ...c, stages }
+							})
+						} else if (event.type === "step") {
+							patchLastMsg(sessionId, function (c) {
+								const stages = c.stages || []
+								if (stages.length > 0) {
+									const last = stages[stages.length - 1]
+									last.steps = (last.steps || []).concat({ label: event.label })
+								}
+								return { ...c, stages: stages.slice() }
+							})
+						} else if (event.type === "prompt") {
+							patchLastMsg(sessionId, function (c) {
+								const stages = c.stages || []
+								if (stages.length > 0) {
+									const last = stages[stages.length - 1]
+									if (last.steps && last.steps.length > 0) {
+										last.steps[last.steps.length - 1].prompt = event.text
+									} else {
+										last.prompt = event.text
+									}
+								}
+								return { ...c, stages: stages.slice() }
+							})
+						} else if (event.type === "messages") {
+							patchLastMsg(sessionId, function (c) {
+								const stages = c.stages || []
+								if (stages.length > 0) {
+									const last = stages[stages.length - 1]
+									if (last.steps && last.steps.length > 0) {
+										last.steps[last.steps.length - 1].messages = event.messages
+									} else {
+										last.messages = event.messages
+									}
+								}
+								return { ...c, stages: stages.slice() }
+							})
+						} else if (event.type === "response") {
+							patchLastMsg(sessionId, function (c) {
+								const stages = c.stages || []
+								if (stages.length > 0) {
+									const last = stages[stages.length - 1]
+									if (last.steps && last.steps.length > 0) {
+										last.steps[last.steps.length - 1].response = event.text
+									} else {
+										last.response = event.text
+									}
+								}
+								return { ...c, stages: stages.slice() }
+							})
 						} else if (event.type === "error") {
 							patchLastMsg(sessionId, function (c) { return { ...c, loading: false, error: event.error } })
 						}
@@ -320,11 +382,17 @@ function App() {
 			setLoading(false)
 			// persist conversation on first message
 			if (isFirstMessage) {
-				fetch("/api/conversations", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ id: String(sessionId), title: prompt.slice(0, 40) }),
-					credentials: "include",
+				setSessions(function (prev) {
+					const sess = prev.find(function (s) { return s.id === sessionId })
+					if (sess && sess.serverId) {
+						fetch("/api/conversations", {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ id: sess.serverId, title: prompt.slice(0, 40) }),
+							credentials: "include",
+						})
+					}
+					return prev
 				})
 			}
 		}

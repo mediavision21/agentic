@@ -12,6 +12,8 @@ Prefer derived signals when possible: growth trend (not just raw value), engagem
 ## bar mark
 
 - shall NEVER stack a bar on top of another one
+- For **period comparison** (2-3 periods with multiple categories like services/countries): use `barY` with `fx` = category column (e.g. `service`, `country`, `business_model`), `x` = `period_label`, `fill` = `period_label`. This produces **grouped (side-by-side) bars**. Set `x: {axis: null}` since the color legend identifies periods.
+- **Exception — share/composition data**: When the metric represents shares that sum to 100% within each period (column name contains `share`, or the question asks "share of", "breakdown", "composition"), use **stacked bars** (`barY` with `y` = metric, `x` = `period_label`, `fill` = category column). This is the ONE case where stacking is correct — it shows parts of a whole. Do NOT use line charts for share data.
 
 ## Y-axis rule (CRITICAL)
 

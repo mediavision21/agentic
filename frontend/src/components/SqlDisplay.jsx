@@ -29,12 +29,7 @@ function SqlDisplay(options) {
 
     return (
         <details className="collapsible">
-            <summary>
-                {label}
-                {onRerun && !editing && (
-                    <button className="code-inline-btn" onClick={openEdit}>edit</button>
-                )}
-            </summary>
+            <summary>{label}</summary>
             <div className="collapsible-body">
                 {editing ? (
                     <div className="code-edit-wrap">
@@ -53,8 +48,15 @@ function SqlDisplay(options) {
                         </div>
                     </div>
                 ) : (
-                    <div className="sql-block">
-                        <code dangerouslySetInnerHTML={{ __html: highlightSQL(code) }} />
+                    <div>
+                        <div className="sql-block">
+                            <code dangerouslySetInnerHTML={{ __html: highlightSQL(code) }} />
+                        </div>
+                        {onRerun && (
+                            <div className="code-edit-actions">
+                                <button className="code-inline-btn" onClick={openEdit}>edit</button>
+                            </div>
+                        )}
                     </div>
                 )}
                 {explanation && <div className="explanation">{explanation}</div>}

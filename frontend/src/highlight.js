@@ -73,37 +73,111 @@ export function highlightSQL(sql) {
 	return out
 }
 
-// Tokenize markdown line-by-line. Inside ```sql fences, applies SQL highlight.
+// Tokenize markdown line-by-line. Inside code fences, applies language-specific highlight.
 export function highlightMarkdown(text) {
 	const lines = text.split('\n')
 	let inCode = false
-	let isSQLFence = false
+	let fenceLang = null // "sql", "js", "json", or null
 
 	return lines.map(function (line) {
 		// code fence boundary — check raw line before escaping
 		if (/^```/.test(line)) {
 			const entering = !inCode
 			inCode = !inCode
-			isSQLFence = entering && /^```sql/i.test(line)
-			return `<span className="hl-fence">${esc(line)}</span>`
+			if (entering) {
+				if (/^```sql/i.test(line)) fenceLang = "sql"
+				else if (/^```js|^```javascript/i.test(line)) fenceLang = "js"
+				else if (/^```json/i.test(line)) fenceLang = "json"
+				else fenceLang = null
+			}
+			return `<span class="hl-fence">${esc(line)}</span>`
 		}
 
 		if (inCode) {
-			// apply SQL highlighting inside ```sql fences
-			if (isSQLFence) return highlightSQL(line)
-			return `<span className="hl-code">${esc(line)}</span>`
+			if (fenceLang === "sql") return highlightSQL(line)
+			if (fenceLang === "js") return highlightJS(line)
+			if (fenceLang === "json") return highlightJSON(line)
+			return `<span class="hl-code">${esc(line)}</span>`
 		}
 
 		const e = esc(line)
 
-		if (/^### /.test(e)) return `<span className="hl-h3">${e}</span>`
-		if (/^## /.test(e)) return `<span className="hl-h2">${e}</span>`
-		if (/^# /.test(e)) return `<span className="hl-h1">${e}</span>`
-		if (/^[-*] /.test(e)) return `<span className="hl-list">${e}</span>`
+		if (/^### /.test(e)) return `<span class="hl-h3">${e}</span>`
+		if (/^## /.test(e)) return `<span class="hl-h2">${e}</span>`
+		if (/^# /.test(e)) return `<span class="hl-h1">${e}</span>`
+		if (/^[-*] /.test(e)) return `<span class="hl-list">${e}</span>`
 
 		// inline **bold**
-		return e.replace(/\*\*(.+?)\*\*/g, '<span className="hl-bold">**$1**</span>')
+		return e.replace(/\*\*(.+?)\*\*/g, '<span class="hl-bold">**$1**</span>')
 	}).join('\n')
+}
+
+const JS_KEYWORDS = new Set([
+	'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue',
+	'default', 'delete', 'do', 'else', 'export', 'extends', 'finally', 'for',
+	'from', 'function', 'if', 'import', 'in', 'instanceof', 'let', 'new',
+	'of', 'return', 'switch', 'throw', 'try', 'typeof', 'var', 'void',
+	'while', 'yield', 'true', 'false', 'null', 'undefined', 'this',
+])
+
+export function highlightJS(code) {
+	let out = ''
+	let i = 0
+	while (i < code.length) {
+		// single-line comment
+		if (code[i] === '/' && code[i + 1] === '/') {
+			let j = code.indexOf('\n', i)
+			if (j === -1) j = code.length
+			out += `<span class="js-comment">${esc(code.slice(i, j))}</span>`
+			i = j
+			continue
+		}
+		// multi-line comment
+		if (code[i] === '/' && code[i + 1] === '*') {
+			let j = code.indexOf('*/', i + 2)
+			j = j === -1 ? code.length : j + 2
+			out += `<span class="js-comment">${esc(code.slice(i, j))}</span>`
+			i = j
+			continue
+		}
+		// string (single or double quote or backtick)
+		if (code[i] === '"' || code[i] === "'" || code[i] === '`') {
+			const q = code[i]
+			let j = i + 1
+			while (j < code.length) {
+				if (code[j] === '\\') { j += 2; continue }
+				if (code[j] === q) { j++; break }
+				j++
+			}
+			out += `<span class="js-str">${esc(code.slice(i, j))}</span>`
+			i = j
+			continue
+		}
+		// number
+		if (/[0-9]/.test(code[i]) && (i === 0 || /[^a-zA-Z0-9_$]/.test(code[i - 1]))) {
+			let j = i
+			while (j < code.length && /[0-9.eExXa-fA-F_]/.test(code[j])) j++
+			out += `<span class="js-num">${esc(code.slice(i, j))}</span>`
+			i = j
+			continue
+		}
+		// word
+		if (/[a-zA-Z_$]/.test(code[i])) {
+			let j = i
+			while (j < code.length && /[a-zA-Z0-9_$]/.test(code[j])) j++
+			const word = code.slice(i, j)
+			if (JS_KEYWORDS.has(word)) {
+				out += `<span class="js-kw">${esc(word)}</span>`
+			} else {
+				out += esc(word)
+			}
+			i = j
+			continue
+		}
+		out += esc(code[i])
+		i++
+	}
+	return out
 }
 
 export function highlightJSON(obj) {

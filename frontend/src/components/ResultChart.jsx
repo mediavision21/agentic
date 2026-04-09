@@ -201,8 +201,14 @@ function detectChartType(options) {
     }) || null
     const firstX = rows[0][xCol]
     if (isDateLike(firstX)) return { type: "line", x: xCol, y: yCol, stroke: strokeCol }
-    // period_label is categorical but represents time → use line
-    if (xCol === "period_label") return { type: "line", x: xCol, y: yCol, stroke: strokeCol }
+    // period_label: few periods + category → grouped bars; many periods → line
+    if (xCol === "period_label") {
+        const uniquePeriods = new Set(rows.map(function (r) { return r[xCol] }))
+        if (uniquePeriods.size <= 3 && strokeCol) {
+            return { type: "bar", x: xCol, y: yCol, fill: "period_label", fx: strokeCol }
+        }
+        return { type: "line", x: xCol, y: yCol, stroke: strokeCol }
+    }
     if (isNumeric(firstX)) return { type: "dot", x: xCol, y: yCol, stroke: strokeCol }
     return { type: "bar", x: xCol, y: yCol, fill: strokeCol }
 }
@@ -239,6 +245,7 @@ function buildFallback(options) {
     let marks = []
     if (chartInfo.type === "bar") {
         const barOpts = { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.fill || voiColors.series1 }
+        if (chartInfo.fx) barOpts.fx = chartInfo.fx
         marks = [
             Plot.barY(data, barOpts),
             Plot.ruleY([0]),
@@ -279,6 +286,10 @@ function buildFallback(options) {
         marks,
     }
     if (hasCategory) plotOpts.color = { ...voiTheme.color, legend: true }
+    if (chartInfo.fx) {
+        plotOpts.fx = { label: null }
+        plotOpts.x = { ...plotOpts.x, axis: null }
+    }
     return Plot.plot(plotOpts)
 }
 
@@ -406,12 +417,7 @@ function ResultChart(options) {
             {renderError && <div className="code-error">Plot config render error: {renderError}</div>}
             {activeConfig && (
                 <details className="collapsible">
-                    <summary>
-                        Plot config
-                        {!editing && (
-                            <button className="code-inline-btn" onClick={openEdit}>edit</button>
-                        )}
-                    </summary>
+                    <summary>Plot config</summary>
                     <div className="collapsible-body">
                         {editing ? (
                             <div className="code-edit-wrap">
@@ -434,11 +440,10 @@ function ResultChart(options) {
                                 <div className="sql-block">
                                     <code dangerouslySetInnerHTML={{ __html: highlightJSON(activeConfig) }} />
                                 </div>
-                                {msg_id && (
-                                    <div className="code-edit-actions">
-                                        <button className="code-inline-btn" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "save"}</button>
-                                    </div>
-                                )}
+                                <div className="code-edit-actions">
+                                    <button className="code-inline-btn" onClick={openEdit}>edit</button>
+                                    {msg_id && <button className="code-inline-btn" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "save"}</button>}
+                                </div>
                             </div>
                         )}
                     </div>

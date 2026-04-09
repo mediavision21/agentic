@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import * as Plot from "@observablehq/plot"
+import { highlightMarkdown, highlightJSON } from "../highlight.js"
 import SqlDisplay from "./SqlDisplay.jsx"
 import ResultTable from "./ResultTable.jsx"
 import ResultChart from "./ResultChart.jsx"
@@ -167,13 +168,47 @@ function ChatMessage(options) {
 	}
 
 	// assistant
-	const { loading, error, sql, explanation, text, columns, rows, summary, plot_config, streaming_text, suggestions, msg_id, template_plots } = message.content
+	const { loading, error, sql, explanation, text, columns, rows, summary, plot_config, streaming_text, suggestions, msg_id, template_plots, stages } = message.content
 	const displayColumns = localColumns || columns
 	const displayRows = localRows || rows
+	// const showDebug = location.hostname === "localhost" || localStorage.getItem("debug") === "1"
+	const showDebug = true
 
 	return (
 		<div className="bubble-row assistant">
 			<div className="bubble bubble-assistant">
+				{showDebug && stages && stages.map(function (s, i) {
+					return (
+						<details key={i} className="debug-stage collapsible">
+							<summary className="debug-stage-label">Stage {s.stage}: {s.label}</summary>
+							{s.prompt && (
+								<details className="collapsible"><summary>Prompt</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(s.prompt) }} /></details>
+							)}
+							{s.messages && (
+								<details className="collapsible"><summary>Messages</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightJSON(s.messages) }} /></details>
+							)}
+							{s.response && (
+								<details className="collapsible"><summary>Response</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(s.response) }} /></details>
+							)}
+							{s.steps && s.steps.map(function (step, j) {
+								return (
+									<details key={j} className="debug-step collapsible">
+										<summary>{step.label}</summary>
+										{step.prompt && (
+											<details className="collapsible"><summary>Prompt</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(step.prompt) }} /></details>
+										)}
+										{step.messages && (
+											<details className="collapsible"><summary>Messages</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightJSON(step.messages) }} /></details>
+										)}
+										{step.response && (
+											<details className="collapsible"><summary>Response</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(step.response) }} /></details>
+										)}
+									</details>
+								)
+							})}
+						</details>
+					)
+				})}
 				{loading && (
 					<div>
 						<span className="loading-dots">Thinking</span>
@@ -185,6 +220,8 @@ function ChatMessage(options) {
 				)}
 
 				{error && <p className="error-msg">{error}</p>}
+
+				{message.content.preamble && <p className="preamble">{message.content.preamble}</p>}
 
 				{/* conversational reply — show as markdown, no SQL block */}
 				{text && !sql && <Markdown text={text} />}

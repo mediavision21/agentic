@@ -6,6 +6,8 @@ from urllib.parse import urlparse, urlunparse, quote
 
 pool = None
 schema = 'macro'
+_schema_text_cache = None
+schema_tables = ['nordic']
 
 test_sql = f"""
 	SELECT 
@@ -54,11 +56,16 @@ async def close_pool():
 
 
 async def get_tables():
-	# returns list of table names in public schema
+	# returns list of table/view/materialized view names in schema
 	sql = f"""
 		SELECT table_name
 		FROM information_schema.tables
-		WHERE table_schema = '{schema}' AND table_type = 'BASE TABLE'
+		WHERE table_schema = '{schema}'
+		  AND table_type IN ('BASE TABLE', 'VIEW')
+		UNION
+		SELECT matviewname AS table_name
+		FROM pg_matviews
+		WHERE schemaname = '{schema}'
 		ORDER BY table_name
 	"""
 	async with pool.acquire() as conn:
@@ -67,7 +74,7 @@ async def get_tables():
 
 
 async def get_columns(table):
-	# returns list of {name, type, nullable} for a table
+	# returns list of {name, type, nullable} for a table, view, or materialized view
 	sql = f"""
 		SELECT column_name, data_type, is_nullable
 		FROM information_schema.columns
@@ -78,6 +85,24 @@ async def get_columns(table):
 	"""
 	async with pool.acquire() as conn:
 		rows = await conn.fetch(sql, table)
+	# fallback to pg_catalog for materialized views (not in information_schema)
+	if not rows:
+		sql_matview = f"""
+			SELECT a.attname AS column_name,
+			       pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+			       CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable
+			FROM pg_catalog.pg_attribute a
+			JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+			JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+			WHERE n.nspname = '{schema}'
+			  AND c.relname = $1
+			  AND a.attnum > 0
+			  AND NOT a.attisdropped
+			ORDER BY a.attnum
+			LIMIT 50
+		"""
+		async with pool.acquire() as conn:
+			rows = await conn.fetch(sql_matview, table)
 	return [
 		{"name": r["column_name"], "type": r["data_type"], "nullable": r["is_nullable"]}
 		for r in rows
@@ -216,4 +241,32 @@ async def query_single_column(sql):
 		else:
 			data.append(str(v))
 	return data
+
+
+async def fetch_schema_text():
+    global _schema_text_cache
+    if _schema_text_cache:
+        return _schema_text_cache
+    parts = []
+    for table in schema_tables:
+        cols = await get_columns(table)
+        lines = [f"### {schema}.{table}"]
+        lines.append("| column | type | stats |")
+        lines.append("|--------|------|-------|")
+        for c in cols:
+            stats = await get_column_stats(table, c["name"], c["type"])
+            lines.append(f"| {c['name']} | {c['type']} | {stats} |")
+        # kpi_type dimensions if applicable
+        col_names = [c["name"] for c in cols]
+        if "kpi_type" in col_names and "kpi_dimension" in col_names:
+            kpi_map = await get_kpi_type_dimensions(table)
+            if kpi_map:
+                lines.append("")
+                lines.append("**kpi_type → kpi_dimension mappings:**")
+                for kt, dims in kpi_map.items():
+                    lines.append(f"- `{kt}`: {', '.join(dims)}")
+        parts.append("\n".join(lines))
+    _schema_text_cache = "\n\n".join(parts)
+    print(f"[db] schema text cached ({len(_schema_text_cache)} chars)")
+    return _schema_text_cache
 
