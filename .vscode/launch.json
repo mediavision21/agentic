@@ -1,87 +1,103 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "sav2csv",
-            "type": "debugpy",
-            "request": "launch",
-            "python": "${workspaceFolder}/.venv/bin/python",
-            "program": "${workspaceFolder}/sav2csv.py",
-            "args": ["${input:savFile}"],
-            "console": "integratedTerminal",
-            "justMyCode": true
-        },
-        {
-            "name": "backend",
-            "type": "debugpy",
-            "request": "launch",
-            "python": "${workspaceFolder}/.venv/bin/python",
-            "module": "uvicorn",
-            "args": ["main:app", "--port", "8000"],
-            "cwd": "${workspaceFolder}/backend",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "envFile": "${workspaceFolder}/.env"
-        },
-        {
-            "name": "backend (local llm)",
-            "type": "debugpy",
-            "request": "launch",
-            "python": "${workspaceFolder}/.venv/bin/python",
-            "module": "uvicorn",
-            "args": ["main:app", "--port", "8000"],
-            "cwd": "${workspaceFolder}/backend",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "envFile": "${workspaceFolder}/.env",
-            "env": {
-                "LLM_BACKEND": "local"
-            }
-        },
-        {
-            "name": "cli (claude)",
-            "type": "debugpy",
-            "request": "launch",
-            "python": "${workspaceFolder}/.venv/bin/python",
-            "program": "${workspaceFolder}/backend/cli.py",
-            "args": ["${input:prompt}"],
-            "cwd": "${workspaceFolder}/backend",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "envFile": "${workspaceFolder}/.env"
-        },
-        {
-            "name": "cli (local llm)",
-            "type": "debugpy",
-            "request": "launch",
-            "python": "${workspaceFolder}/.venv/bin/python",
-            "program": "${workspaceFolder}/backend/cli.py",
-            "args": ["${input:prompt}", "--backend", "local"],
-            "cwd": "${workspaceFolder}/backend",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "envFile": "${workspaceFolder}/.env"
-        },
-        {
-            "name": "Python: Current File",
-            "type": "debugpy",
-            "request": "launch",
-            "python": "${workspaceFolder}/.venv/bin/python",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "justMyCode": true
-        }
-    ],
-    "inputs": [
-        {
-            "id": "savFile",
-            "type": "promptString",
-            "description": "Path to .sav file"
-        },
-        {
-            "id": "prompt",
-            "type": "promptString",
-            "description": "Query prompt (e.g. show all countries)"
-        }
-    ]
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "sav2csv",
+			"type": "debugpy",
+			"request": "launch",
+			"python": "${workspaceFolder}/.venv/bin/python",
+			"program": "${workspaceFolder}/sav2csv.py",
+			"args": [
+				"${input:savFile}"
+			],
+			"console": "integratedTerminal",
+			"justMyCode": true
+		},
+		{
+			"name": "backend2",
+			"type": "debugpy",
+			"request": "launch",
+			"python": "${workspaceFolder}/.venv/bin/python",
+			"module": "uvicorn",
+			"args": [
+				"main:app",
+				"--port",
+				"8000"
+			],
+			"cwd": "${workspaceFolder}/backend2",
+			"console": "integratedTerminal",
+			"justMyCode": true,
+			"envFile": "${workspaceFolder}/.env"
+		},
+		{
+			"name": "backend (local llm)",
+			"type": "debugpy",
+			"request": "launch",
+			"python": "${workspaceFolder}/.venv/bin/python",
+			"module": "uvicorn",
+			"args": [
+				"main:app",
+				"--port",
+				"8000"
+			],
+			"cwd": "${workspaceFolder}/backend",
+			"console": "integratedTerminal",
+			"justMyCode": true,
+			"envFile": "${workspaceFolder}/.env",
+			"env": {
+				"LLM_BACKEND": "local"
+			}
+		},
+		{
+			"name": "cli (claude)",
+			"type": "debugpy",
+			"request": "launch",
+			"python": "${workspaceFolder}/.venv/bin/python",
+			"program": "${workspaceFolder}/backend/cli.py",
+			"args": [
+				"${input:prompt}"
+			],
+			"cwd": "${workspaceFolder}/backend",
+			"console": "integratedTerminal",
+			"justMyCode": true,
+			"envFile": "${workspaceFolder}/.env"
+		},
+		{
+			"name": "cli (local llm)",
+			"type": "debugpy",
+			"request": "launch",
+			"python": "${workspaceFolder}/.venv/bin/python",
+			"program": "${workspaceFolder}/backend/cli.py",
+			"args": [
+				"${input:prompt}",
+				"--backend",
+				"local"
+			],
+			"cwd": "${workspaceFolder}/backend",
+			"console": "integratedTerminal",
+			"justMyCode": true,
+			"envFile": "${workspaceFolder}/.env"
+		},
+		{
+			"name": "Python: Current File",
+			"type": "debugpy",
+			"request": "launch",
+			"python": "${workspaceFolder}/.venv/bin/python",
+			"program": "${file}",
+			"console": "integratedTerminal",
+			"justMyCode": true
+		}
+	],
+	"inputs": [
+		{
+			"id": "savFile",
+			"type": "promptString",
+			"description": "Path to .sav file"
+		},
+		{
+			"id": "prompt",
+			"type": "promptString",
+			"description": "Query prompt (e.g. show all countries)"
+		}
+	]
 }

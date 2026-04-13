@@ -177,10 +177,19 @@ function ChatMessage(options) {
 	return (
 		<div className="bubble-row assistant">
 			<div className="bubble bubble-assistant">
+				{message.content.preamble && <p className="preamble">{message.content.preamble}</p>}
+
 				{showDebug && rounds && rounds.map(function (r, i) {
+					// infer which model produced this round from its label
+					const label = r.label || ""
+					const isHaiku = label === "Routing" || label === "Filter Resolution"
+					const modelTag = isHaiku ? "haiku" : "sonnet"
 					return (
 						<details key={i} className="debug-round collapsible">
-							<summary className="debug-round-label">{r.label}</summary>
+							<summary className="debug-round-label">
+								{r.label}
+								<span className={"round-model round-model-" + modelTag}>{modelTag}</span>
+							</summary>
 							{r.prompt && (
 								<details className="collapsible"><summary>Prompt</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(r.prompt) }} /></details>
 							)}
@@ -190,9 +199,28 @@ function ChatMessage(options) {
 							{r.response && (
 								<details className="collapsible"><summary>Response</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(r.response) }} /></details>
 							)}
+
+							{r.tool_calls && r.tool_calls.map(function (tc, ti) {
+								const sql = tc.input && tc.input.sql ? tc.input.sql : JSON.stringify(tc.input)
+								const rowTag = tc.rows !== undefined ? ` → ${tc.rows} rows` : ""
+								return (
+									<details key={ti} className="collapsible">
+										<summary className="debug-tool-call">{tc.name}{rowTag}</summary>
+										<pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown("```sql\n" + sql + "\n```") }} />
+									</details>
+								)
+							})}
+
+							{r.sql && (
+								<SqlDisplay label="SQL" code={r.sql} explanation="" onRerun={handleRerunSQL} />
+							)}
+							{r.rows && r.rows.length > 0 && (
+								<details className="collapsible"><summary>Data ({r.rows.length} rows)</summary><ResultTable columns={r.columns} rows={r.rows} /></details>
+							)}
 						</details>
 					)
 				})}
+
 				{loading && (
 					<div>
 						<span className="loading-dots">Thinking</span>
@@ -204,8 +232,6 @@ function ChatMessage(options) {
 				)}
 
 				{error && <p className="error-msg">{error}</p>}
-
-				{message.content.preamble && <p className="preamble">{message.content.preamble}</p>}
 
 				{/* conversational reply — show as markdown, no SQL block */}
 				{text && !sql && <Markdown text={text} />}

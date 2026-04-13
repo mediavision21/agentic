@@ -58,7 +58,7 @@ async def match_top_templates(prompt, templates):
     messages = [{"role": "user", "content": f"Templates:\n{template_list}\n\nUser question: {prompt}"}]
     debug = {"prompt": MATCH_SYSTEM_PROMPT, "messages": messages, "response": ""}
     try:
-        answer = await llm.complete_fast(MATCH_SYSTEM_PROMPT, messages)
+        answer = await llm.complete_fast(MATCH_SYSTEM_PROMPT, messages, label="haiku-routing")
         debug["response"] = answer
         print(f"[template_router] match result:\n{answer}")
         if answer == "NONE":
@@ -95,6 +95,9 @@ Output nothing except the JSON or NONE."""
 
 
 async def _resolve_filters(prompt, placeholders, choices_map):
+    # returns (result, debug) where
+    #   result: None when Haiku says NONE or on parse error; otherwise (resolved, missing)
+    #   debug:  {"prompt": FILTER_RESOLVE_PROMPT, "messages": [...], "response": text_or_error}
     lines = [f"User message: {prompt}", "", "Filter placeholders:"]
     for name in placeholders:
         choices = choices_map.get(name, [])
@@ -102,16 +105,20 @@ async def _resolve_filters(prompt, placeholders, choices_map):
         label = spec.get("label", name)
         lines.append(f"- {name} ({label}): {', '.join(str(c) for c in choices)}")
     user_msg = "\n".join(lines)
+    messages = [{"role": "user", "content": user_msg}]
+    debug = {"prompt": FILTER_RESOLVE_PROMPT, "messages": messages, "response": ""}
     try:
-        text = await llm.complete_fast(FILTER_RESOLVE_PROMPT, [{"role": "user", "content": user_msg}])
+        text = await llm.complete_fast(FILTER_RESOLVE_PROMPT, messages, label="haiku-filter-resolve")
+        debug["response"] = text
         print(f"[template_router] filter resolve: {text}")
         if text == "NONE":
-            return None
+            return None, debug
         data = json.loads(text)
-        return data.get("resolved", {}), data.get("missing", [])
+        return (data.get("resolved", {}), data.get("missing", [])), debug
     except Exception as e:
         print(f"[template_router] filter resolve error: {e}")
-        return None
+        debug["response"] = debug["response"] or f"(error: {e})"
+        return None, debug
 
 
 def _build_filter_defaults_from_intent(intent, placeholders):
@@ -155,7 +162,12 @@ async def run_matched_template(options):
         print(f"[template_router] placeholders: {placeholders}")
         yaml_filters = template.get("filters")
         choices_map = await load_filter_choices(placeholders, yaml_filters)
-        result = await _resolve_filters(prompt, placeholders, choices_map)
+        result, filter_debug = await _resolve_filters(prompt, placeholders, choices_map)
+        # always surface the filter-resolution Haiku round to the frontend
+        yield {"type": "round",    "label": "Filter Resolution"}
+        yield {"type": "prompt",   "text": filter_debug["prompt"]}
+        yield {"type": "messages", "messages": filter_debug["messages"]}
+        yield {"type": "response", "text": filter_debug["response"] or "(no response)"}
         if result is None and intent:
             # use intent defaults instead of asking user
             intent_resolved = _build_filter_defaults_from_intent(intent, placeholders)

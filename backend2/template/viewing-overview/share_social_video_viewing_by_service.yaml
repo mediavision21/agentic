@@ -1,0 +1,230 @@
+category: Viewing - overview
+description: Share of social video viewing time by service — population-weighted Nordic average, stacked bands with boundary lines
+sql: |
+  WITH base AS (
+    SELECT
+      n.period_sort,
+      n.period_label,
+      n.year,
+      n.quarter_label,
+      n.country,
+      n.canonical_name AS service,
+      n.value * r.value AS viewing_time_per_individual,
+      n.population
+    FROM macro.nordic n
+    JOIN macro.nordic r
+      ON  n.country        = r.country
+      AND n.year           = r.year
+      AND n.quarter        = r.quarter
+      AND n.canonical_name = r.canonical_name
+    WHERE
+      n.category            = 'online_video'
+      AND n.kpi_type        = 'viewing_time'
+      AND n.kpi_dimension   IS NULL
+      AND n.age_group       = '15-74'
+      AND n.canonical_name  IS NOT NULL
+      AND r.category         = 'online_video'
+      AND r.kpi_type         = 'reach'
+      AND r.kpi_dimension    IS NULL
+      AND r.age_group        = '15-74'
+      AND r.is_social_video = TRUE
+      AND n.period_sort     >= 20243
+      AND n.quarter         IN (1, 3)
+  ),
+  service_time_country AS (
+    SELECT
+      period_sort, period_label, year, quarter_label, country, service,
+      SUM(viewing_time_per_individual) AS vt_individual,
+      MAX(population)                  AS population
+    FROM base
+    GROUP BY period_sort, period_label, year, quarter_label, country, service
+  ),
+  shares_within_country AS (
+    SELECT
+      period_sort, period_label, year, quarter_label, country, service,
+      vt_individual / NULLIF(SUM(vt_individual) OVER (PARTITION BY period_sort, country), 0) AS share_in_country,
+      population
+    FROM service_time_country
+  ),
+  country_weights AS (
+    SELECT
+      period_sort, country,
+      population / NULLIF(SUM(population) OVER (PARTITION BY period_sort), 0) AS country_weight
+    FROM (SELECT DISTINCT period_sort, country, population FROM shares_within_country) x
+  ),
+  final AS (
+    SELECT
+      s.period_sort, s.period_label, s.year, s.quarter_label, s.service,
+      SUM(s.share_in_country * w.country_weight) * 100 AS share_of_total
+    FROM shares_within_country s
+    JOIN country_weights w ON s.period_sort = w.period_sort AND s.country = w.country
+    GROUP BY s.period_sort, s.period_label, s.year, s.quarter_label, s.service
+  ),
+  latest_quarter AS (
+    SELECT MAX(period_sort) AS max_period_sort FROM final
+  ),
+  service_rank AS (
+    SELECT service,
+           ROW_NUMBER() OVER (ORDER BY share_of_total DESC) AS rnk
+    FROM final
+    WHERE period_sort = (SELECT max_period_sort FROM latest_quarter)
+  )
+  SELECT
+    f.period_sort, f.period_label, f.year, f.quarter_label,
+    f.service, f.share_of_total,
+    sr.rnk
+  FROM final f
+  JOIN service_rank sr ON f.service = sr.service
+  ORDER BY f.period_sort, sr.rnk
+
+plots:
+  - id: share_social_video_by_service
+    title: "Share of social video viewing by service"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          share_of_total: +d.share_of_total,
+          period_sort: +d.period_sort,
+          rnk: +d.rnk
+        });
+      });
+
+      // Two most recent periods (same quarter, one year apart)
+      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
+        .sort(function(a, b) { return b - a });
+      var latest = sortedPeriods[0];
+      var yearAgo = sortedPeriods.find(function(s) {
+        return Math.floor(s / 10) === Math.floor(latest / 10) - 1 &&
+               (s % 10) === (latest % 10);
+      }) || sortedPeriods[1];
+
+      var subset = rows.filter(function(d) {
+        return d.period_sort === latest || d.period_sort === yearAgo;
+      });
+
+      var latestLabel  = (rows.find(function(d) { return d.period_sort === latest;  }) || {}).period_label || "";
+      var yearAgoLabel = (rows.find(function(d) { return d.period_sort === yearAgo; }) || {}).period_label || "";
+      var periodOrder  = [yearAgoLabel, latestLabel];
+
+      // Services: rank 1 = largest → bottom of stack, highest rank → top
+      var servicesMeta = [];
+      var seenSvc = {};
+      subset.forEach(function(d) {
+        if (!seenSvc[d.service]) {
+          seenSvc[d.service] = true;
+          servicesMeta.push({ service: d.service, rnk: d.rnk });
+        }
+      });
+      // Sort descending by rank value so rank 1 (TikTok/largest) is drawn first = bottom
+      servicesMeta.sort(function(a, b) { return b.rnk - a.rnk; });
+      var stackedServices = servicesMeta.map(function(s) { return s.service; });
+
+      // Colors matching screenshot: TikTok = dark grey/black, others = green shades lightest→darkest
+      // Screenshot: bottom=TikTok(grey), then Instagram(mid green), Facebook(light green), Snapchat(lightest)
+      var colorPalette = {
+        "TikTok":    "#2a2a2a",
+        "Instagram": "#52b788",
+        "Facebook":  "#95d5b2",
+        "Snapchat":  "#d8f3dc"
+      };
+      var fallbackColors = ["#74c2a8","#5b8db8","#e8b84b","#d4765a"];
+      var colorAssigned = {};
+      var fallbackIdx = 0;
+      stackedServices.forEach(function(svc) {
+        colorAssigned[svc] = colorPalette[svc] || fallbackColors[fallbackIdx++ % fallbackColors.length];
+      });
+
+      // Compute stacked y1/y2 per period
+      var stackPos = {};
+      periodOrder.forEach(function(period) {
+        stackPos[period] = {};
+        var cum = 0;
+        stackedServices.forEach(function(svc) {
+          var row = subset.find(function(d) { return d.period_label === period && d.service === svc; });
+          var v = row ? row.share_of_total : 0;
+          stackPos[period][svc] = { y1: cum, y2: cum + v, value: v };
+          cum += v;
+        });
+      });
+
+      // Band rectangles
+      var bandData = [];
+      stackedServices.forEach(function(svc) {
+        periodOrder.forEach(function(period) {
+          var pos = stackPos[period][svc];
+          bandData.push({ period_label: period, service: svc, y1: pos.y1, y2: pos.y2 });
+        });
+      });
+
+      // Lines + dots at top boundary of each band
+      var lineFlatTop = [];
+      stackedServices.forEach(function(svc) {
+        periodOrder.forEach(function(period) {
+          lineFlatTop.push({ period_label: period, service: svc, y: stackPos[period][svc].y2 });
+        });
+      });
+
+      // Legend: top of stack first (Snapchat → ... → TikTok)
+      var legendServices = stackedServices.slice().reverse();
+
+      var chart = Plot.plot({
+        width: 380,
+        height: 460,
+        marginLeft: 50,
+        marginRight: 20,
+        marginTop: 20,
+        marginBottom: 50,
+        x: { label: null, domain: periodOrder, padding: 0.4 },
+        y: {
+          label: null,
+          grid: true,
+          domain: [0, 100],
+          ticks: 5,
+          tickFormat: function(v) { return v + "%"; }
+        },
+        marks: [
+          Plot.areaY(bandData, {
+            x: "period_label",
+            y1: "y1",
+            y2: "y2",
+            fill: function(d) { return colorAssigned[d.service]; },
+            tip: true,
+            title: function(d) { return d.service + ": " + (d.y2 - d.y1).toFixed(1) + "%"; }
+          }),
+          Plot.line(lineFlatTop, {
+            x: "period_label",
+            y: "y",
+            stroke: function(d) { return colorAssigned[d.service]; },
+            z: "service",
+            strokeWidth: 1.8
+          }),
+          Plot.dot(lineFlatTop, {
+            x: "period_label",
+            y: "y",
+            fill: "white",
+            stroke: function(d) { return colorAssigned[d.service]; },
+            strokeWidth: 1.8,
+            r: 4
+          }),
+          Plot.ruleY([0])
+        ]
+      });
+
+      // Legend as right-side HTML (top of stack first)
+      var legendHtml = legendServices.map(function(svc) {
+        return '<div style="display:flex;align-items:center;gap:7px;margin-bottom:7px;font-size:12px;white-space:nowrap;">'
+          + '<svg width="12" height="12" style="flex-shrink:0"><circle cx="6" cy="6" r="5" fill="'
+          + colorAssigned[svc] + '" stroke="#aaa" stroke-width="0.5"/></svg>'
+          + '<span>' + svc + '</span></div>';
+      }).join('');
+
+      var wrapper = document.createElement('div');
+      wrapper.style.cssText = 'display:flex;align-items:flex-start;gap:16px;font-family:sans-serif;';
+
+      var legendEl = document.createElement('div');
+      legendEl.style.cssText = 'padding-top:8px;flex-shrink:0;';
+      legendEl.innerHTML = legendHtml;
+
+      wrapper.appendChild(chart);
+      wrapper.appendChild(legendEl);
+      return wrapper;

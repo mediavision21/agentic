@@ -96,7 +96,7 @@ function App() {
 				if (row.result_data) {
 					try { rd = JSON.parse(row.result_data) } catch (e) { /* ignore */ }
 				}
-				msgs.push({ role: "user", text: row.prompt })
+				msgs.push({ role: "user", text: (rd && rd.user_prompt) || row.prompt })
 				// new shape: result_data IS the full content object (same shape that
 				// live streaming assembles in handleSubmit). detected by msg_id
 				// presence — legacy rows lack it and fall back to parseRawResponse.
@@ -291,10 +291,10 @@ function App() {
 					}
 				})
 			} else {
-				const resp = await fetch("/api/query", {
+				const resp = await fetch("/api/ask", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ prompt, backend, history, session_id: currentSession_?.serverId || "" }),
+					body: JSON.stringify({ prompt, history, session_id: currentSession_?.serverId || "" }),
 					credentials: "include",
 				})
 				const reader = resp.body.getReader()
@@ -322,6 +322,8 @@ function App() {
 							})
 						} else if (event.type === "msg_id") {
 							patchLastMsg(sessionId, function (c) { return { ...c, msg_id: event.id } })
+						} else if (event.type === "user_prompt") {
+							// stored in content for history reload; no UI change needed live
 						} else if (event.type === "preamble") {
 							patchLastMsg(sessionId, function (c) { return { ...c, preamble: event.text } })
 						} else if (event.type === "intent") {
@@ -331,9 +333,17 @@ function App() {
 						} else if (event.type === "text") {
 							patchLastMsg(sessionId, function (c) { return { ...c, loading: false, text: event.text, raw_text: event.text } })
 						} else if (event.type === "sql") {
-							patchLastMsg(sessionId, function (c) { return { ...c, sql: event.sql, plot_config: event.plot_config, explanation: event.explanation, raw_text: c.streaming_text } })
+							patchLastMsg(sessionId, function (c) {
+								const rounds = c.rounds ? c.rounds.slice() : []
+								if (rounds.length > 0) rounds[rounds.length - 1] = { ...rounds[rounds.length - 1], sql: event.sql }
+								return { ...c, sql: event.sql, plot_config: event.plot_config, explanation: event.explanation, raw_text: c.streaming_text, rounds }
+							})
 						} else if (event.type === "rows") {
-							patchLastMsg(sessionId, function (c) { return { ...c, loading: false, columns: event.columns, rows: event.rows } })
+							patchLastMsg(sessionId, function (c) {
+								const rounds = c.rounds ? c.rounds.slice() : []
+								if (rounds.length > 0) rounds[rounds.length - 1] = { ...rounds[rounds.length - 1], columns: event.columns, rows: event.rows }
+								return { ...c, loading: false, columns: event.columns, rows: event.rows, rounds }
+							})
 						} else if (event.type === "summary") {
 							patchLastMsg(sessionId, function (c) { return { ...c, summary: event.text } })
 						} else if (event.type === "suggestions") {

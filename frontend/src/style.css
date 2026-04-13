@@ -362,6 +362,33 @@ body {
 	text-transform: uppercase;
 }
 
+.round-model {
+	background: var(--vscode-editorWidget-background, #2d2d2d);
+	border: 1px solid var(--vscode-widget-border, #3c3c3c);
+	border-radius: 3px;
+	font-size: 9px;
+	font-weight: 500;
+	letter-spacing: 0.5px;
+	margin-left: 6px;
+	padding: 1px 5px;
+	text-transform: lowercase;
+	vertical-align: middle;
+}
+
+.round-model-haiku {
+	color: var(--vscode-charts-blue, #569cd6);
+}
+
+.round-model-sonnet {
+	color: var(--vscode-charts-purple, #c586c0);
+}
+
+.debug-tool-call {
+	color: var(--vscode-charts-yellow, #d7ba7d);
+	font-family: monospace;
+	font-size: 11px;
+}
+
 .debug-pre {
 	font-size: 12px;
 	max-height: 400px;
@@ -1423,4 +1450,9 @@ body {
 /* let the legend label does not wrap so that they will have the same height */
 .plot-swatch {
 	white-space: nowrap;
+}
+
+.debug-round .collapsible {
+	/* margin-left: 15px; */
+	padding-left: 15px;
 }

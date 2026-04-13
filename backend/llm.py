@@ -68,7 +68,7 @@ async def complete_with_tools_stream(system_prompt, messages, tools, tool_handle
     yield {"type": "response", "text": full_text}
 
 
-async def complete_fast(system_prompt, messages):
+async def complete_fast(system_prompt, messages, label="haiku"):
     # lightweight haiku call — always claude, returns text string
-    resp = await llm_claude.complete_fast(system_prompt, messages)
+    resp = await llm_claude.complete_fast(system_prompt, messages, label=label)
     return resp.content[0].text.strip()

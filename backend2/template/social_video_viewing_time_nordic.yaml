@@ -1,0 +1,127 @@
+description: Daily viewing time of social video (minutes/day) across Nordic countries, population-weighted average
+sql: |
+  SELECT
+      n.period_sort,
+      n.period_label,
+      n.year::text AS year,
+      n.quarter_label,
+      SUM(n.value * n.population) / NULLIF(SUM(n.population), 0) AS viewing_time_minutes
+  FROM macro.nordic n
+  WHERE
+      n.category = 'online_video'
+      AND n.kpi_type = 'viewing_time'
+      AND n.kpi_dimension = 'social'
+      -- AND n.canonical_name IS NULL
+      AND n.age_group = '15-74'
+      AND n.quarter IN (1, 3)
+      [[ AND {{country}} ]]
+      [[ AND {{year}} ]]
+      [[ AND {{quarter_label}} ]]
+  GROUP BY
+      n.period_sort,
+      n.period_label,
+      n.year,
+      n.quarter_label
+  ORDER BY
+      n.period_sort;
+
+plots:
+  - id: social_video_viewing_time_trend
+    title: "Daily viewing time of social video — trend"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          viewing_time_minutes: +d.viewing_time_minutes,
+          period_sort: +d.period_sort
+        });
+      });
+      var periods = [];
+      var seen = {};
+      rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort }).forEach(function(d) {
+        if (!seen[d.period_label]) { seen[d.period_label] = true; periods.push(d.period_label); }
+      });
+      return Plot.plot({
+        width: Math.max(800, periods.length * 60),
+        marks: [
+          Plot.line(rows, {
+            x: "period_label",
+            y: "viewing_time_minutes",
+            stroke: "#1a5c38",
+            curve: "catmull-rom",
+            strokeWidth: 2.5,
+            tip: true
+          }),
+          Plot.dot(rows, {
+            x: "period_label",
+            y: "viewing_time_minutes",
+            fill: "#1a5c38",
+            r: 4
+          }),
+          Plot.text(rows, {
+            x: "period_label",
+            y: "viewing_time_minutes",
+            text: function(d) { return Math.round(d.viewing_time_minutes) + " min"; },
+            dy: -12,
+            fontSize: 11,
+            fill: "#1a5c38"
+          })
+        ],
+        x: { label: null, domain: periods, tickRotate: -45 },
+        y: { label: "Minutes per day", grid: true, domain: [0, 60] },
+        marginRight: 40,
+        marginBottom: 80
+      });
+
+  - id: social_video_viewing_time_compare
+    title: "Daily viewing time of social video — latest vs year-ago"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          viewing_time_minutes: +d.viewing_time_minutes,
+          period_sort: +d.period_sort
+        });
+      });
+      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
+        .sort(function(a, b) { return b - a });
+      var latest = sortedPeriods[0];
+      var yearAgo = sortedPeriods.find(function(s) {
+        return Math.floor(s / 10) === Math.floor(latest / 10) - 1 &&
+               (s % 10) === (latest % 10);
+      }) || sortedPeriods[1];
+      var subset = rows.filter(function(d) {
+        return d.period_sort === latest || d.period_sort === yearAgo;
+      });
+      var latestLabel  = (rows.find(function(d) { return d.period_sort === latest;  }) || {}).period_label || "";
+      var yearAgoLabel = (rows.find(function(d) { return d.period_sort === yearAgo; }) || {}).period_label || "";
+      return Plot.plot({
+        width: 340,
+        height: 320,
+        x:  { label: null, domain: [yearAgoLabel, latestLabel] },
+        y:  { label: "Minutes per day", grid: true, domain: [0, 60] },
+        color: {
+          legend: true,
+          domain: [yearAgoLabel, latestLabel],
+          range: ["#2d8653", "#1a5c38"]
+        },
+        marks: [
+          Plot.barY(subset, {
+            x: "period_label",
+            y: "viewing_time_minutes",
+            fill: "period_label",
+            tip: true,
+            insetLeft: 8,
+            insetRight: 8
+          }),
+          Plot.text(subset, {
+            x: "period_label",
+            y: "viewing_time_minutes",
+            text: function(d) { return Math.round(d.viewing_time_minutes) + " min"; },
+            dy: -10,
+            fontSize: 12,
+            fill: "#333"
+          }),
+          Plot.ruleY([0])
+        ],
+        marginBottom: 40,
+        marginTop: 30
+      });

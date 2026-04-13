@@ -1,0 +1,167 @@
+description: Media wallet — average monthly household video spend by category (SSVOD, Pay TV, Cinema, DVD/Blu-ray, TVOD), FX locked to 2025q4
+filters:
+  quarter_label:
+    choices: [Q1]
+    default: [Q1]
+  currency_code:
+    label: Currency
+    multiple: false
+    choices: [EUR, SEK, NOK, DKK]
+    default: [EUR]
+sql: |
+  WITH spend_data AS (
+      SELECT
+          n.country, n.year, n.quarter, n.period_sort, n.period_label,
+          n.category, n.kpi_dimension, n.value AS spend, n.population_household
+      FROM macro.nordic n
+      WHERE n.kpi_type = 'spend'
+        -- AND n.canonical_name IS NULL
+        AND n.age_group = '15-74'
+        AND n.value IS NOT NULL
+        AND (
+          (n.category = 'online_video' AND n.kpi_dimension = 'ssvod' AND n.population_segment = 'subscribers')
+          OR (n.category = 'tv' AND n.population_segment = 'subscribers')
+          OR (n.category IN ('cinema', 'dvd_blu_ray', 'tvod') AND n.population_segment = 'users')
+        )
+        AND n.period_sort >= 20201
+        [[ AND {{country}} ]]
+        [[ AND {{year}} ]]
+        [[ AND {{quarter_label}} ]]
+  ),
+  penetration_data AS (
+      SELECT n.country, n.year, n.quarter, n.category, n.kpi_dimension, n.value AS penetration
+      FROM macro.nordic n
+      WHERE n.age_group = '15-74'
+        AND n.value IS NOT NULL
+        AND (
+          (n.category = 'online_video' AND n.kpi_type = 'penetration' AND n.kpi_dimension = 'ssvod')
+          OR (n.category = 'tv' AND n.kpi_type = 'penetration' AND n.kpi_dimension = 'pay_tv_channel')
+          OR (n.category IN ('cinema', 'dvd_blu_ray', 'tvod') AND n.kpi_type = 'reach_monthly')
+        )
+  ),
+  combined AS (
+      SELECT
+          s.period_sort,
+          s.period_label,
+          s.country,
+          CASE
+              WHEN s.category = 'online_video' AND s.kpi_dimension = 'ssvod' THEN 'SSVOD'
+              WHEN s.category = 'tv' THEN 'Pay TV'
+              WHEN s.category = 'cinema' THEN 'Cinema'
+              WHEN s.category = 'dvd_blu_ray' THEN 'DVD/Blu-ray'
+              WHEN s.category = 'tvod' THEN 'TVOD'
+          END AS business_model,
+          s.spend,
+          p.penetration,
+          s.population_household,
+          fx.rate_to_eur AS rate_country
+      FROM spend_data s
+      JOIN penetration_data p
+        ON s.country = p.country
+       AND s.year = p.year
+       AND s.quarter = p.quarter
+       AND s.category = p.category
+       AND (
+           (s.category = 'online_video' AND s.kpi_dimension = p.kpi_dimension)
+           OR (s.category = 'tv')
+           OR (s.category IN ('cinema', 'dvd_blu_ray', 'tvod'))
+       )
+      JOIN macro.fact_fx_rate_quarterly fx
+        ON fx.period_key = '2025q4'
+       AND fx.currency_code = CASE s.country
+              WHEN 'sweden' THEN 'SEK'
+              WHEN 'norway' THEN 'NOK'
+              WHEN 'denmark' THEN 'DKK'
+              WHEN 'finland' THEN 'EUR'
+           END
+      WHERE p.penetration >= 0
+  ),
+  target_fx AS (
+      SELECT rate_to_eur
+      FROM macro.fact_fx_rate_quarterly
+      WHERE period_key = '2025q4'
+        [[ AND {{currency_code}} ]]
+  )
+  SELECT
+      c.period_sort,
+      c.period_label,
+      c.business_model,
+      SUM(
+          (c.spend * c.rate_country / tf.rate_to_eur)
+          * c.penetration
+          * c.population_household
+      ) / NULLIF(SUM(c.population_household), 0) AS spend_population
+  FROM combined c
+  CROSS JOIN target_fx tf
+  WHERE tf.rate_to_eur IS NOT NULL
+  GROUP BY c.period_sort, c.period_label, c.business_model
+  ORDER BY
+      c.period_sort,
+      CASE c.business_model
+          WHEN 'SSVOD' THEN 1
+          WHEN 'Pay TV' THEN 2
+          WHEN 'Cinema' THEN 3
+          WHEN 'DVD/Blu-ray' THEN 4
+          WHEN 'TVOD' THEN 5
+      END
+
+plots:
+  - id: media_wallet_video_spend
+    title: "Media wallet: average monthly household video spend"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          value: +d.spend_population,
+          period_sort: +d.period_sort
+        });
+      });
+
+      var periods = Array.from(new Set(
+        rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort; }).map(function(d) { return d.period_label; })
+      ));
+
+      var seriesOrder = ["SSVOD", "Pay TV", "Cinema", "DVD/Blu-ray", "TVOD"];
+      var seriesColors = ["#52b788", "#2b2a29", "#e07a5f", "#7aafc4", "#e8a838"];
+
+      return Plot.plot({
+        width: Math.max(700, periods.length * 80),
+        height: 420,
+        x: { label: null, domain: periods, tickRotate: -45 },
+        y: { label: null, grid: true },
+        color: {
+          legend: true,
+          domain: seriesOrder,
+          range: seriesColors
+        },
+        marks: [
+          Plot.line(rows, {
+            x: "period_label",
+            y: "value",
+            stroke: "business_model",
+            curve: "catmull-rom",
+            strokeWidth: 2
+          }),
+          Plot.dot(rows, {
+            x: "period_label",
+            y: "value",
+            fill: "white",
+            stroke: "business_model",
+            r: 4,
+            strokeWidth: 2
+          }),
+          Plot.text(rows, {
+            x: "period_label",
+            y: "value",
+            text: function(d) { return Math.round(d.value); },
+            fontSize: 12,
+            fontWeight: "bold",
+            fill: "business_model",
+            dy: -14
+          }),
+          Plot.ruleY([0])
+        ],
+        marginTop: 40,
+        marginBottom: 80,
+        marginLeft: 40,
+        marginRight: 30
+      });

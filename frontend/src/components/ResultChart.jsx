@@ -389,16 +389,8 @@ function ResultChart(options) {
 				return
 			}
 		}
-		setSaving(true)
-		fetch(`/api/messages/${msg_id}/plot_config`, {
-			method: "PATCH",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ plot_config: parsed }),
-		}).then(function () {
-			setSaving(false)
-		}).catch(function () {
-			setSaving(false)
-		})
+		// plot config edits stay client-side only (no backend PATCH)
+		setSaving(false)
 	}
 
 	function openEdit(e) {

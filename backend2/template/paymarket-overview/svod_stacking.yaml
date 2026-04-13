@@ -1,0 +1,77 @@
+description: Average number of SVOD subscriptions among subscribing households — household-weighted Nordic average
+filters:
+  quarter_label:
+    choices: [Q1]
+    default: [Q1]
+sql: |
+  SELECT
+      n.period_label,
+      n.period_sort,
+      SUM(n.value * n.population_household)
+          / NULLIF(SUM(n.population_household), 0) AS stacking
+  FROM macro.nordic n
+  WHERE
+      n.category = 'online_video'
+      AND n.kpi_type = 'stacking'
+      AND n.kpi_dimension = 'svod'
+      AND n.population_segment = 'subscribers'
+      AND n.age_group = '15-74'
+      AND n.canonical_name IS NULL
+      AND n.kpi_detail IS NULL
+      AND n.value IS NOT NULL
+      [[ AND {{country}} ]]
+      [[ AND {{year}} ]]
+      [[ AND {{quarter_label}} ]]
+  GROUP BY n.period_sort, n.period_label
+  ORDER BY n.period_sort
+
+plots:
+  - id: svod_stacking
+    title: "SVOD stacking"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          value: +d.stacking,
+          period_sort: +d.period_sort
+        });
+      });
+
+      var periods = Array.from(new Set(
+        rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort; }).map(function(d) { return d.period_label; })
+      ));
+
+      var maxY = Math.ceil(Math.max.apply(null, rows.map(function(d) { return d.value; })) * 1.15 * 2) / 2;
+
+      return Plot.plot({
+        width: Math.max(500, periods.length * 100),
+        height: 380,
+        x: { label: null, domain: periods },
+        y: { label: null, grid: true, domain: [0, maxY] },
+        color: {
+          range: ["#1a5c38"]
+        },
+        marks: [
+          Plot.barY(rows, {
+            x: "period_label",
+            y: "value",
+            fill: "#1a5c38",
+            insetLeft: 20,
+            insetRight: 20,
+            tip: true
+          }),
+          Plot.text(rows, {
+            x: "period_label",
+            y: "value",
+            text: function(d) { return d.value.toFixed(1); },
+            fontSize: 14,
+            fontWeight: "bold",
+            fill: "#111",
+            dy: -12
+          }),
+          Plot.ruleY([0])
+        ],
+        marginTop: 40,
+        marginBottom: 50,
+        marginLeft: 40,
+        marginRight: 20
+      });

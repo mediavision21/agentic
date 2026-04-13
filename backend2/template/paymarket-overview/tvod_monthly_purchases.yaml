@@ -1,0 +1,74 @@
+description: TVOD monthly purchases — household-weighted Nordic average trend
+filters:
+  quarter_label:
+    choices: [Q1]
+    default: [Q1]
+sql: |
+  SELECT
+      n.period_sort,
+      n.period_label,
+      'TVOD' AS business_model,
+      SUM(n.value * n.population_household)
+          / NULLIF(SUM(n.population_household), 0) AS tvod
+  FROM macro.nordic n
+  WHERE
+      n.category = 'tvod'
+      AND n.kpi_type = 'reach_monthly'
+      AND n.canonical_name IS NULL
+      AND n.age_group = '15-74'
+      AND n.value IS NOT NULL
+      [[ AND {{country}} ]]
+      [[ AND {{year}} ]]
+      [[ AND {{quarter_label}} ]]
+  GROUP BY n.period_sort, n.period_label
+  ORDER BY n.period_sort
+
+plots:
+  - id: tvod_monthly_purchases
+    title: "TVOD: monthly purchases"
+    code: |
+      var rows = data.map(function(d) {
+        return Object.assign({}, d, {
+          value: +d.tvod,
+          period_sort: +d.period_sort
+        });
+      });
+
+      var periods = Array.from(new Set(
+        rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort; }).map(function(d) { return d.period_label; })
+      ));
+
+      return Plot.plot({
+        width: Math.max(700, periods.length * 80),
+        height: 380,
+        x: { label: null, domain: periods, tickRotate: -45 },
+        y: { label: null, grid: true, domain: [0, 0.35], tickFormat: ".0%" },
+        color: {
+          legend: true,
+          domain: ["TVOD"],
+          range: ["#1a5c38"]
+        },
+        marks: [
+          Plot.line(rows, {
+            x: "period_label",
+            y: "value",
+            stroke: "#1a5c38",
+            curve: "catmull-rom",
+            strokeWidth: 2
+          }),
+          Plot.dot(rows, {
+            x: "period_label",
+            y: "value",
+            fill: "white",
+            stroke: "#1a5c38",
+            r: 4,
+            strokeWidth: 2,
+            tip: true
+          }),
+          Plot.ruleY([0])
+        ],
+        marginTop: 30,
+        marginBottom: 80,
+        marginLeft: 50,
+        marginRight: 30
+      });

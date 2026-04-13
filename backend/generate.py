@@ -126,6 +126,9 @@ async def run(options):
     messages = build_messages(history, prompt)
     print(f"[generate] running with {len(matches)} template hints")
 
+    label = options.get("label", "Generation")
+    yield {"type": "round", "label": label}
+
     last_success = {"sql": None, "columns": None, "rows": None}
 
     async def tool_handler(name, input):
@@ -161,7 +164,8 @@ async def run(options):
         },
     }]
 
-    yield {"type": "round", "label": "SQL"}
+    yield {"type": "prompt", "text": system_prompt}
+    yield {"type": "messages", "messages": messages}
     full_text = ""
     async for chunk in llm.complete_with_tools_stream(system_prompt, messages, tools, tool_handler, {"backend": backend, "label": "generate", "log_id": msg_id, "user": user, "conversation_id": conversation_id, "max_iterations": 5}):
         if isinstance(chunk, dict):
@@ -172,6 +176,7 @@ async def run(options):
         print(chunk, end="", flush=True)
         yield {"type": "token", "text": chunk}
     print()
+    yield {"type": "response", "text": full_text}
 
     if last_success["rows"] is None:
         # no rows from any tool call — treat model's final text as conversational answer

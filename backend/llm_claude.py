@@ -7,6 +7,85 @@ from datetime import datetime
 
 client = anthropic.AsyncAnthropic(api_key=os.getenv("API_KEY"))
 
+# ANSI colors for terminal debug output
+_C = {
+    "reset":  "\033[0m",
+    "bold":   "\033[1m",
+    "cyan":   "\033[36m",
+    "yellow": "\033[33m",
+    "green":  "\033[32m",
+    "magenta":"\033[35m",
+    "blue":   "\033[34m",
+    "red":    "\033[31m",
+    "gray":   "\033[90m",
+}
+
+def _fmt(color, text): return f"{_C[color]}{text}{_C['reset']}"
+
+# accent color per model family — used in the call/response header
+def _accent_for_model(model):
+    if model:
+        m = model.lower()
+        if "haiku" in m:
+            return "blue"
+        if "sonnet" in m:
+            return "cyan"
+        if "opus" in m:
+            return "magenta"
+    return "cyan"
+
+def _divider_top(accent, label, model):
+    bar = "══════"
+    tag = f"[llm:{model.split('-')[1] if model and '-' in model else (model or '?')}]"
+    header = f"{bar} {tag} {label} {bar}"
+    print(f"{_C['bold']}{_C[accent]}{header}{_C['reset']}")
+
+def _divider_bot(accent):
+    print(f"{_C[accent]}{'─' * 60}{_C['reset']}")
+
+def _log_call(label, messages, system_prompt, model=None):
+    accent = _accent_for_model(model)
+    _divider_top(accent, label, model or "?")
+    sys_preview = system_prompt[:120].replace(chr(10), ' ')
+    print(f"  {_fmt('gray', 'system:')} {sys_preview}{'…' if len(system_prompt) > 120 else ''}")
+    for i, m in enumerate(messages):
+        role = m.get("role", "?")
+        content = m.get("content", "")
+        if isinstance(content, list):
+            # tool result / multi-part
+            parts = []
+            for part in content:
+                if isinstance(part, dict):
+                    t = part.get("type", "")
+                    if t == "tool_result":
+                        parts.append(f"tool_result({part.get('tool_use_id','')[:8]})")
+                    elif t == "tool_use":
+                        parts.append(f"tool_use:{part.get('name','')}({str(part.get('input',''))[:60]})")
+                    elif t == "text":
+                        parts.append(f"text:{part.get('text','')[:60]}")
+                    else:
+                        parts.append(str(part)[:60])
+            summary = " | ".join(parts)
+        else:
+            summary = str(content)[:120].replace("\n", " ")
+        color = "yellow" if role == "user" else "green"
+        print(f"  {_fmt(color, f'[{i}] {role}:')} {summary}")
+
+def _log_response(label, text, stop_reason, usage, model=None, iteration=None, tool_blocks=None):
+    accent = _accent_for_model(model)
+    iter_tag = f" iter={iteration}" if iteration is not None else ""
+    mdl = f" {model}" if model else ""
+    print(f"  {_fmt(accent, f'←{mdl} {label}{iter_tag}')} stop={stop_reason} in={usage.get('input_tokens',0)} out={usage.get('output_tokens',0)}")
+    if text:
+        preview = text[:200].replace("\n", " ")
+        print(f"  {_fmt('blue', 'response:')} {preview}{'…' if len(text) > 200 else ''}")
+    if tool_blocks:
+        for b in tool_blocks:
+            sql = b.input.get("sql", "") if hasattr(b, "input") else ""
+            sql_preview = sql[:120].replace("\n", " ") if sql else str(getattr(b, "input", ""))[:120]
+            print(f"  {_fmt('red', f'tool_use: {b.name}')} id={b.id[:8]} input={sql_preview}")
+    _divider_bot(accent)
+
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
 
 
@@ -45,6 +124,7 @@ MODEL = "claude-sonnet-4-6"
 async def complete_stream(system_prompt, messages, label="sonnet", log_id=None, user="", conversation_id=""):
     # messages: list of {"role": "user"|"assistant", "content": str}
     # yields text chunks, then a final {"__meta__": {...}} dict with usage info
+    _log_call(label, messages, system_prompt, model=MODEL)
     full_text = ""
     async with client.messages.stream(
         model=MODEL,
@@ -59,12 +139,14 @@ async def complete_stream(system_prompt, messages, label="sonnet", log_id=None, 
             yield text
         final = await stream.get_final_message()
         meta = {"model": final.model, "usage": final.usage.model_dump()}
+        _log_response(label, full_text, final.stop_reason, final.usage.model_dump(), model=final.model)
         _write_log(label, system_prompt, messages, full_text, meta, log_id, user, conversation_id)
         yield {"__meta__": meta}
 
 
 async def complete(system_prompt, messages, label="sonnet", log_id=None, user="", conversation_id=""):
     # messages: list of {"role": "user"|"assistant", "content": str}
+    _log_call(label, messages, system_prompt, model=MODEL)
     resp = await client.messages.create(
         model=MODEL,
         max_tokens=2048,
@@ -74,7 +156,9 @@ async def complete(system_prompt, messages, label="sonnet", log_id=None, user=""
         messages=messages,
     )
     meta = {"model": resp.model, "usage": resp.usage.model_dump()}
-    _write_log(label, system_prompt, messages, resp.content[0].text, meta, log_id, user, conversation_id)
+    full_text = resp.content[0].text if resp.content else ""
+    _log_response(label, full_text, resp.stop_reason, resp.usage.model_dump(), model=resp.model)
+    _write_log(label, system_prompt, messages, full_text, meta, log_id, user, conversation_id)
     return resp
 
 
@@ -94,6 +178,7 @@ async def complete_with_tools_stream(system_prompt, messages, tools, tool_handle
     model_name = MODEL
     full_assembled = ""
     for iteration in range(max_iterations):
+        _log_call(f"{label} iter={iteration}", conv, system_prompt, model=MODEL)
         iter_text = ""
         async with client.messages.stream(
             model=MODEL,
@@ -113,6 +198,8 @@ async def complete_with_tools_stream(system_prompt, messages, tools, tool_handle
         total_input += usage.get("input_tokens", 0) or 0
         total_output += usage.get("output_tokens", 0) or 0
         iter_meta = {"model": final.model, "usage": usage}
+        tool_blocks = [b for b in final.content if b.type == "tool_use"]
+        _log_response(label, iter_text, final.stop_reason, usage, model=final.model, iteration=iteration, tool_blocks=tool_blocks)
         _write_log(f"{label}-iter{iteration}", system_prompt, conv, iter_text, iter_meta, log_id, user, conversation_id)
 
         if final.stop_reason != "tool_use":
@@ -134,12 +221,14 @@ async def complete_with_tools_stream(system_prompt, messages, tools, tool_handle
                 for ev in handler_result.get("events", []):
                     yield ev
                 content_str = handler_result.get("content", "")
+                rows_n = handler_result.get("rows", 0)
+                print(f"  {_fmt('yellow', f'tool_result: {block.name}')} id={block.id[:8]} rows={rows_n} content_len={len(content_str)}")
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
                     "content": content_str,
                 })
-                yield {"type": "tool_result", "name": block.name, "id": block.id, "rows": handler_result.get("rows", 0)}
+                yield {"type": "tool_result", "name": block.name, "id": block.id, "rows": rows_n}
         conv.append({"role": "user", "content": tool_results})
     else:
         print(f"[llm_claude] tool loop hit max_iterations={max_iterations}")
@@ -148,15 +237,20 @@ async def complete_with_tools_stream(system_prompt, messages, tools, tool_handle
     yield {"__meta__": meta}
 
 
-async def complete_fast(system_prompt, messages):
-    # lightweight haiku call for routing decisions
+HAIKU_MODEL = "claude-haiku-4-5-20251001"
+
+async def complete_fast(system_prompt, messages, label="haiku"):
+    # lightweight haiku call for routing / filter-resolution decisions
+    _log_call(label, messages, system_prompt, model=HAIKU_MODEL)
     resp = await client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=HAIKU_MODEL,
         max_tokens=100,
         temperature=0,
         system=system_prompt,
         messages=messages,
     )
     meta = {"model": resp.model, "usage": resp.usage.model_dump()}
-    _write_log("haiku", system_prompt, messages, resp.content[0].text, meta)
+    full_text = resp.content[0].text if resp.content else ""
+    _log_response(label, full_text, resp.stop_reason, resp.usage.model_dump(), model=resp.model)
+    _write_log(label, system_prompt, messages, full_text, meta)
     return resp
