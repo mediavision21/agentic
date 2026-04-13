@@ -1,4 +1,4 @@
-DROP VIEW macro.nordic;
+DROP MATERIALIZED VIEW macro.nordic;
 
 -- CREATE OR REPLACE  VIEW macro.nordic AS
 CREATE MATERIALIZED VIEW macro.nordic AS
@@ -26,6 +26,7 @@ SELECT
     END                                                                     AS country,
     NULLIF(TRIM(l.category), '')                                            AS category,
     s.canonical_name                                                        AS canonical_name,
+	l.service_id,
     NULLIF(TRIM(REGEXP_REPLACE(l.kpi_type, '_service$', '')), '')           AS kpi_type,
     NULLIF(TRIM(l.kpi_dimension), '')                                       AS kpi_dimension,
     NULLIF(TRIM(l.kpi_detail), '')                                          AS kpi_detail,

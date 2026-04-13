@@ -97,9 +97,19 @@ function App() {
 					try { rd = JSON.parse(row.result_data) } catch (e) { /* ignore */ }
 				}
 				msgs.push({ role: "user", text: row.prompt })
+				// new shape: result_data IS the full content object (same shape that
+				// live streaming assembles in handleSubmit). detected by msg_id
+				// presence — legacy rows lack it and fall back to parseRawResponse.
+				let content
+				if (rd && rd.msg_id) {
+					content = { ...rd, loading: false }
+				} else {
+					content = parseRawResponse(row.response, rd)
+					content.msg_id = row.id
+				}
 				msgs.push({
 					role: "assistant",
-					content: parseRawResponse(row.response, rd),
+					content,
 					evals: evalsByLogId[row.id] || null,
 				})
 			}
@@ -204,7 +214,23 @@ function App() {
 					|| msg.content.raw_text
 					|| msg.content.streaming_text
 					|| ""
-				if (text) all.push({ role: "assistant", text: text })
+				const entry = { role: "assistant", text: text }
+				// carry structured prior-turn context for follow-up continuation
+				if (msg.content.sql) {
+					entry.sql = msg.content.sql
+				}
+				if (msg.content.intent) {
+					entry.intent = msg.content.intent
+				}
+				if (msg.content.plot_config) {
+					entry.plot_config = msg.content.plot_config
+				}
+				if (msg.content.columns) {
+					entry.columns = msg.content.columns
+				}
+				if (text || entry.sql) {
+					all.push(entry)
+				}
 			}
 		}
 		// keep last 5 exchanges (10 messages: 5 user + 5 assistant)
@@ -298,6 +324,8 @@ function App() {
 							patchLastMsg(sessionId, function (c) { return { ...c, msg_id: event.id } })
 						} else if (event.type === "preamble") {
 							patchLastMsg(sessionId, function (c) { return { ...c, preamble: event.text } })
+						} else if (event.type === "intent") {
+							patchLastMsg(sessionId, function (c) { return { ...c, intent: event.intent } })
 						} else if (event.type === "token") {
 							patchLastMsg(sessionId, function (c) { return { ...c, streaming_text: (c.streaming_text || "") + event.text } })
 						} else if (event.type === "text") {
@@ -316,58 +344,35 @@ function App() {
 							patchLastMsg(sessionId, function (c) { return { ...c, template_plots: event.plots } })
 						} else if (event.type === "distilled_summary") {
 							patchLastMsg(sessionId, function (c) { return { ...c, distilled_summary: event.text } })
-						} else if (event.type === "stage") {
+						} else if (event.type === "round") {
+							// flat round: each round has prompt/messages/response; sql+plot distilled separately
 							patchLastMsg(sessionId, function (c) {
-								const stages = (c.stages || []).concat({ stage: event.stage, label: event.label, matches: event.matches })
-								return { ...c, stages }
-							})
-						} else if (event.type === "step") {
-							patchLastMsg(sessionId, function (c) {
-								const stages = c.stages || []
-								if (stages.length > 0) {
-									const last = stages[stages.length - 1]
-									last.steps = (last.steps || []).concat({ label: event.label })
-								}
-								return { ...c, stages: stages.slice() }
+								const rounds = (c.rounds || []).concat({ label: event.label })
+								return { ...c, rounds }
 							})
 						} else if (event.type === "prompt") {
 							patchLastMsg(sessionId, function (c) {
-								const stages = c.stages || []
-								if (stages.length > 0) {
-									const last = stages[stages.length - 1]
-									if (last.steps && last.steps.length > 0) {
-										last.steps[last.steps.length - 1].prompt = event.text
-									} else {
-										last.prompt = event.text
-									}
+								const rounds = c.rounds || []
+								if (rounds.length > 0) {
+									rounds[rounds.length - 1].prompt = event.text
 								}
-								return { ...c, stages: stages.slice() }
+								return { ...c, rounds: rounds.slice() }
 							})
 						} else if (event.type === "messages") {
 							patchLastMsg(sessionId, function (c) {
-								const stages = c.stages || []
-								if (stages.length > 0) {
-									const last = stages[stages.length - 1]
-									if (last.steps && last.steps.length > 0) {
-										last.steps[last.steps.length - 1].messages = event.messages
-									} else {
-										last.messages = event.messages
-									}
+								const rounds = c.rounds || []
+								if (rounds.length > 0) {
+									rounds[rounds.length - 1].messages = event.messages
 								}
-								return { ...c, stages: stages.slice() }
+								return { ...c, rounds: rounds.slice() }
 							})
 						} else if (event.type === "response") {
 							patchLastMsg(sessionId, function (c) {
-								const stages = c.stages || []
-								if (stages.length > 0) {
-									const last = stages[stages.length - 1]
-									if (last.steps && last.steps.length > 0) {
-										last.steps[last.steps.length - 1].response = event.text
-									} else {
-										last.response = event.text
-									}
+								const rounds = c.rounds || []
+								if (rounds.length > 0) {
+									rounds[rounds.length - 1].response = event.text
 								}
-								return { ...c, stages: stages.slice() }
+								return { ...c, rounds: rounds.slice() }
 							})
 						} else if (event.type === "error") {
 							patchLastMsg(sessionId, function (c) { return { ...c, loading: false, error: event.error } })

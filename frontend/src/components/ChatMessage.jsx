@@ -168,7 +168,7 @@ function ChatMessage(options) {
 	}
 
 	// assistant
-	const { loading, error, sql, explanation, text, columns, rows, summary, plot_config, streaming_text, suggestions, msg_id, template_plots, stages } = message.content
+	const { loading, error, sql, explanation, text, columns, rows, summary, plot_config, streaming_text, suggestions, msg_id, template_plots, rounds } = message.content
 	const displayColumns = localColumns || columns
 	const displayRows = localRows || rows
 	// const showDebug = location.hostname === "localhost" || localStorage.getItem("debug") === "1"
@@ -177,35 +177,19 @@ function ChatMessage(options) {
 	return (
 		<div className="bubble-row assistant">
 			<div className="bubble bubble-assistant">
-				{showDebug && stages && stages.map(function (s, i) {
+				{showDebug && rounds && rounds.map(function (r, i) {
 					return (
-						<details key={i} className="debug-stage collapsible">
-							<summary className="debug-stage-label">Stage {s.stage}: {s.label}</summary>
-							{s.prompt && (
-								<details className="collapsible"><summary>Prompt</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(s.prompt) }} /></details>
+						<details key={i} className="debug-round collapsible">
+							<summary className="debug-round-label">{r.label}</summary>
+							{r.prompt && (
+								<details className="collapsible"><summary>Prompt</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(r.prompt) }} /></details>
 							)}
-							{s.messages && (
-								<details className="collapsible"><summary>Messages</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightJSON(s.messages) }} /></details>
+							{r.messages && (
+								<details className="collapsible"><summary>Messages</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightJSON(r.messages) }} /></details>
 							)}
-							{s.response && (
-								<details className="collapsible"><summary>Response</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(s.response) }} /></details>
+							{r.response && (
+								<details className="collapsible"><summary>Response</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(r.response) }} /></details>
 							)}
-							{s.steps && s.steps.map(function (step, j) {
-								return (
-									<details key={j} className="debug-step collapsible">
-										<summary>{step.label}</summary>
-										{step.prompt && (
-											<details className="collapsible"><summary>Prompt</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(step.prompt) }} /></details>
-										)}
-										{step.messages && (
-											<details className="collapsible"><summary>Messages</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightJSON(step.messages) }} /></details>
-										)}
-										{step.response && (
-											<details className="collapsible"><summary>Response</summary><pre className="debug-pre" dangerouslySetInnerHTML={{ __html: highlightMarkdown(step.response) }} /></details>
-										)}
-									</details>
-								)
-							})}
 						</details>
 					)
 				})}
@@ -237,6 +221,8 @@ function ChatMessage(options) {
 					</details>
 				)}
 
+				{summary && <Markdown text={summary} />}
+
 				{displayRows && displayRows.length > 0 && !template_plots && (
 					<ResultChart columns={displayColumns} rows={displayRows} plot_config={plot_config} msg_id={msg_id} />
 				)}
@@ -244,8 +230,6 @@ function ChatMessage(options) {
 				{template_plots && template_plots.length > 0 && rows && rows.length > 0 && (
 					<TemplatePlots plots={template_plots} rows={rows} />
 				)}
-
-				{summary && <Markdown text={summary} />}
 
 				{!evalMode && suggestions && suggestions.length > 0 && (
 					<div className="suggestion-chips">

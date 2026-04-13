@@ -1,4 +1,4 @@
-from agent import postprocess_sql
+from sql_utils import postprocess_sql
 
 sql_in = """SELECT
   country,

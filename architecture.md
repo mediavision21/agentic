@@ -18,17 +18,18 @@ mediavision/
 │   ├── main.py                       # FastAPI app, lifespan, CORS, routes
 │   ├── db.py                         # asyncpg pool, schema introspection, query exec
 │   ├── skills.py                     # generates skill files from DB schema (files kept, not used in prompt)
-│   ├── intent.py                      # Stage 0: intent extraction + default resolution (pure Python, no LLM)
-│   ├── agent.py                      # pipeline orchestrator: intent → routing → generation (template / guided / open)
-│   ├── stage2.py                     # template-guided SQL generation (2 tries × 3 templates)
-│   ├── stage3.py                     # full-schema fallback SQL generation
+│   ├── intent.py                     # Stage 0: intent extraction + default resolution (pure Python, no LLM)
+│   ├── agent.py                      # pipeline orchestrator: intent → routing → template exec / tool-loop generation
+│   ├── generate.py                   # tool-loop SQL generation — LLM with `query` tool + optional template hints
+│   ├── sql_utils.py                  # SQL post-processing, extraction, message-building helpers
 │   ├── plot_config.py                # plot+summary LLM call; loads rules from skill/plot.md at runtime
 │   ├── template_router.py            # YAML template loader + Haiku-based prompt matcher
 │   ├── template_filters.py           # global filter registry ([[ AND {{var}} ]] substitution)
 │   ├── template/                     # pre-baked YAML templates (sql + plot code + optional filter overrides)
 │   ├── evaldb.py                     # SQLite: llm_logs, evaluations, users, conversations
 │   ├── add_user.py                   # CLI tool to create users
-│   ├── llm_claude.py                 # Anthropic SDK client
+│   ├── llm.py                        # backend-agnostic wrapper (complete / complete_stream / complete_with_tools_stream)
+│   ├── llm_claude.py                 # Anthropic SDK client (tool-use streaming loop lives here)
 │   └── llm_local.py                  # llama.cpp OpenAI-compatible HTTP client
 ├── frontend/
 │   ├── vite.config.js                # react plugin, /api proxy to :8000
@@ -36,7 +37,7 @@ mediavision/
 │   │   ├── main.jsx                  # react root mount
 │   │   ├── App.jsx                   # root: state management, API calls
 │   │   ├── style.css                 # Mediavision brand tokens, chat layout, bubble styles
-│   │   ├── parseResponse.js          # parse raw LLM text → structured content for ChatMessage
+│   │   ├── parseResponse.js          # LEGACY fallback — pre-migration rows only (new rows use result_data as-is)
 │   │   └── components/
 │   │       ├── ChatMessage.jsx       # iMessage-style bubble (user right, assistant left)
 │   │       ├── EvalPanel.jsx         # full conversation view for evaluations (read-only)
@@ -51,6 +52,22 @@ mediavision/
 └── skills/                           # auto-generated at startup (kept on disk, not injected into prompts)
     └── {table_name}.txt              # columns with distinct values or range stats per column
 ```
+
+## Conversation Continuity
+
+Follow-up questions default to **continuation** unless the new prompt is clearly a new topic. `agent.is_continuation(partial, prior_ctx)`:
+- Returns `True` when the prior assistant turn had stored `sql` + `intent`, AND either:
+  - `is_data_query(partial)` is False (pure modifier: "add Q1 2024", "även lägga till"), OR
+  - `is_data_query(partial)` is True but **none** of the strong signals fired (`kpi_type`, `service_ids`, `top_n`, `countries`, `category`, `service_filter`).
+- Returns `False` only when the new prompt has at least one strong signal AND reads as self-contained.
+
+On continuation:
+- Prior resolved intent is merged with the current partial (partial fields override), re-resolved, and used for preamble + intent_block.
+- Template routing (Stage 1) is **skipped** — follow-ups always go through tool-loop generation (label: "Follow-up Generation").
+- Prior SQL is injected into the generation system prompt under `## Prior Turn Context (modify, do not replace)`.
+- Prior `plot_config` is passed to `generate_plot_and_summary` so the plot LLM extends the existing chart instead of regenerating from scratch.
+
+Frontend `buildHistory` (App.jsx) carries `{role, text, sql, intent, plot_config, columns}` for assistant turns so the backend can reconstruct prior context.
 
 ## Pipeline: Intent Resolution → Routing → Generation
 
@@ -75,32 +92,30 @@ System prompt contains only: brief role description + list of all template filen
 User prompt is matched against this list. Model returns up to 6 candidates with a similarity score (0.0–1.0).
 
 - **Score >= 0.95**: Stage 2 variant = **Template Execution**
-- **Score < 0.95**: Stage 2 variant = **Guided Generation** (top matches as few-shot examples)
-- **No match**: Stage 2 variant = **Open Generation**
+- **Score < 0.95** (partial matches): Stage 2 = **Guided Generation** — tool loop with top 3 templates as hints
+- **No match**: Stage 2 = **Open Generation** — tool loop with schema only
 
 ### Stage 2a — Template Execution
 Use template SQL directly — no SQL generation needed.
 - Step: SQL — if template SQL has `[[ AND {{var}} ]]` placeholders, resolve from: (1) user prompt via LLM, (2) intent defaults, (3) registry defaults. Execute SQL, stream rows.
 - Step: Plot & Summary — render template plot code, generate summary.
 
-### Stage 2b — Guided Generation (Sonnet)
-Runs only when Stage 1 found partial matches. Each stage has two steps:
+### Stage 2b — Tool-Loop Generation (Sonnet)
+Single unified stage for both guided (partial match) and open (no match) cases — the only difference is whether the system prompt includes matched-template few-shot examples.
 
-**Step: SQL** (streaming): system prompt = role + schema (fetched from DB, cached) + sample data CSV + resolved intent block + top 3 template SQL as few-shot examples (no plot code). LLM returns PRIMARY sql block + optional ALTERNATIVE sql blocks. Each is tried in order until one returns rows.
-- If all alternatives return 0 rows: **Try 2** (non-streaming) repeats with template matches 4-6.
-- If all tries return 0 rows -> hand off to Open Generation.
+**Step: SQL** (streaming, tool-use loop): system prompt = role + schema (fetched from DB, cached) + sample data CSV + resolved intent block + (optional) top 3 template SQL as few-shot examples. The LLM is given a single `query` tool that runs a read-only SELECT against `macro.nordic` and returns `{columns, row_count, rows (top 20)}`. The model may call the tool multiple times in one turn:
+- Typical path: one `query` call → rows returned → model responds with a short plain-text summary.
+- Empty-result recovery: if a call returns 0 rows, the result is fed back to the model as `tool_result` so it can call `query` again — e.g. `SELECT DISTINCT country FROM macro.nordic WHERE kpi_type = '...'` — and then issue a corrected query.
+
+The loop terminates when the model emits `end_turn` or after `max_iterations = 5`. The last tool call that returned rows is emitted as the canonical `sql` + `rows` event for the UI and plot+summary step.
 
 **Step: Plot & Summary** (after rows confirmed): sample rows sent to a separate LLM call that returns a combined JSON with `plot` (Observable Plot config) and `summary` (2-4 sentence text). Uses `skill/plot.md` rules (chart type selection: grouped bars for period comparison via `fx`, stacked bars for share data, lines for trends). No schema/SQL rules are included in this prompt.
 
-### Stage 2c — Open Generation (Sonnet)
-Runs when Stage 1 found no matches, or Guided Generation returned no data. Same two steps:
+> **Schema source**: `fetch_schema_text()` in `db.py` queries `information_schema` for tables listed in `schema_tables` (currently `['nordic']`), builds a markdown table of columns/types/stats, and caches in-process.
 
-**Step: SQL** (streaming): system prompt = role + schema from DB + resolved intent block (no template hints). LLM returns SQL + alternatives. Each tried until rows found.
-**Step: Plot & Summary**: separate LLM call generates Observable Plot config + summary from sample rows.
+> **Sample data**: `load_data_examples()` runs a one-time query against `macro.nordic` (latest quarter, sweden + norway, 5 KPI types, ≤5 rows each ≈ 50 rows). Result cached in-process as CSV and appended to the Stage 2b system prompt.
 
-> **Schema source**: `fetch_schema_text()` in `db.py` queries `information_schema` for tables listed in `schema_tables` (currently `['nordic']`), builds a markdown table of columns/types/stats, and caches in-process. Shared by Stage 3 and Stage 4.
-
-> **Sample data**: `load_data_examples()` runs a one-time query against `macro.nordic` (latest quarter, sweden + norway, 5 KPI types, ≤5 rows each ≈ 50 rows). Result cached in-process as CSV and appended to both Stage 3 and Stage 4 system prompts.
+> **Tool-loop plumbing**: `llm_claude.complete_with_tools_stream` drives the Anthropic tool-use loop — streams text deltas, calls `tool_handler` on each `tool_use` block, appends assistant + `tool_result` messages, and continues until `stop_reason != "tool_use"` or `max_iterations` is reached. `generate.run` wires the `query` tool to `db.execute_query` (with `postprocess_sql` applied first).
 
 ## Template Format (YAML)
 ```yaml
@@ -153,24 +168,20 @@ User prompt
         → execute SQL → stream rows
     → Step: Plot & Summary — render template plot code + generate summary
 
-    [Stage 2 — Guided Generation (partial match, Sonnet)]
-    → Step: SQL (streaming): top 3 templates + intent_block as context → LLM returns SQL
-        → try each SQL in order until rows found
-        → if all return 0 rows: try2 with templates 4-6 (non-streaming)
-        → if all tries return 0 rows: hand off to Open Generation
-    → Step: Plot & Summary: sample rows → separate LLM call → plot config + summary
-
-    [Stage 2 — Open Generation (no match or Guided failed, Sonnet)]
-    → Step: SQL (streaming): full schema + intent_block → SQL + alternatives
-        → try each SQL in order until rows found
+    [Stage 2 — Tool-Loop Generation (partial or no match, Sonnet)]
+    → Step: SQL (streaming, tool-use loop):
+        → system prompt = schema + sample data + intent_block (+ top 3 templates if matched)
+        → LLM calls `query` tool to run SELECT; rows returned as tool_result
+        → on 0 rows: LLM may call `query` again (e.g. distinct-value probe) and retry
+        → loop until end_turn or max_iterations=5; last successful query → canonical sql+rows
     → Step: Plot & Summary: sample rows → separate LLM call → plot config + summary
 
     → emit intent-based suggestions ("Break down by country", "Show trend", "Switch to reach")
 
-    → SSE events: conversation_id, msg_id, token, sql, rows, plot_config, template_plots, summary, suggestions, prompt, messages, response
+    → SSE events: conversation_id, msg_id, preamble, intent, round, token, sql, rows, plot_config, template_plots, summary, suggestions, prompt, messages, response, distilled_summary
     → llm_logs saved with user + conversation_id
     → frontend: user bubble (right) + assistant bubble (left)
-    → assistant bubble: SQL collapsible, table, chart inline, debug expandables (Prompt/Messages/Response)
+    → assistant bubble: SQL collapsible, table, chart inline, flat round debug expandables (each round: Prompt/Messages/Response; SQL + plot distilled out as separate blocks)
 ```
 
 ## Persistence
@@ -180,6 +191,14 @@ User prompt
 - **ID format**: both `conversation_id` and `llm_logs.id` (msg_id) use server-generated timestamps `yyyy-mm-dd HH:mm:ss.nnnnnnnnn` (nanosecond precision via microsecond×1000). `conversation_id` is generated on the first message of a session and reused for all subsequent messages. `msg_id` is generated per LLM interaction.
 - Chat history loaded per-user on login, lazy-loaded on click
 - Eval view loads full conversation from conversation_id
+- **result_data** on each llm_logs row stores the *full* assistant content dict
+  (same shape the frontend assembles live from SSE events — msg_id, preamble,
+  intent, text, raw_text, sql, explanation, plot_config, columns, rows, summary,
+  suggestions, template_plots, distilled_summary, rounds, error). `agent.py`
+  taps every event via `_collect()` and persists once at stream end, so chat
+  history renders identically to live streaming via the same ChatMessage
+  component with zero re-derivation. `parseResponse.js` remains as a legacy
+  fallback for pre-migration rows.
 
 ## API Endpoints
 

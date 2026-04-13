@@ -193,7 +193,7 @@ async def run_matched_template(options):
         sql = apply_filters(sql, resolved)
         print(f"[template_router] filters applied: {resolved}")
 
-    yield {"type": "step", "label": "SQL"}
+    yield {"type": "round", "label": "SQL"}
     yield {"type": "sql", "sql": sql, "plot_config": None, "explanation": description}
 
     try:
@@ -208,7 +208,7 @@ async def run_matched_template(options):
         )
         return
 
-    yield {"type": "step", "label": "Plot & Summary"}
+    yield {"type": "round", "label": "Plot & Summary"}
     if template.get("plots"):
         yield {"type": "template_plots", "plots": template["plots"]}
 

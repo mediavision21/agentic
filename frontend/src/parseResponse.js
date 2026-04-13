@@ -1,3 +1,6 @@
+// LEGACY FALLBACK ONLY — used for old rows written before agent.py started
+// persisting the full content dict as result_data. new rows skip this entirely
+// and use result_data directly (same shape live streaming assembles).
 // parse raw LLM response text into structured content for ChatMessage
 // mirrors backend agent.py extract_sql / extract_plot_config logic
 // resultData: {columns, rows, plot_config, summary} from stored result_data

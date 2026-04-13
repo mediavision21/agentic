@@ -1,127 +1,228 @@
 from datetime import datetime
-import stage2
-import stage3
+import generate
+import evaldb
 from plot_config import generate_summary
 from template_router import load_templates, match_top_templates, run_matched_template
 from intent import extract_intent, is_data_query, resolve_defaults, build_preamble, build_suggestions, build_intent_prompt_block
 
 
 def make_timestamp_id():
-    now = datetime.now()
-    return now.strftime("%Y-%m-%d %H:%M:%S") + f".{now.microsecond * 1000:09d}"
+	now = datetime.now()
+	return now.strftime("%Y-%m-%d %H:%M:%S") + f".{now.microsecond * 1000:09d}"
+
+
+# mirror every SSE event into a single `content` dict — same shape the frontend
+# assembles live in App.jsx handleSubmit. this dict is persisted at stream end
+# so that reloading chat history renders identically to live streaming.
+def _collect(event, content):
+	t = event.get("type")
+	if t == "msg_id":
+		content["msg_id"] = event["id"]
+	elif t == "preamble":
+		content["preamble"] = event["text"]
+	elif t == "intent":
+		content["intent"] = event["intent"]
+	elif t == "token":
+		content["streaming_text"] = (content.get("streaming_text") or "") + event["text"]
+	elif t == "text":
+		content["text"] = event["text"]
+		content["raw_text"] = event["text"]
+	elif t == "sql":
+		content["sql"] = event["sql"]
+		content["explanation"] = event.get("explanation")
+		if event.get("plot_config") is not None:
+			content["plot_config"] = event["plot_config"]
+		if content.get("streaming_text"):
+			content["raw_text"] = content["streaming_text"]
+	elif t == "rows":
+		content["columns"] = event["columns"]
+		content["rows"] = event["rows"]
+	elif t == "summary":
+		content["summary"] = event["text"]
+	elif t == "suggestions":
+		content["suggestions"] = event["items"]
+	elif t == "plot_config":
+		content["plot_config"] = event["plot_config"]
+	elif t == "template_plots":
+		content["template_plots"] = event["plots"]
+	elif t == "distilled_summary":
+		content["distilled_summary"] = event["text"]
+	elif t == "round":
+		content["rounds"].append({"label": event["label"]})
+	elif t == "prompt":
+		if content["rounds"]:
+			content["rounds"][-1]["prompt"] = event["text"]
+	elif t == "messages":
+		if content["rounds"]:
+			content["rounds"][-1]["messages"] = event["messages"]
+	elif t == "response":
+		if content["rounds"]:
+			content["rounds"][-1]["response"] = event["text"]
+	elif t == "error":
+		content["error"] = event["error"]
+
+
+# strong signals that indicate a self-contained new question
+_STRONG_SIGNAL_KEYS = ("kpi_type", "service_ids", "top_n", "countries", "category", "service_filter")
+
+
+def _last_assistant_ctx(history):
+	# walk history in reverse, return the most recent assistant turn that has sql+intent attached
+	for h in reversed(history or []):
+		if h.get("role") == "assistant" and h.get("sql") and h.get("intent"):
+			return h
+	return None
+
+
+def is_continuation(partial, prior_ctx):
+	# user guidance: default to continuation unless the new prompt clearly starts a new topic
+	if prior_ctx is None:
+		return False
+	if not is_data_query(partial):
+		# conversational modifier like "add Q1 2024" / "även lägga till"
+		return True
+	# has some signals — continuation only when NONE of the strong signals fired
+	has_strong = any(partial.get(k) for k in _STRONG_SIGNAL_KEYS)
+	if has_strong:
+		return False
+	return True
+
+
+def _merge_partial_over_intent(prior_intent, partial):
+	# prior intent as base, current partial fields override specific slots
+	merged = {}
+	# seed with prior intent's raw-extracted fields (strip applied_defaults and resolved-only fields)
+	for k in ("kpi_type", "kpi_dimension", "kpi_detail", "category", "countries",
+			  "service_ids", "service_filter", "top_n", "year", "quarter",
+			  "trend_mode", "age_group", "population_segment", "service_level",
+			  "video_type_comparison"):
+		if prior_intent.get(k) is not None:
+			merged[k] = prior_intent[k]
+	# override with current partial
+	for k, v in partial.items():
+		merged[k] = v
+	return merged
 
 
 async def generate_agent_stream(prompt, backend="claude", history=None, user="", conversation_id=""):
-    if history is None:
-        history = []
+	content = {"loading": False, "rounds": []}
+	try:
+		async for event in _generate_agent_stream_inner(prompt, backend, history, user, conversation_id):
+			_collect(event, content)
+			yield event
+	finally:
+		mid = content.get("msg_id")
+		if mid:
+			try:
+				evaldb.update_result_data(mid, content)
+			except Exception as e:
+				print(f"[agent] persist content failed: {e}")
 
-    if not conversation_id:
-        conversation_id = make_timestamp_id()
-    yield {"type": "conversation_id", "id": conversation_id}
 
-    msg_id = make_timestamp_id()
-    yield {"type": "msg_id", "id": msg_id}
+async def _generate_agent_stream_inner(prompt, backend="claude", history=None, user="", conversation_id=""):
+	if history is None:
+		history = []
 
-    # stage 0: intent resolution — extract + resolve defaults
-    partial = extract_intent(prompt)
-    intent = None
-    intent_block = ""
-    if is_data_query(partial):
-        intent = resolve_defaults(partial)
-        preamble = build_preamble(intent)
-        intent_block = build_intent_prompt_block(intent)
-        print(f"[intent] resolved: kpi={intent['kpi_type']} dim={intent.get('kpi_dimension')} countries={intent.get('countries')} defaults={intent.get('applied_defaults')}")
-        yield {"type": "preamble", "text": preamble}
+	if not conversation_id:
+		conversation_id = make_timestamp_id()
+	yield {"type": "conversation_id", "id": conversation_id}
 
-    templates = load_templates()
-    matches = []
-    if templates:
-        matches, match_debug = await match_top_templates(prompt, templates)
+	msg_id = make_timestamp_id()
+	yield {"type": "msg_id", "id": msg_id}
 
-    # stage 1: routing — match user prompt against template descriptions
-    if matches:
-        yield {"type": "stage", "stage": 1, "label": "Routing"}
-        yield {"type": "prompt", "text": match_debug["prompt"]}
-        yield {"type": "messages", "messages": match_debug["messages"]}
-        yield {"type": "response", "text": match_debug["response"]}
-    if matches and matches[0]["score"] >= 0.95:
-        yield {"type": "stage", "stage": 2, "label": "Template Execution"}
-        distilled = ""
-        async for event in run_matched_template({
-            "prompt": prompt,
-            "match": matches[0],
-            "template": templates[matches[0]["file"]],
-            "backend": backend,
-            "msg_id": msg_id,
-            "user": user,
-            "conversation_id": conversation_id,
-            "generate_summary": generate_summary,
-            "intent": intent,
-        }):
-            if event.get("type") == "summary":
-                distilled = event.get("text", "")
-            elif event.get("type") == "text" and not distilled:
-                distilled = event.get("text", "")[:500]
-            yield event
-        if intent:
-            yield {"type": "suggestions", "items": build_suggestions(intent)}
-        if distilled:
-            yield {"type": "distilled_summary", "text": distilled}
-        return
+	# stage 0: intent resolution — extract + resolve defaults
+	partial = extract_intent(prompt)
 
-    # stage 2: guided generation — LLM with template examples (2 tries × 3 templates)
-    if matches:
-        yield {"type": "stage", "stage": 2, "label": "Guided Generation"}
-        stage2_handled = False
-        distilled = ""
-        async for event in stage2.run({
-            "prompt": prompt,
-            "matches": matches,
-            "templates": templates,
-            "backend": backend,
-            "history": history,
-            "msg_id": msg_id,
-            "user": user,
-            "conversation_id": conversation_id,
-            "intent_block": intent_block,
-        }):
-            if event.get("type") == "__stage2_no_data__":
-                break
-            if event.get("type") == "summary":
-                distilled = event.get("text", "")
-            elif event.get("type") == "text" and not distilled:
-                distilled = event.get("text", "")[:500]
-            yield event
-            # stage2 handled: either found data rows, or gave a conversational reply
-            if event.get("type") == "rows" and len(event.get("rows", [])) > 0:
-                stage2_handled = True
-            if event.get("type") == "text":
-                stage2_handled = True
-        if stage2_handled:
-            if intent:
-                yield {"type": "suggestions", "items": build_suggestions(intent)}
-            if distilled:
-                yield {"type": "distilled_summary", "text": distilled}
-            return
+	# continuation detection — default to continue unless clearly a new question
+	prior_ctx = _last_assistant_ctx(history)
+	continuation = is_continuation(partial, prior_ctx)
+	prior_sql = None
+	prior_plot_config = None
+	if continuation:
+		prior_sql = prior_ctx.get("sql")
+		prior_plot_config = prior_ctx.get("plot_config")
+		prior_intent = prior_ctx.get("intent") or {}
+		partial = _merge_partial_over_intent(prior_intent, partial)
+		print(f"[agent] continuation detected — merged partial: {partial}")
 
-    # stage 2: open generation — full schema, no template hints
-    yield {"type": "stage", "stage": 2, "label": "Open Generation"}
-    distilled = ""
-    async for event in stage3.run({
-        "prompt": prompt,
-        "backend": backend,
-        "history": history,
-        "msg_id": msg_id,
-        "user": user,
-        "conversation_id": conversation_id,
-        "intent_block": intent_block,
-    }):
-        if event.get("type") == "summary":
-            distilled = event.get("text", "")
-        elif event.get("type") == "text" and not distilled:
-            distilled = event.get("text", "")[:500]
-        yield event
-    if intent:
-        yield {"type": "suggestions", "items": build_suggestions(intent)}
-    if distilled:
-        yield {"type": "distilled_summary", "text": distilled}
+	intent = None
+	intent_block = ""
+	if is_data_query(partial):
+		intent = resolve_defaults(partial)
+		preamble = build_preamble(intent)
+		intent_block = build_intent_prompt_block(intent)
+		print(f"[intent] resolved: kpi={intent['kpi_type']} dim={intent.get('kpi_dimension')} countries={intent.get('countries')} defaults={intent.get('applied_defaults')}")
+		yield {"type": "preamble", "text": preamble}
+		yield {"type": "intent", "intent": intent}
+
+	# on continuation, skip template routing — go straight to tool-loop so LLM can modify prior SQL
+	templates = {}
+	matches = []
+	match_debug = None
+	if not continuation:
+		templates = load_templates()
+		if templates:
+			matches, match_debug = await match_top_templates(prompt, templates)
+
+		# stage 1: routing — match user prompt against template descriptions
+		if matches:
+			yield {"type": "round", "label": "Routing"}
+			yield {"type": "prompt", "text": match_debug["prompt"]}
+			yield {"type": "messages", "messages": match_debug["messages"]}
+			yield {"type": "response", "text": match_debug["response"]}
+		if matches and matches[0]["score"] >= 0.95:
+			yield {"type": "round", "label": "Template Execution"}
+			distilled = ""
+			async for event in run_matched_template({
+				"prompt": prompt,
+				"match": matches[0],
+				"template": templates[matches[0]["file"]],
+				"backend": backend,
+				"msg_id": msg_id,
+				"user": user,
+				"conversation_id": conversation_id,
+				"generate_summary": generate_summary,
+				"intent": intent,
+			}):
+				if event.get("type") == "summary":
+					distilled = event.get("text", "")
+				elif event.get("type") == "text" and not distilled:
+					distilled = event.get("text", "")[:500]
+				yield event
+			if intent:
+				yield {"type": "suggestions", "items": build_suggestions(intent)}
+			if distilled:
+				yield {"type": "distilled_summary", "text": distilled}
+			return
+
+	# stage 2: tool-loop generation — LLM with `query` tool, optional template hints
+	if continuation:
+		label = "Follow-up Generation"
+	elif matches:
+		label = "Guided Generation"
+	else:
+		label = "Open Generation"
+	yield {"type": "round", "label": label}
+	distilled = ""
+	async for event in generate.run({
+		"prompt": prompt,
+		"matches": matches,
+		"templates": templates,
+		"backend": backend,
+		"history": history,
+		"msg_id": msg_id,
+		"user": user,
+		"conversation_id": conversation_id,
+		"intent_block": intent_block,
+		"prior_sql": prior_sql,
+		"prior_plot_config": prior_plot_config,
+	}):
+		if event.get("type") == "summary":
+			distilled = event.get("text", "")
+		elif event.get("type") == "text" and not distilled:
+			distilled = event.get("text", "")[:500]
+		yield event
+	if intent:
+		yield {"type": "suggestions", "items": build_suggestions(intent)}
+	if distilled:
+		yield {"type": "distilled_summary", "text": distilled}

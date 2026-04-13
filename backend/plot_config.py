@@ -98,11 +98,21 @@ async def generate_plot_and_summary(options):
     user = options.get("user")
     conversation_id = options.get("conversation_id")
 
+    prior_plot_config = options.get("prior_plot_config")
+
     sample = rows[:50]
     header = ", ".join(columns)
     lines = [header] + [", ".join(str(v) for v in row.values()) for row in sample]
     data_text = "\n".join(lines)
     user_msg = f"User question: {user_prompt}\n\nQuery result columns: {header}\nSample rows ({len(sample)}):\n{data_text}"
+    if prior_plot_config:
+        prior_json = json.dumps(prior_plot_config, indent=2, default=str)
+        user_msg += (
+            "\n\nPrevious plot config (extend this — keep the same mark type and structure, "
+            "just add/adjust fields for the new data):\n```json\n"
+            + prior_json
+            + "\n```"
+        )
     system_prompt = _build_system_prompt()
     messages = [{"role": "user", "content": user_msg}]
     text = await llm.complete(system_prompt, messages, {"backend": backend, "label": label, "log_id": log_id, "user": user, "conversation_id": conversation_id})
