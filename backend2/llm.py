@@ -1,4 +1,5 @@
 import os
+import json
 import yaml
 import anthropic
 import evaldb
@@ -174,7 +175,20 @@ async def complete(options):
 		_log_response(label, iter_text, final.stop_reason, usage, model=final.model, iteration=iteration if tools else None, tool_blocks=tool_blocks)
 		_write_log(f"{label}-iter{iteration}" if tools else label, system_prompt, conv, iter_text, {"model": final.model, "usage": usage}, log_id, user, conversation_id)
 
-		yield {"type": "response", "text": iter_text}
+		# build the response text to include any tool_use blocks so the RESPONSE
+		# section of this round shows what Claude actually emitted (often pure
+		# tool_use with no prose on first iteration).
+		response_parts = []
+		if iter_text.strip():
+			response_parts.append(iter_text.strip())
+		for b in tool_blocks:
+			sql_val = b.input.get("sql") if isinstance(b.input, dict) else None
+			if sql_val:
+				response_parts.append(f"→ tool_use: {b.name}\n```sql\n{sql_val}\n```")
+			else:
+				response_parts.append(f"→ tool_use: {b.name}\n```json\n{json.dumps(b.input, indent=2, default=str)}\n```")
+		response_text = "\n\n".join(response_parts) if response_parts else iter_text
+		yield {"type": "response", "text": response_text}
 
 		# no tools — single pass, exit
 		if tools:

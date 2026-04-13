@@ -155,7 +155,13 @@ async def run(options):
 			last_success["sql"]     = sql
 			last_success["columns"] = columns
 			last_success["rows"]    = rows
-		return {"content": _format_tool_result(columns, rows), "events": [], "rows": len(rows)}
+		# emit sql + rows into the CURRENT round (the one where this tool_call
+		# fired) so each iteration's <details> shows its own SQL and data.
+		per_round_events = [
+			{"type": "sql",  "sql": sql, "plot_config": None, "explanation": ""},
+			{"type": "rows", "columns": columns, "rows": rows},
+		]
+		return {"content": _format_tool_result(columns, rows), "events": per_round_events, "rows": len(rows)}
 
 	tools = [{
 		"name": "query",
@@ -200,9 +206,12 @@ async def run(options):
 			yield {"type": "suggestions", "items": suggestions}
 		return
 
+	# sql + rows were already emitted per-round by tool_handler; set the
+	# canonical top-level explanation from the model's final prose (without
+	# re-emitting sql/rows, which would double-attach to the final round).
 	explanation = re.sub(r"```sql.*?```", "", full_text, flags=re.DOTALL).strip()
-	yield {"type": "sql", "sql": last_success["sql"], "plot_config": None, "explanation": explanation}
-	yield {"type": "rows", "columns": last_success["columns"], "rows": last_success["rows"]}
+	if explanation:
+		yield {"type": "explanation", "text": explanation}
 
 	yield {"type": "round", "label": "Plot & Summary"}
 	plot_config = None

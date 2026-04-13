@@ -1,7 +1,7 @@
 
 echo "==> Syncing backend..."
 rsync -az --exclude '__pycache__' --exclude '.venv' \
-    "./backend/" "rock@mediavision:/opt/rock/backend/"
+    "./backend2/" "rock@mediavision:/opt/rock/backend/"
 
 echo "==> Building frontend..."
 (cd "./frontend" && npm i && npm run build)

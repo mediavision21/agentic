@@ -58,14 +58,38 @@ function normalizeColorConfig(colorCfg) {
 	return out
 }
 
-// sort period_label domain chronologically using period_sort when available
+// derive a sortable numeric key from a label — "Q1 2024" / "Q3 2023" / ISO date / year
+function labelSortKey(val) {
+	if (val == null) return null
+	const s = String(val).trim()
+	// "Q{n} YYYY" or "YYYY Q{n}"
+	let m = s.match(/^Q([1-4])\s+(\d{4})$/i)
+	if (m) return Number(m[2]) * 10 + Number(m[1])
+	m = s.match(/^(\d{4})\s+Q([1-4])$/i)
+	if (m) return Number(m[1]) * 10 + Number(m[2])
+	// plain year
+	if (/^\d{4}$/.test(s)) return Number(s)
+	// ISO date or any Date.parse-able
+	const t = Date.parse(s)
+	if (!isNaN(t)) return t
+	return null
+}
+
+// sort x domain chronologically — prefer period_sort column, fallback to label parsing
 function sortedXDomain(options) {
 	const { rows, xCol } = options
-	if (!rows[0] || !rows[0].period_sort) return undefined
+	if (!rows[0]) return undefined
+	const hasPeriodSort = rows[0].period_sort != null
 	const seen = new Map()
 	for (const r of rows) {
 		const key = r[xCol]
-		if (!seen.has(key)) seen.set(key, +r.period_sort)
+		if (seen.has(key)) continue
+		const sortKey = hasPeriodSort ? +r.period_sort : labelSortKey(key)
+		seen.set(key, sortKey)
+	}
+	// bail out if we could not derive a numeric sort key for any entry
+	for (const v of seen.values()) {
+		if (v == null || isNaN(v)) return undefined
 	}
 	return Array.from(seen.entries()).sort(function (a, b) { return a[1] - b[1] }).map(function (e) { return e[0] })
 }
@@ -160,6 +184,12 @@ function buildFromConfig(options) {
 	}
 
 	const colorCfg = normalizeColorConfig(config.color) || {}
+	// sort legend chronologically when series is period_label
+	const categoryCol = config.marks.map(function (m) { return m.stroke || m.fill }).find(Boolean)
+	if (categoryCol === "period_label" && !colorCfg.domain) {
+		const periodDomain = sortedXDomain({ rows, xCol: "period_label" })
+		if (periodDomain) colorCfg.domain = periodDomain
+	}
 
 	const plotOpts = {
 		className: "plot",
@@ -287,7 +317,15 @@ function buildFallback(options) {
 		y: { ...voiTheme.y, label: chartInfo.y, grid: false },
 		marks,
 	}
-	if (hasCategory) plotOpts.color = { ...voiTheme.color, legend: true }
+	if (hasCategory) {
+		const categoryCol = chartInfo.stroke || chartInfo.fill
+		const colorCfg = { ...voiTheme.color, legend: true }
+		if (categoryCol === "period_label") {
+			const periodDomain = sortedXDomain({ rows, xCol: "period_label" })
+			if (periodDomain) colorCfg.domain = periodDomain
+		}
+		plotOpts.color = colorCfg
+	}
 	if (chartInfo.fx) {
 		plotOpts.fx = { label: null }
 		plotOpts.x = { ...plotOpts.x, axis: null }

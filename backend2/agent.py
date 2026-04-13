@@ -28,7 +28,8 @@ def _collect(event, content):
 		content["raw_text"] = event["text"]
 	elif t == "sql":
 		content["sql"] = event["sql"]
-		content["explanation"] = event.get("explanation")
+		if event.get("explanation"):
+			content["explanation"] = event["explanation"]
 		if event.get("plot_config") is not None:
 			content["plot_config"] = event["plot_config"]
 		if content.get("streaming_text"):
@@ -41,6 +42,8 @@ def _collect(event, content):
 		if content["rounds"]:
 			content["rounds"][-1]["columns"] = event["columns"]
 			content["rounds"][-1]["rows"] = event["rows"]
+	elif t == "explanation":
+		content["explanation"] = event["text"]
 	elif t == "summary":
 		content["summary"] = event["text"]
 	elif t == "suggestions":
