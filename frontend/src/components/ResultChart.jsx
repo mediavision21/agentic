@@ -5,174 +5,176 @@ import { highlightJSON } from "../highlight.js"
 
 // mark type → Plot function map
 const MARK_FN = {
-    lineY: Plot.lineY,
-    barY: Plot.barY,
-    dot: Plot.dot,
-    areaY: Plot.areaY,
+	lineY: Plot.lineY,
+	barY: Plot.barY,
+	dot: Plot.dot,
+	areaY: Plot.areaY,
 }
 
 function isNumeric(val) {
-    if (val == null) return false
-    return !isNaN(Number(val))
+	if (val == null) return false
+	return !isNaN(Number(val))
 }
 
 function isDateLike(val) {
-    if (val == null) return false
-    const str = String(val)
-    return /^\d{4}-\d{2}/.test(str) || !isNaN(Date.parse(str))
+	if (val == null) return false
+	const str = String(val)
+	return /^\d{4}-\d{2}/.test(str) || !isNaN(Date.parse(str))
 }
 
 // convert row values for a mark — x/y to numbers, x to Date if date-like and lineY
 function prepareData(options) {
-    const { rows, columns, mark } = options
-    return rows.map(function (row) {
-        const d = {}
-        for (const col of columns) {
-            d[col] = row[col]
-        }
-        if (isDateLike(d[mark.x])) {
-            d[mark.x] = new Date(d[mark.x])
-        }
-        if (isNumeric(d[mark.y])) {
-            d[mark.y] = Number(d[mark.y])
-        }
-        if (isNumeric(d[mark.x]) && !isDateLike(rows[0][mark.x])) {
-            d[mark.x] = Number(d[mark.x])
-        }
-        return d
-    })
+	const { rows, columns, mark } = options
+	return rows.map(function (row) {
+		const d = {}
+		for (const col of columns) {
+			d[col] = row[col]
+		}
+		if (isDateLike(d[mark.x])) {
+			d[mark.x] = new Date(d[mark.x])
+		}
+		if (isNumeric(d[mark.y])) {
+			d[mark.y] = Number(d[mark.y])
+		}
+		if (isNumeric(d[mark.x]) && !isDateLike(rows[0][mark.x])) {
+			d[mark.x] = Number(d[mark.x])
+		}
+		return d
+	})
 }
 
 // LLM may return scheme as comma-separated hex string or array — normalize to range
 function normalizeColorConfig(colorCfg) {
-    if (!colorCfg) return colorCfg
-    const out = { ...colorCfg }
-    if (typeof out.scheme === "string" && out.scheme.includes("#")) {
-        out.range = out.scheme.split(",").map(function (s) { return s.trim() })
-        delete out.scheme
-    }
-    if (Array.isArray(out.scheme)) {
-        out.range = out.scheme
-        delete out.scheme
-    }
-    return out
+	if (!colorCfg) return colorCfg
+	const out = { ...colorCfg }
+	if (typeof out.scheme === "string" && out.scheme.includes("#")) {
+		out.range = out.scheme.split(",").map(function (s) { return s.trim() })
+		delete out.scheme
+	}
+	if (Array.isArray(out.scheme)) {
+		out.range = out.scheme
+		delete out.scheme
+	}
+	return out
 }
 
 // sort period_label domain chronologically using period_sort when available
 function sortedXDomain(options) {
-    const { rows, xCol } = options
-    if (!rows[0] || !rows[0].period_sort) return undefined
-    const seen = new Map()
-    for (const r of rows) {
-        const key = r[xCol]
-        if (!seen.has(key)) seen.set(key, +r.period_sort)
-    }
-    return Array.from(seen.entries()).sort(function (a, b) { return a[1] - b[1] }).map(function (e) { return e[0] })
+	const { rows, xCol } = options
+	if (!rows[0] || !rows[0].period_sort) return undefined
+	const seen = new Map()
+	for (const r of rows) {
+		const key = r[xCol]
+		if (!seen.has(key)) seen.set(key, +r.period_sort)
+	}
+	return Array.from(seen.entries()).sort(function (a, b) { return a[1] - b[1] }).map(function (e) { return e[0] })
 }
 
 // when many x-axis labels, rotate and thin them so they don't overlap
 function applyTickDensity(xOpts, domain) {
-    const count = domain ? domain.length : 0
-    if (count > 6) {
-        xOpts.tickRotate = -45
-        if (count > 12) {
-            // show every Nth label to avoid overlap
-            const step = Math.ceil(count / 12)
-            const keep = new Set(domain.filter(function (_, i) { return i % step === 0 }))
-            xOpts.tickFormat = function (d) { return keep.has(d) ? d : "" }
-        }
-    }
+	const count = domain ? domain.length : 0
+	if (count > 6) {
+		xOpts.tickRotate = -45
+		if (count > 12) {
+			// show every Nth label to avoid overlap
+			const step = Math.ceil(count / 12)
+			const keep = new Set(domain.filter(function (_, i) { return i % step === 0 }))
+			xOpts.tickFormat = function (d) { return keep.has(d) ? d : "" }
+		}
+	}
 }
 
 // for bar charts, sort x-domain by y-value descending (highest first)
 function sortedBarDomain(options) {
-    const { rows, xCol, yCol } = options
-    const agg = new Map()
-    for (const r of rows) {
-        const key = r[xCol]
-        const val = Number(r[yCol]) || 0
-        if (!agg.has(key)) {
-            agg.set(key, val)
-        } else {
-            agg.set(key, agg.get(key) + val)
-        }
-    }
-    return Array.from(agg.entries())
-        .sort(function (a, b) { return b[1] - a[1] })
-        .map(function (e) { return e[0] })
+	const { rows, xCol, yCol } = options
+	const agg = new Map()
+	for (const r of rows) {
+		const key = r[xCol]
+		const val = Number(r[yCol]) || 0
+		if (!agg.has(key)) {
+			agg.set(key, val)
+		} else {
+			agg.set(key, agg.get(key) + val)
+		}
+	}
+	return Array.from(agg.entries())
+		.sort(function (a, b) { return b[1] - a[1] })
+		.map(function (e) { return e[0] })
 }
 
 function buildFromConfig(options) {
-    const { config, rows, columns, width } = options
-    const marks = []
-    const xCol = config.marks[0] ? config.marks[0].x : null
-    const yCol = config.marks[0] ? config.marks[0].y : null
-    const isBar = config.marks[0] && config.marks[0].type === "barY"
-    // for bar charts without time axis, sort by y-value descending
-    const xDomain = isBar && xCol !== "period_label"
-        ? sortedBarDomain({ rows, xCol, yCol })
-        : xCol ? sortedXDomain({ rows, xCol }) : undefined
+	const { config, rows, columns, width } = options
+	const marks = []
+	const xCol = config.marks[0] ? config.marks[0].x : null
+	const yCol = config.marks[0] ? config.marks[0].y : null
+	const isBar = config.marks[0] && config.marks[0].type === "barY"
+	// for bar charts without time axis, sort by y-value descending
+	const xDomain = isBar && xCol !== "period_label"
+		? sortedBarDomain({ rows, xCol, yCol })
+		: xCol ? sortedXDomain({ rows, xCol }) : undefined
 
-    for (const m of config.marks) {
-        const fn = MARK_FN[m.type]
-        if (!fn) continue
-        const data = prepareData({ rows, columns, mark: m })
-        const opts = { x: m.x, y: m.y }
-        if (m.fx) opts.fx = m.fx
-        if (m.stroke) opts.stroke = m.stroke
-        if (m.fill) opts.fill = m.fill
-        // always use spline for lines
-        if (m.type === "lineY") opts.curve = m.curve || "catmull-rom"
-        // default color when no stroke/fill specified
-        if (!m.stroke && !m.fill) {
-            if (m.type === "lineY") opts.stroke = voiColors.series1
-            else opts.fill = voiColors.series1
-        }
-        marks.push(fn(data, opts))
-        if (m.type === "barY") marks.push(Plot.ruleY([0]))
-        if (m.type === "lineY") {
-            marks.push(Plot.dot(data, { x: m.x, y: m.y, fill: opts.stroke || voiColors.series1, r: 3 }))
-        }
-        // hover tip — use proper channel names (stroke/fill), not raw column names
-        const tipChannels = { x: m.x, y: m.y }
-        if (m.stroke) tipChannels.stroke = m.stroke
-        if (m.fill) tipChannels.fill = m.fill
-        marks.push(Plot.tip(data, Plot.pointerX(tipChannels)))
-    }
+	for (const m of config.marks) {
+		const fn = MARK_FN[m.type]
+		if (!fn) continue
+		const data = prepareData({ rows, columns, mark: m })
+		const opts = { x: m.x, y: m.y }
+		if (m.fx) opts.fx = m.fx
+		if (m.stroke) opts.stroke = m.stroke
+		if (m.fill) opts.fill = m.fill
+		// always use spline for lines
+		if (m.type === "lineY") opts.curve = m.curve || "catmull-rom"
+		// default color when no stroke/fill specified
+		if (!m.stroke && !m.fill) {
+			if (m.type === "lineY") opts.stroke = voiColors.series1
+			else opts.fill = voiColors.series1
+		}
+		marks.push(fn(data, opts))
+		if (m.type === "barY") marks.push(Plot.ruleY([0]))
+		if (m.type === "lineY") {
+			marks.push(Plot.dot(data, { x: m.x, y: m.y, fill: opts.stroke || voiColors.series1, r: 3 }))
+		}
+		// hover tip — use proper channel names (stroke/fill), not raw column names
+		const tipChannels = { x: m.x, y: m.y }
+		if (m.stroke) tipChannels.stroke = m.stroke
+		if (m.fill) tipChannels.fill = m.fill
+		marks.push(Plot.tip(data, Plot.pointerX(tipChannels)))
+	}
 
-    marks.unshift(Plot.gridY({ stroke: voiColors.grid, strokeWidth: 1 }))
+	marks.unshift(Plot.gridY({ stroke: voiColors.grid, strokeWidth: 1 }))
 
-    const xOpts = { ...voiTheme.x, ...(config.x || {}) }
-    // use time scale when x values are dates
-    if (xCol && rows.length > 0 && isDateLike(rows[0][xCol]) && !isBar) {
-        xOpts.type = xOpts.type || "time"
-    }
-    if (xDomain) {
-        xOpts.domain = xDomain
-        applyTickDensity(xOpts, xDomain)
-    }
-    // bar charts with long categorical labels need rotation even without explicit domain
-    if (isBar && !xDomain) {
-        const uniqueX = new Set(rows.map(function (r) { return r[xCol] }))
-        if (uniqueX.size > 6) {
-            xOpts.tickRotate = -45
-        }
-    }
+	const xOpts = { ...voiTheme.x, ...(config.x || {}) }
+	// use time scale when x values are dates
+	if (xCol && rows.length > 0 && isDateLike(rows[0][xCol]) && !isBar) {
+		xOpts.type = xOpts.type || "time"
+	}
+	if (xDomain) {
+		xOpts.domain = xDomain
+		applyTickDensity(xOpts, xDomain)
+	}
+	// bar charts with long categorical labels need rotation even without explicit domain
+	if (isBar && !xDomain) {
+		const uniqueX = new Set(rows.map(function (r) { return r[xCol] }))
+		if (uniqueX.size > 6) {
+			xOpts.tickRotate = -45
+		}
+	}
 
-    const colorCfg = normalizeColorConfig(config.color) || {}
+	const colorCfg = normalizeColorConfig(config.color) || {}
 
-    const plotOpts = {
-        ...voiTheme,
-        width: width || 600,
-        height: xOpts.tickRotate ? 340 : 300,
-        marginBottom: xOpts.tickRotate ? 80 : undefined,
-        x: xOpts,
-        y: { ...voiTheme.y, grid: false, ...(config.y || {}) },
-        color: { ...voiTheme.color, legend: true, ...colorCfg },
-        marks,
-    }
-    if (config.fx) plotOpts.fx = config.fx
-    return Plot.plot(plotOpts)
+	const plotOpts = {
+		className: "plot",
+		style: ".plot-swatch { white-space: nowrap; }",
+		...voiTheme,
+		width: width || 600,
+		height: xOpts.tickRotate ? 340 : 300,
+		marginBottom: xOpts.tickRotate ? 80 : undefined,
+		x: xOpts,
+		y: { ...voiTheme.y, grid: false, ...(config.y || {}) },
+		color: { ...voiTheme.color, legend: true, ...colorCfg },
+		marks,
+	}
+	if (config.fx) plotOpts.fx = config.fx
+	return Plot.plot(plotOpts)
 }
 
 // columns that are never a useful y-axis metric
@@ -182,275 +184,275 @@ const CATEGORY_COLS = new Set(["country", "service", "service_name", "business_m
 
 // fallback heuristic when no plot_config from backend
 function detectChartType(options) {
-    const { columns, rows } = options
-    if (columns.length < 2 || rows.length === 0) return null
-    // prefer period_label as x if available, else first column
-    const xCol = columns.includes("period_label") ? "period_label" : columns[0]
-    const yCols = columns.filter(function (col) {
-        if (col === xCol || SKIP_Y_COLS.has(col)) return false
-        return rows.some(function (r) { return isNumeric(r[col]) })
-    })
-    if (yCols.length === 0) return null
-    const yCol = yCols[0]
-    // detect multi-series categorical column
-    const strokeCol = columns.find(function (col) {
-        if (col === xCol || col === yCol || SKIP_Y_COLS.has(col)) return false
-        if (!CATEGORY_COLS.has(col)) return false
-        const unique = new Set(rows.map(function (r) { return r[col] }))
-        return unique.size > 1
-    }) || null
-    const firstX = rows[0][xCol]
-    if (isDateLike(firstX)) return { type: "line", x: xCol, y: yCol, stroke: strokeCol }
-    // period_label: few periods + category → grouped bars; many periods → line
-    if (xCol === "period_label") {
-        const uniquePeriods = new Set(rows.map(function (r) { return r[xCol] }))
-        if (uniquePeriods.size <= 3 && strokeCol) {
-            return { type: "bar", x: xCol, y: yCol, fill: "period_label", fx: strokeCol }
-        }
-        return { type: "line", x: xCol, y: yCol, stroke: strokeCol }
-    }
-    if (isNumeric(firstX)) return { type: "dot", x: xCol, y: yCol, stroke: strokeCol }
-    return { type: "bar", x: xCol, y: yCol, fill: strokeCol }
+	const { columns, rows } = options
+	if (columns.length < 2 || rows.length === 0) return null
+	// prefer period_label as x if available, else first column
+	const xCol = columns.includes("period_label") ? "period_label" : columns[0]
+	const yCols = columns.filter(function (col) {
+		if (col === xCol || SKIP_Y_COLS.has(col)) return false
+		return rows.some(function (r) { return isNumeric(r[col]) })
+	})
+	if (yCols.length === 0) return null
+	const yCol = yCols[0]
+	// detect multi-series categorical column
+	const strokeCol = columns.find(function (col) {
+		if (col === xCol || col === yCol || SKIP_Y_COLS.has(col)) return false
+		if (!CATEGORY_COLS.has(col)) return false
+		const unique = new Set(rows.map(function (r) { return r[col] }))
+		return unique.size > 1
+	}) || null
+	const firstX = rows[0][xCol]
+	if (isDateLike(firstX)) return { type: "line", x: xCol, y: yCol, stroke: strokeCol }
+	// period_label: few periods + category → grouped bars; many periods → line
+	if (xCol === "period_label") {
+		const uniquePeriods = new Set(rows.map(function (r) { return r[xCol] }))
+		if (uniquePeriods.size <= 3 && strokeCol) {
+			return { type: "bar", x: xCol, y: yCol, fill: "period_label", fx: strokeCol }
+		}
+		return { type: "line", x: xCol, y: yCol, stroke: strokeCol }
+	}
+	if (isNumeric(firstX)) return { type: "dot", x: xCol, y: yCol, stroke: strokeCol }
+	return { type: "bar", x: xCol, y: yCol, fill: strokeCol }
 }
 
 function buildFallback(options) {
-    const { columns, rows, width } = options
-    const chartInfo = detectChartType({ columns, rows })
-    if (!chartInfo) return null
+	const { columns, rows, width } = options
+	const chartInfo = detectChartType({ columns, rows })
+	if (!chartInfo) return null
 
-    const data = rows.map(function (row) {
-        const d = {}
-        for (const col of columns) {
-            d[col] = row[col]
-        }
-        if (chartInfo.type === "line" && isDateLike(d[chartInfo.x])) {
-            d[chartInfo.x] = new Date(d[chartInfo.x])
-        }
-        if (isNumeric(d[chartInfo.y])) d[chartInfo.y] = Number(d[chartInfo.y])
-        if (chartInfo.type === "dot" && isNumeric(d[chartInfo.x])) {
-            d[chartInfo.x] = Number(d[chartInfo.x])
-        }
-        return d
-    })
+	const data = rows.map(function (row) {
+		const d = {}
+		for (const col of columns) {
+			d[col] = row[col]
+		}
+		if (chartInfo.type === "line" && isDateLike(d[chartInfo.x])) {
+			d[chartInfo.x] = new Date(d[chartInfo.x])
+		}
+		if (isNumeric(d[chartInfo.y])) d[chartInfo.y] = Number(d[chartInfo.y])
+		if (chartInfo.type === "dot" && isNumeric(d[chartInfo.x])) {
+			d[chartInfo.x] = Number(d[chartInfo.x])
+		}
+		return d
+	})
 
-    // for bar charts with categorical x, sort by y-value; otherwise sort by period_sort
-    const xDomain = chartInfo.type === "bar" && chartInfo.x !== "period_label"
-        ? sortedBarDomain({ rows, xCol: chartInfo.x, yCol: chartInfo.y })
-        : sortedXDomain({ rows, xCol: chartInfo.x })
+	// for bar charts with categorical x, sort by y-value; otherwise sort by period_sort
+	const xDomain = chartInfo.type === "bar" && chartInfo.x !== "period_label"
+		? sortedBarDomain({ rows, xCol: chartInfo.x, yCol: chartInfo.y })
+		: sortedXDomain({ rows, xCol: chartInfo.x })
 
-    const tipChannels = { x: chartInfo.x, y: chartInfo.y }
-    if (chartInfo.stroke) tipChannels.stroke = chartInfo.stroke
-    if (chartInfo.fill) tipChannels.fill = chartInfo.fill
-    const hasCategory = chartInfo.stroke || chartInfo.fill
-    let marks = []
-    if (chartInfo.type === "bar") {
-        const barOpts = { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.fill || voiColors.series1 }
-        if (chartInfo.fx) barOpts.fx = chartInfo.fx
-        marks = [
-            Plot.barY(data, barOpts),
-            Plot.ruleY([0]),
-            Plot.tip(data, Plot.pointerX(tipChannels)),
-        ]
-    }
-    if (chartInfo.type === "line") {
-        const lineOpts = { x: chartInfo.x, y: chartInfo.y, stroke: chartInfo.stroke || voiColors.series1, curve: "catmull-rom", sort: null }
-        const dotOpts = { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.stroke || voiColors.series1, r: 3 }
-        marks = [
-            Plot.lineY(data, lineOpts),
-            Plot.dot(data, dotOpts),
-            Plot.tip(data, Plot.pointerX(tipChannels)),
-        ]
-    }
-    if (chartInfo.type === "dot") {
-        marks = [
-            Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.stroke || voiColors.series2 }),
-            Plot.tip(data, Plot.pointerX(tipChannels)),
-        ]
-    }
+	const tipChannels = { x: chartInfo.x, y: chartInfo.y }
+	if (chartInfo.stroke) tipChannels.stroke = chartInfo.stroke
+	if (chartInfo.fill) tipChannels.fill = chartInfo.fill
+	const hasCategory = chartInfo.stroke || chartInfo.fill
+	let marks = []
+	if (chartInfo.type === "bar") {
+		const barOpts = { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.fill || voiColors.series1 }
+		if (chartInfo.fx) barOpts.fx = chartInfo.fx
+		marks = [
+			Plot.barY(data, barOpts),
+			Plot.ruleY([0]),
+			Plot.tip(data, Plot.pointerX(tipChannels)),
+		]
+	}
+	if (chartInfo.type === "line") {
+		const lineOpts = { x: chartInfo.x, y: chartInfo.y, stroke: chartInfo.stroke || voiColors.series1, curve: "catmull-rom", sort: null }
+		const dotOpts = { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.stroke || voiColors.series1, r: 3 }
+		marks = [
+			Plot.lineY(data, lineOpts),
+			Plot.dot(data, dotOpts),
+			Plot.tip(data, Plot.pointerX(tipChannels)),
+		]
+	}
+	if (chartInfo.type === "dot") {
+		marks = [
+			Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.stroke || voiColors.series2 }),
+			Plot.tip(data, Plot.pointerX(tipChannels)),
+		]
+	}
 
-    marks.unshift(Plot.gridY({ stroke: voiColors.grid, strokeWidth: 1 }))
+	marks.unshift(Plot.gridY({ stroke: voiColors.grid, strokeWidth: 1 }))
 
-    const xOpts = { ...voiTheme.x, label: chartInfo.x }
-    if (xDomain) {
-        xOpts.domain = xDomain
-        applyTickDensity(xOpts, xDomain)
-    }
+	const xOpts = { ...voiTheme.x, label: chartInfo.x }
+	if (xDomain) {
+		xOpts.domain = xDomain
+		applyTickDensity(xOpts, xDomain)
+	}
 
-    const plotOpts = {
-        ...voiTheme,
-        width: width || 600,
-        height: xOpts.tickRotate ? 340 : 300,
-        marginBottom: xOpts.tickRotate ? 80 : undefined,
-        x: xOpts,
-        y: { ...voiTheme.y, label: chartInfo.y, grid: false },
-        marks,
-    }
-    if (hasCategory) plotOpts.color = { ...voiTheme.color, legend: true }
-    if (chartInfo.fx) {
-        plotOpts.fx = { label: null }
-        plotOpts.x = { ...plotOpts.x, axis: null }
-    }
-    return Plot.plot(plotOpts)
+	const plotOpts = {
+		...voiTheme,
+		width: width || 600,
+		height: xOpts.tickRotate ? 340 : 300,
+		marginBottom: xOpts.tickRotate ? 80 : undefined,
+		x: xOpts,
+		y: { ...voiTheme.y, label: chartInfo.y, grid: false },
+		marks,
+	}
+	if (hasCategory) plotOpts.color = { ...voiTheme.color, legend: true }
+	if (chartInfo.fx) {
+		plotOpts.fx = { label: null }
+		plotOpts.x = { ...plotOpts.x, axis: null }
+	}
+	return Plot.plot(plotOpts)
 }
 
 // how long to wait for plot_config before showing fallback (ms)
 const FALLBACK_DELAY = 5000
 
 function appendResponsiveSVG($el, chart) {
-    const nw = chart.getAttribute("width")
-    const nh = chart.getAttribute("height")
-    if (nw && nh) {
-        chart.setAttribute("viewBox", "0 0 " + nw + " " + nh)
-        chart.removeAttribute("width")
-        chart.removeAttribute("height")
-    }
-    $el.appendChild(chart)
+	const nw = chart.getAttribute("width")
+	const nh = chart.getAttribute("height")
+	if (nw && nh) {
+		chart.setAttribute("viewBox", "0 0 " + nw + " " + nh)
+		chart.removeAttribute("width")
+		chart.removeAttribute("height")
+	}
+	$el.appendChild(chart)
 }
 
 function ResultChart(options) {
-    const { columns, rows, plot_config, msg_id } = options
-    const $container = useRef(null)
-    const [activeConfig, setActiveConfig] = useState(plot_config)
-    const [editing, setEditing] = useState(false)
-    const [fallbackReady, setFallbackReady] = useState(!!plot_config)
-    const [draft, setDraft] = useState(() => plot_config ? JSON.stringify(plot_config, null, 2) : "")
-    const [configError, setConfigError] = useState("")
-    const [renderError, setRenderError] = useState("")
-    const [saving, setSaving] = useState(false)
+	const { columns, rows, plot_config, msg_id } = options
+	const $container = useRef(null)
+	const [activeConfig, setActiveConfig] = useState(plot_config)
+	const [editing, setEditing] = useState(false)
+	const [fallbackReady, setFallbackReady] = useState(!!plot_config)
+	const [draft, setDraft] = useState(() => plot_config ? JSON.stringify(plot_config, null, 2) : "")
+	const [configError, setConfigError] = useState("")
+	const [renderError, setRenderError] = useState("")
+	const [saving, setSaving] = useState(false)
 
-    // sync when prop changes (new message streamed in)
-    useEffect(function () {
-        setActiveConfig(plot_config)
-        setDraft(plot_config ? JSON.stringify(plot_config, null, 2) : "")
-        setConfigError("")
-        setEditing(false)
-        if (plot_config) setFallbackReady(true)
-    }, [plot_config])
+	// sync when prop changes (new message streamed in)
+	useEffect(function () {
+		setActiveConfig(plot_config)
+		setDraft(plot_config ? JSON.stringify(plot_config, null, 2) : "")
+		setConfigError("")
+		setEditing(false)
+		if (plot_config) setFallbackReady(true)
+	}, [plot_config])
 
-    // delay fallback: if no plot_config, wait FALLBACK_DELAY before showing fallback
-    useEffect(function () {
-        if (activeConfig) return // config already available, no timer needed
-        const timer = setTimeout(function () { setFallbackReady(true) }, FALLBACK_DELAY)
-        return function () { clearTimeout(timer) }
-    }, [activeConfig])
+	// delay fallback: if no plot_config, wait FALLBACK_DELAY before showing fallback
+	useEffect(function () {
+		if (activeConfig) return // config already available, no timer needed
+		const timer = setTimeout(function () { setFallbackReady(true) }, FALLBACK_DELAY)
+		return function () { clearTimeout(timer) }
+	}, [activeConfig])
 
-    // render chart
-    useEffect(function () {
-        if (!$container.current) return
-        $container.current.innerHTML = ""
-        setRenderError("")
+	// render chart
+	useEffect(function () {
+		if (!$container.current) return
+		$container.current.innerHTML = ""
+		setRenderError("")
 
-        const hasConfig = activeConfig && activeConfig.marks && activeConfig.marks.length > 0
+		const hasConfig = activeConfig && activeConfig.marks && activeConfig.marks.length > 0
 
-        // wait for config or fallback timeout
-        if (!hasConfig && !fallbackReady) return
+		// wait for config or fallback timeout
+		if (!hasConfig && !fallbackReady) return
 
-        const w = 700
-        let chart = null
-        if (hasConfig) {
-            try {
-                chart = buildFromConfig({ config: activeConfig, rows, columns, width: w })
-            } catch (e) {
-                console.error("[ResultChart] plot_config render failed, falling back", e)
-                setRenderError(e.message)
-                chart = buildFallback({ columns, rows, width: w })
-            }
-        } else {
-            chart = buildFallback({ columns, rows, width: w })
-        }
+		const w = 700
+		let chart = null
+		if (hasConfig) {
+			try {
+				chart = buildFromConfig({ config: activeConfig, rows, columns, width: w })
+			} catch (e) {
+				console.error("[ResultChart] plot_config render failed, falling back", e)
+				setRenderError(e.message)
+				chart = buildFallback({ columns, rows, width: w })
+			}
+		} else {
+			chart = buildFallback({ columns, rows, width: w })
+		}
 
-        if (chart) appendResponsiveSVG($container.current, chart)
-    }, [columns, rows, activeConfig, fallbackReady])
+		if (chart) appendResponsiveSVG($container.current, chart)
+	}, [columns, rows, activeConfig, fallbackReady])
 
-    function handleReplot() {
-        try {
-            const parsed = JSON.parse(draft)
-            setConfigError("")
-            setActiveConfig(parsed)
-            setEditing(false)
-        } catch (e) {
-            setConfigError(e.message)
-        }
-    }
+	function handleReplot() {
+		try {
+			const parsed = JSON.parse(draft)
+			setConfigError("")
+			setActiveConfig(parsed)
+			setEditing(false)
+		} catch (e) {
+			setConfigError(e.message)
+		}
+	}
 
-    function handleSave() {
-        if (!msg_id) return
-        let parsed = activeConfig
-        if (editing) {
-            try {
-                parsed = JSON.parse(draft)
-                setConfigError("")
-                setActiveConfig(parsed)
-                setEditing(false)
-            } catch (e) {
-                setConfigError(e.message)
-                return
-            }
-        }
-        setSaving(true)
-        fetch(`/api/messages/${msg_id}/plot_config`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ plot_config: parsed }),
-        }).then(function () {
-            setSaving(false)
-        }).catch(function () {
-            setSaving(false)
-        })
-    }
+	function handleSave() {
+		if (!msg_id) return
+		let parsed = activeConfig
+		if (editing) {
+			try {
+				parsed = JSON.parse(draft)
+				setConfigError("")
+				setActiveConfig(parsed)
+				setEditing(false)
+			} catch (e) {
+				setConfigError(e.message)
+				return
+			}
+		}
+		setSaving(true)
+		fetch(`/api/messages/${msg_id}/plot_config`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ plot_config: parsed }),
+		}).then(function () {
+			setSaving(false)
+		}).catch(function () {
+			setSaving(false)
+		})
+	}
 
-    function openEdit(e) {
-        e.preventDefault()
-        setDraft(activeConfig ? JSON.stringify(activeConfig, null, 2) : "")
-        setEditing(true)
-    }
+	function openEdit(e) {
+		e.preventDefault()
+		setDraft(activeConfig ? JSON.stringify(activeConfig, null, 2) : "")
+		setEditing(true)
+	}
 
-    function cancelEdit(e) {
-        e.preventDefault()
-        setEditing(false)
-        setConfigError("")
-    }
+	function cancelEdit(e) {
+		e.preventDefault()
+		setEditing(false)
+		setConfigError("")
+	}
 
-    return (
-        <div>
-            <div className="chart-container" ref={$container}></div>
-            {renderError && <div className="code-error">Plot config render error: {renderError}</div>}
-            {activeConfig && (
-                <details className="collapsible">
-                    <summary>Plot config</summary>
-                    <div className="collapsible-body">
-                        {editing ? (
-                            <div className="code-edit-wrap">
-                                <textarea
-                                    className="code-textarea"
-                                    value={draft}
-                                    onChange={function (e) { setDraft(e.target.value) }}
-                                    rows={Math.max(6, draft.split('\n').length + 1)}
-                                    spellCheck={false}
-                                />
-                                {configError && <div className="code-error">{configError}</div>}
-                                <div className="code-edit-actions">
-                                    <button className="code-run-btn" onClick={handleReplot}>Replot</button>
-                                    {msg_id && <button className="code-run-btn" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save"}</button>}
-                                    <button className="code-cancel-btn" onClick={cancelEdit}>Cancel</button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div>
-                                <div className="sql-block">
-                                    <code dangerouslySetInnerHTML={{ __html: highlightJSON(activeConfig) }} />
-                                </div>
-                                <div className="code-edit-actions">
-                                    <button className="code-inline-btn" onClick={openEdit}>edit</button>
-                                    {msg_id && <button className="code-inline-btn" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "save"}</button>}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </details>
-            )}
-        </div>
-    )
+	return (
+		<div>
+			<div className="chart-container" ref={$container}></div>
+			{renderError && <div className="code-error">Plot config render error: {renderError}</div>}
+			{activeConfig && (
+				<details className="collapsible">
+					<summary>Plot config</summary>
+					<div className="collapsible-body">
+						{editing ? (
+							<div className="code-edit-wrap">
+								<textarea
+									className="code-textarea"
+									value={draft}
+									onChange={function (e) { setDraft(e.target.value) }}
+									rows={Math.max(6, draft.split('\n').length + 1)}
+									spellCheck={false}
+								/>
+								{configError && <div className="code-error">{configError}</div>}
+								<div className="code-edit-actions">
+									<button className="code-run-btn" onClick={handleReplot}>Replot</button>
+									{msg_id && <button className="code-run-btn" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save"}</button>}
+									<button className="code-cancel-btn" onClick={cancelEdit}>Cancel</button>
+								</div>
+							</div>
+						) : (
+							<div>
+								<div className="sql-block">
+									<code dangerouslySetInnerHTML={{ __html: highlightJSON(activeConfig) }} />
+								</div>
+								<div className="code-edit-actions">
+									<button className="code-inline-btn" onClick={openEdit}>edit</button>
+									{msg_id && <button className="code-inline-btn" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "save"}</button>}
+								</div>
+							</div>
+						)}
+					</div>
+				</details>
+			)}
+		</div>
+	)
 }
 
 export default ResultChart

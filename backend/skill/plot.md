@@ -1,5 +1,8 @@
 # Observable Plot skill
 
+- default using line mark with spline style, different kpi_dimension, kpi_type, country, using different line, x axis shall always using time based
+- using bar plot if user explicitly ask.
+
 ## Core principle — insight over raw display
 
 Think in 3 layers:

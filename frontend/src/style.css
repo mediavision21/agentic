@@ -1419,3 +1419,8 @@ body {
 	cursor: not-allowed;
 	opacity: 0.5;
 }
+
+/* let the legend label does not wrap so that they will have the same height */
+.plot-swatch {
+	white-space: nowrap;
+}

@@ -167,15 +167,15 @@ async def login(req: LoginRequest, request: Request):
 	return {"ok": False, "error": "Invalid username or password"}
 
 
-@app.post("/api/create-pivot")
-async def create_pivot():
-	from create_pivot import main as run_pivot
-	try:
-		# await run_pivot()
-		generate_skills()
-		return {"ok": True}
-	except Exception as e:
-		return {"error": str(e)}
+# @app.post("/api/create-pivot")
+# async def create_pivot():
+# 	from create_pivot import main as run_pivot
+# 	try:
+# 		# await run_pivot()
+# 		generate_skills()
+# 		return {"ok": True}
+# 	except Exception as e:
+# 		return {"error": str(e)}
 
 
 @app.get("/api/skills")
@@ -227,41 +227,41 @@ async def get_conversation_evals(conv_id: str):
 	return {"evaluations": evaldb.get_conversation_evaluations(conv_id)}
 
 
-@app.get("/api/skill-templates")
-async def list_skill_templates():
-	files = sorted(f for f in os.listdir(SKILL_TEMPLATES_DIR) if f.endswith(".md"))
-	return {"files": files}
+# @app.get("/api/skill-templates")
+# async def list_skill_templates():
+# 	files = sorted(f for f in os.listdir(SKILL_TEMPLATES_DIR) if f.endswith(".md"))
+# 	return {"files": files}
 
 
-def _safe_template_path(name):
-	# block path traversal — name must be a simple filename
-	if "/" in name or "\\" in name or ".." in name:
-		return None
-	path = os.path.join(SKILL_TEMPLATES_DIR, name)
-	# resolve symlinks and verify it's still inside the templates dir
-	real = os.path.realpath(path)
-	if not real.startswith(os.path.realpath(SKILL_TEMPLATES_DIR) + os.sep):
-		return None
-	return path
+# def _safe_template_path(name):
+# 	# block path traversal — name must be a simple filename
+# 	if "/" in name or "\\" in name or ".." in name:
+# 		return None
+# 	path = os.path.join(SKILL_TEMPLATES_DIR, name)
+# 	# resolve symlinks and verify it's still inside the templates dir
+# 	real = os.path.realpath(path)
+# 	if not real.startswith(os.path.realpath(SKILL_TEMPLATES_DIR) + os.sep):
+# 		return None
+# 	return path
 
 
-@app.get("/api/skill-templates/{name}")
-async def get_skill_template(name: str):
-	path = _safe_template_path(name)
-	if not path or not os.path.exists(path):
-		return {"error": "not found"}
-	with open(path) as f:
-		return {"name": name, "content": f.read()}
+# @app.get("/api/skill-templates/{name}")
+# async def get_skill_template(name: str):
+# 	path = _safe_template_path(name)
+# 	if not path or not os.path.exists(path):
+# 		return {"error": "not found"}
+# 	with open(path) as f:
+# 		return {"name": name, "content": f.read()}
 
 
-@app.put("/api/skill-templates/{name}")
-async def update_skill_template(name: str, req: SkillTemplateUpdate):
-	path = _safe_template_path(name)
-	if not path:
-		return JSONResponse({"error": "invalid template name"}, status_code=400)
-	with open(path, "w") as f:
-		f.write(req.content)
-	return {"ok": True}
+# @app.put("/api/skill-templates/{name}")
+# async def update_skill_template(name: str, req: SkillTemplateUpdate):
+# 	path = _safe_template_path(name)
+# 	if not path:
+# 		return JSONResponse({"error": "invalid template name"}, status_code=400)
+# 	with open(path, "w") as f:
+# 		f.write(req.content)
+# 	return {"ok": True}
 
 
 class ConversationRequest(BaseModel):

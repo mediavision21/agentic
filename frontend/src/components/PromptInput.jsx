@@ -7,7 +7,8 @@ function PromptInput(options) {
 	// const [prompt, setPrompt] = useState("how many people are watch youtube today?")
 	// const [prompt, setPrompt] = useState("What is the reach of netflix across the nordics?")
 	// const [prompt, setPrompt] = useState("Top services by SVOD penetration in in denmark (latest period)?")
-	const [prompt, setPrompt] = useState("Top five services side by side?")
+	// const [prompt, setPrompt] = useState("Top five services side by side?")
+	const [prompt, setPrompt] = useState("What is the development for FAST in the nordics?")
 	const [backend, setBackend] = useState("claude")
 	const $textarea = useRef(null)
 

@@ -291,7 +291,7 @@ def extract_intent(prompt):
         partial["top_n"] = 5
 
     # time
-    if any(w in low for w in ["trend", "over time", "historical", "over the last"]):
+    if any(w in low for w in ["trend", "over time", "historical", "over the last", "development"]):
         partial["trend_mode"] = True
     year_match = re.search(r'\b(20[12]\d)\b', low)
     if year_match:

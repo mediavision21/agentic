@@ -87,6 +87,9 @@ def is_continuation(partial, prior_ctx):
 		return False
 	return True
 
+def is_new_question(partial, prior_ctx):
+	return not is_continuation(partial, prior_ctx)
+
 
 def _merge_partial_over_intent(prior_intent, partial):
 	# prior intent as base, current partial fields override specific slots
