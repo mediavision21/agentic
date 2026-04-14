@@ -54,6 +54,14 @@ def init_db():
 			title TEXT,
 			created_at TEXT
 		);
+		CREATE TABLE IF NOT EXISTS evaluations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			log_id TEXT,
+			rating TEXT,
+			user TEXT,
+			comment TEXT,
+			timestamp TEXT
+		);
 	""")
 	conn.commit()
 	conn.close()
@@ -145,12 +153,73 @@ def get_conversations(user):
 	return [dict(r) for r in rows]
 
 
+def get_all_conversations_by_user():
+	conn = _conn()
+	rows = conn.execute(
+		"SELECT id, user, title, created_at FROM conversations ORDER BY user ASC, created_at DESC"
+	).fetchall()
+	conn.close()
+	# group by user
+	groups = {}
+	for r in rows:
+		d = dict(r)
+		u = d["user"] or ""
+		if u not in groups:
+			groups[u] = []
+		groups[u].append(d)
+	return [{"user": u, "conversations": convs} for u, convs in groups.items()]
+
+
 def get_conversation_messages(conversation_id):
 	conn = _conn()
 	rows = conn.execute(
 		"SELECT id, prompt, response, result_data, timestamp FROM llm_logs WHERE conversation_id=? ORDER BY timestamp ASC",
 		(conversation_id,)
 	).fetchall()
+	conn.close()
+	return [dict(r) for r in rows]
+
+
+def save_evaluation(log_id, rating, user="", comment=""):
+	conn = _conn()
+	conn.execute(
+		"INSERT INTO evaluations (log_id, rating, user, comment, timestamp) VALUES (?,?,?,?,?)",
+		(log_id, rating, user, comment, datetime.now().isoformat())
+	)
+	conn.commit()
+	conn.close()
+
+
+def get_evaluations():
+	conn = _conn()
+	rows = conn.execute("SELECT * FROM evaluations ORDER BY timestamp DESC").fetchall()
+	conn.close()
+	return [dict(r) for r in rows]
+
+
+def get_evaluated_sessions():
+	conn = _conn()
+	rows = conn.execute("""
+		SELECT c.id, c.user, c.title, c.created_at, COUNT(e.id) AS eval_count
+		FROM conversations c
+		JOIN llm_logs l ON l.conversation_id = c.id
+		JOIN evaluations e ON e.log_id = l.id
+		GROUP BY c.id
+		ORDER BY c.created_at DESC
+	""").fetchall()
+	conn.close()
+	return [dict(r) for r in rows]
+
+
+def get_conversation_evaluations(conversation_id):
+	conn = _conn()
+	rows = conn.execute("""
+		SELECT e.*
+		FROM evaluations e
+		JOIN llm_logs l ON l.id = e.log_id
+		WHERE l.conversation_id = ?
+		ORDER BY e.timestamp ASC
+	""", (conversation_id,)).fetchall()
 	conn.close()
 	return [dict(r) for r in rows]
 

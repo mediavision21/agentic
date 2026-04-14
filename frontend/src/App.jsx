@@ -25,6 +25,8 @@ function App() {
 	const [dragTarget, setDragTarget] = useState(null) // "left" | "right" | null
 	const [user, setUser] = useState("")
 	const [authChecked, setAuthChecked] = useState(false)
+	const [adminGroups, setAdminGroups] = useState([]) // [{user, conversations}]
+	const [expandedUsers, setExpandedUsers] = useState({})
 	const $bottom = useRef(null)
 
 	const currentSession = sessions.find(function (s) { return s.id === activeId })
@@ -54,6 +56,11 @@ function App() {
 					setSessions([...history, fresh])
 					setActiveId(fresh.id)
 				})
+			if (user === "rockie") {
+				fetch("/api/admin/conversations", { credentials: "include" })
+					.then(function (r) { return r.json() })
+					.then(function (data) { setAdminGroups(data.groups || []) })
+			}
 		}
 	}, [user])
 
@@ -65,6 +72,26 @@ function App() {
 
 	function onLogin(username) {
 		setUser(username)
+	}
+
+	function toggleUser(username) {
+		setExpandedUsers(function (prev) {
+			return { ...prev, [username]: !prev[username] }
+		})
+	}
+
+	function openAdminConversation(conv) {
+		// add to sessions if not already present, then select + load
+		const existing = sessions.find(function (s) { return s.id === conv.id })
+		if (existing) {
+			selectSession(conv.id)
+		} else {
+			const stub = { id: conv.id, serverId: conv.id, title: conv.title || "Untitled", messages: [], loaded: false }
+			setSessions(function (prev) { return [stub, ...prev] })
+			setActiveId(conv.id)
+			setEvalView(null)
+			loadConversation(conv.id)
+		}
 	}
 
 	function newChat() {
@@ -127,6 +154,7 @@ function App() {
 	function selectSession(id) {
 		setActiveId(id)
 		setEvalView(null)
+		setTemplateView(null)
 
 		const session = sessions.find(function (s) { return s.id === id })
 		if (session && session.loaded === false) {
@@ -454,6 +482,34 @@ function App() {
 							</div>
 						)
 					})}
+					{adminGroups.length > 0 && (
+						<div className="admin-users-section">
+							<div className="admin-users-divider">Users</div>
+							{adminGroups.filter(function (g) { return g.user !== user }).map(function (g) {
+								const expanded = expandedUsers[g.user]
+								return (
+									<div key={g.user} className="admin-user-group">
+										<div className="admin-user-header" onClick={function () { toggleUser(g.user) }}>
+											<span className="admin-user-chevron">{expanded ? "▾" : "▸"}</span>
+											<span className="admin-user-name">{g.user}</span>
+											<span className="admin-user-count">{g.conversations.length}</span>
+										</div>
+										{expanded && g.conversations.map(function (c) {
+											return (
+												<div
+													key={c.id}
+													className="session-item admin-user-conv"
+													onClick={function () { openAdminConversation(c) }}
+												>
+													{c.title || "Untitled"}
+												</div>
+											)
+										})}
+									</div>
+								)
+							})}
+						</div>
+					)}
 				</div>
 				<div className="sidebar-bottom">
 					<div className="account-row">

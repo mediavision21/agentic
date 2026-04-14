@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import * as Plot from "@observablehq/plot"
+import { voiTheme } from "../voi-theme.js"
 
 function TemplatePlotView(options) {
     const { plot, rows } = options
@@ -10,8 +11,8 @@ function TemplatePlotView(options) {
         $container.current.innerHTML = ""
         try {
             const code = "var data = __rows__;\n" + plot.code
-            const fn = new Function("Plot", "__rows__", code)
-            const chart = fn(Plot, rows)
+            const fn = new Function("Plot", "__rows__", "voiTheme", code)
+            const chart = fn(Plot, rows, voiTheme)
             if (chart) $container.current.appendChild(chart)
         } catch (e) {
             console.error("[TemplatePlot] render error:", e)

@@ -186,7 +186,7 @@ function buildFromConfig(options) {
 	const colorCfg = normalizeColorConfig(config.color) || {}
 	// sort legend chronologically when series is period_label
 	const categoryCol = config.marks.map(function (m) { return m.stroke || m.fill }).find(Boolean)
-	if (categoryCol === "period_label" && !colorCfg.domain) {
+	if (categoryCol === "period_label") {
 		const periodDomain = sortedXDomain({ rows, xCol: "period_label" })
 		if (periodDomain) colorCfg.domain = periodDomain
 	}

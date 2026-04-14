@@ -1,0 +1,87 @@
+description: Top five services side by side?
+sql: |-
+  WITH base AS (
+    SELECT
+      n.period_sort,
+      n.period_label,
+      n.year,
+      n.quarter_label,
+      n.country,
+      n.canonical_name AS service,
+      n.value,
+      n.population_household
+    FROM macro.nordic n
+    WHERE n.category       = 'online_video'
+      AND n.kpi_type       = 'penetration'
+      AND n.kpi_dimension  = 'svod'
+      AND n.canonical_name IS NOT NULL
+      AND n.age_group      = '15-74'
+      AND n.quarter        IN (1, 3)
+      AND n.country        IN ('sweden', 'norway', 'denmark', 'finland')
+  ),
+  latest_shared AS (
+    SELECT MIN(max_ps) AS latest_period_sort
+    FROM (SELECT country, MAX(period_sort) AS max_ps FROM base GROUP BY country) x
+  ),
+  -- Population-weighted penetration per service per period (all periods)
+  weighted AS (
+    SELECT
+      b.period_sort,
+      b.period_label,
+      b.year,
+      b.quarter_label,
+      b.service,
+      SUM(b.value * b.population_household) / NULLIF(SUM(b.population_household), 0) * 100 AS penetration_pct
+    FROM base b
+    GROUP BY b.period_sort, b.period_label, b.year, b.quarter_label, b.service
+  ),
+  top5 AS (
+    SELECT service
+    FROM weighted
+    WHERE period_sort = (SELECT latest_period_sort FROM latest_shared)
+    ORDER BY penetration_pct DESC
+    LIMIT 5
+  ),
+  -- Two most recent periods for top5 services
+  recent_periods AS (
+    SELECT DISTINCT period_sort, period_label, year, quarter_label
+    FROM weighted
+    WHERE service IN (SELECT service FROM top5)
+    ORDER BY period_sort DESC
+    LIMIT 2
+  )
+  SELECT
+    w.period_sort,
+    w.period_label,
+    w.year,
+    w.quarter_label,
+    w.service,
+    ROUND((w.penetration_pct)::numeric, 1) AS penetration_pct
+  FROM weighted w
+  JOIN top5 ON w.service = top5.service
+  JOIN recent_periods rp ON w.period_sort = rp.period_sort
+  ORDER BY w.period_sort, w.penetration_pct DESC
+plots:
+- id: chart
+  title: Top five services side by side?
+  code: |-
+    var rows = data.map(function(d) {
+        return Object.assign({}, d, { penetration_pct: +d.penetration_pct });
+    });
+    // sort period_label domain chronologically via period_sort
+    var _periodOrder = [];
+    var _seenP = {};
+    data.slice().sort(function(a, b) { return +a.period_sort - +b.period_sort; }).forEach(function(d) {
+        if (!_seenP[d.period_label]) { _seenP[d.period_label] = true; _periodOrder.push(d.period_label); }
+    });
+    return Plot.plot({
+        ...voiTheme,
+        marks: [
+        Plot.barY(rows, { "x": "period_label", "y": "penetration_pct", "fill": "period_label", "fx": "service" }),
+        Plot.ruleY([0])
+        ],
+        x: { ...voiTheme.x, "axis": null },
+        y: { ...voiTheme.y, "label": "Penetration %", "grid": true },
+        color: { ...voiTheme.color, "legend": true, domain: _periodOrder },
+        fx: { "label": null },
+    });

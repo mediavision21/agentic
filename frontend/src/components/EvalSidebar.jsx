@@ -7,7 +7,7 @@ function formatTs(ts) {
 
 function TemplateCategory(options) {
 	const { category, items, activeTemplateName, onSelectTemplate } = options
-	const [open, setOpen] = useState(true)
+	const [open, setOpen] = useState(false)
 
 	return (
 		<div className="template-category">

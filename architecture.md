@@ -3,9 +3,7 @@
 ## Overview
 Agentic data analytics tool. User asks natural language questions → Claude generates SQL → executes against Supabase PostgreSQL → results displayed as table + Observable Plot chart + summary.
 
-Two backend folders coexist:
-- `backend/`  — legacy, multi-LLM, full evaluation + skills machinery.
-- `backend2/` — **current** simplified Claude-only backend. Frontend targets this.
+`backend/` is the active backend (frontend + deploy.sh target it). `backend2/` has been removed.
 
 ## Stack
 - **Backend**: Python 3.13 / FastAPI / asyncpg / uv
@@ -17,14 +15,14 @@ Two backend folders coexist:
 ```
 mediavision/
 ├── .env                           # API_KEY, DATABASE_URL, SESSION_SECRET
-├── backend2/                      # active backend (Claude-only)
-│   ├── main.py                    # FastAPI app, /api/ask SSE, /api/sql, /api/templates, conversations, login
+├── backend/                       # active backend (Claude-only)
+│   ├── main.py                    # FastAPI app, /api/ask SSE, /api/sql, /api/templates, conversations, evaluations, login
 │   ├── agent.py                   # pipeline orchestrator: intent → routing → template exec / tool-loop
 │   ├── generate.py                # Sonnet tool loop — single `query` tool against macro.nordic (long/tidy form)
 │   ├── plot.py                    # plot+summary JSON generator (Observable Plot config + text)
 │   ├── llm.py                     # UNIFIED Claude entrypoint — one async gen for stream / tools / haiku
 │   ├── db.py                      # asyncpg pool, schema introspection, read-only query exec
-│   ├── evaldb.py                  # SQLite: llm_logs, conversations, users
+│   ├── evaldb.py                  # SQLite: llm_logs, conversations, users, evaluations
 │   ├── intent.py                  # keyword-based intent extraction + default resolution (no LLM)
 │   ├── template_router.py         # Haiku template matcher + filter resolution + template runner
 │   ├── template_filters.py        # [[ AND {{var}} ]] placeholder registry + apply_filters
@@ -32,8 +30,8 @@ mediavision/
 │   ├── data_examples.py           # cached few-shot samples + KPI combinations
 │   ├── sql/
 │   │   └── nordic.sql             # materialized view definition (single source of data)
-│   └── template/                  # 28 YAML templates (sql + plots + optional filter overrides)
-├── backend/                       # legacy — kept for reference, no longer targeted by frontend
+│   └── template/                  # YAML templates (sql + plots + optional filter overrides)
+│       └── evaluations/           # auto-saved from positive ("good") evaluations
 ├── frontend/
 │   ├── vite.config.js             # react plugin, /api proxy to :8000
 │   └── src/
@@ -82,23 +80,24 @@ After the loop: `meta` with aggregated usage.
 
 `llm.complete_text(options)` is a thin wrapper that collects tokens into a string (used by plot.py and template_router.py for non-streaming calls).
 
-## API endpoints (`backend2/main.py`)
+## API endpoints (`backend/main.py`)
 
-| Method | Path                        | Purpose                                  |
-| ------ | --------------------------- | ---------------------------------------- |
-| POST   | /api/login                  | Authenticate user, set session cookie    |
-| GET    | /api/me                     | Check current session                    |
-| GET    | /api/health                 | Health check                             |
-| POST   | /api/ask                    | Generate SQL from prompt (SSE)           |
-| POST   | /api/sql                    | Direct SQL execution                     |
-| POST   | /api/conversations          | Create/persist a conversation            |
-| GET    | /api/conversations          | List conversations for current user      |
-| GET    | /api/conversations/{id}     | Get all messages for a conversation      |
-| GET    | /api/templates              | List all YAML templates (name, desc)     |
-| GET    | /api/templates/{name:path}  | Run template SQL, return rows + plots    |
-
-Intentionally removed vs. legacy `backend/`:
-`/api/evaluations`, `/api/evaluate`, `/api/evaluated-sessions`, `/api/conversations/{id}/evaluations`, `/api/skills`, `/api/skill-templates`, `/api/messages/{id}/plot_config`.
+| Method | Path                                    | Purpose                                           |
+| ------ | --------------------------------------- | ------------------------------------------------- |
+| POST   | /api/login                              | Authenticate user, set session cookie             |
+| GET    | /api/me                                 | Check current session                             |
+| GET    | /api/health                             | Health check                                      |
+| POST   | /api/ask                                | Generate SQL from prompt (SSE)                    |
+| POST   | /api/sql                                | Direct SQL execution                              |
+| POST   | /api/conversations                      | Create/persist a conversation                     |
+| GET    | /api/conversations                      | List conversations for current user               |
+| GET    | /api/conversations/{id}                 | Get all messages for a conversation               |
+| GET    | /api/conversations/{id}/evaluations     | Get evaluations for a conversation                |
+| POST   | /api/evaluate                           | Save evaluation; "good" → writes template YAML    |
+| GET    | /api/evaluations                        | List all evaluations                              |
+| GET    | /api/evaluated-sessions                 | List sessions that have been evaluated            |
+| GET    | /api/templates                          | List all YAML templates (name, desc)              |
+| GET    | /api/templates/{name:path}              | Run template SQL, return rows + plots             |
 
 ## Pipeline: `/api/ask`
 
@@ -204,7 +203,7 @@ User prompt
 </pre>
 
 ## Persistence
-- **SQLite** (`mediavision.db`): `llm_logs`, `conversations`, `users`.
+- **SQLite** (`mediavision.db`): `llm_logs`, `conversations`, `users`, `evaluations`.
 - `conversations` table: id, user, title, created_at — groups messages by session.
 - `llm_logs`: each row has conversation_id + user for filtering.
 - ID format: `conversation_id` and `msg_id` use server-generated timestamps `yyyy-mm-dd HH:mm:ss.nnnnnnnnn`.
@@ -212,8 +211,8 @@ User prompt
 
 ## Running
 ```bash
-# backend2 (active)
-cd backend2 && uv run uvicorn main:app --reload --port 8000
+# backend (active)
+cd backend && uv run uvicorn main:app --reload --port 8000
 
 # frontend
 cd frontend && npm run dev

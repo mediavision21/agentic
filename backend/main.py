@@ -1,4 +1,5 @@
 import os
+import re
 import glob
 import json
 import hashlib
@@ -107,6 +108,13 @@ class LoginRequest(BaseModel):
 	password: str
 
 
+class EvalRequest(BaseModel):
+	msg_id:  str = Field(..., max_length=64)
+	rating:  str = Field(..., pattern=r"^(good|bad)$")
+	user:    str = Field("", max_length=64)
+	comment: str = Field("", max_length=2000)
+
+
 class ConversationRequest(BaseModel):
 	id:    str = Field(..., max_length=64)
 	title: str = Field("", max_length=200)
@@ -189,7 +197,159 @@ async def get_conversation(conv_id: str):
 	return {"messages": messages}
 
 
+ADMIN_USER = "rockie"
+
+
+@app.get("/api/admin/conversations")
+async def admin_conversations(request: Request):
+	username = get_current_user(request)
+	if username != ADMIN_USER:
+		return JSONResponse({"error": "Forbidden"}, status_code=403)
+	return {"groups": evaldb.get_all_conversations_by_user()}
+
+
+def _literal_str(s):
+	class _Lit(str): pass
+	def _representer(dumper, data):
+		return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+	yaml.add_representer(_Lit, _representer)
+	return _Lit(s)
+
+
+def _plot_config_to_js(config):
+	"""Convert plot_config JSON to Observable Plot JS code compatible with TemplatePanel."""
+	if not config or not config.get("marks"):
+		return None
+	marks = config["marks"]
+	x_cfg   = config.get("x", {})
+	y_cfg   = config.get("y", {})
+	col_cfg = config.get("color", {})
+	fx_cfg  = config.get("fx")
+
+	y_col = marks[0].get("y", "value") if marks else "value"
+
+	# detect whether any mark uses period_label as a color dimension
+	color_col = next((m.get("fill") or m.get("stroke") for m in marks if m.get("fill") or m.get("stroke")), None)
+	needs_period_sort = color_col == "period_label"
+
+	lines = [
+		"var rows = data.map(function(d) {",
+		f"    return Object.assign({{}}, d, {{ {y_col}: +d.{y_col} }});",
+		"});",
+	]
+
+	if needs_period_sort:
+		lines += [
+			"// sort period_label domain chronologically via period_sort",
+			"var _periodOrder = [];",
+			"var _seenP = {};",
+			"data.slice().sort(function(a, b) { return +a.period_sort - +b.period_sort; }).forEach(function(d) {",
+			"    if (!_seenP[d.period_label]) { _seenP[d.period_label] = true; _periodOrder.push(d.period_label); }",
+			"});",
+		]
+
+	MARK_FN = {"lineY": "Plot.lineY", "barY": "Plot.barY", "dot": "Plot.dot", "areaY": "Plot.areaY"}
+	mark_lines = []
+	for m in marks:
+		fn = MARK_FN.get(m.get("type", "lineY"), "Plot.lineY")
+		opts = {k: m[k] for k in ("x", "y", "stroke", "fill", "fx", "curve") if m.get(k) is not None}
+		if m.get("type") == "lineY" and "curve" not in opts:
+			opts["curve"] = "catmull-rom"
+		opts_js = ", ".join(f'"{k}": "{v}"' for k, v in opts.items())
+		mark_lines.append(f"    {fn}(rows, {{ {opts_js} }})")
+		if m.get("type") == "lineY":
+			stroke = m.get("stroke") or m.get("fill")
+			dot_js = f'"x": "{m["x"]}", "y": "{m["y"]}"'
+			if stroke:
+				dot_js += f', "fill": "{stroke}"'
+			dot_js += ', "r": 3'
+			mark_lines.append(f"    Plot.dot(rows, {{ {dot_js} }})")
+		if m.get("type") == "barY":
+			mark_lines.append("    Plot.ruleY([0])")
+
+	def _obj(d):
+		return "{ " + ", ".join(f'"{k}": {json.dumps(v)}' for k, v in d.items()) + " }"
+
+	color_expr = "{ ...voiTheme.color, \"legend\": true"
+	if needs_period_sort:
+		color_expr += ", domain: _periodOrder"
+	elif col_cfg:
+		for k, v in col_cfg.items():
+			if k != "legend":
+				color_expr += f', "{k}": {json.dumps(v)}'
+	color_expr += " }"
+
+	plot_parts = [
+		"    ...voiTheme",
+		"    marks: [\n" + ",\n".join(mark_lines) + "\n    ]",
+	]
+	if x_cfg:
+		plot_parts.append(f"    x: {{ ...voiTheme.x, {', '.join(f'{json.dumps(k)}: {json.dumps(v)}' for k, v in x_cfg.items())} }}")
+	else:
+		plot_parts.append("    x: voiTheme.x")
+	if y_cfg:
+		plot_parts.append(f"    y: {{ ...voiTheme.y, {', '.join(f'{json.dumps(k)}: {json.dumps(v)}' for k, v in y_cfg.items())} }}")
+	else:
+		plot_parts.append("    y: voiTheme.y")
+	plot_parts.append(f"    color: {color_expr}")
+	if fx_cfg:
+		plot_parts.append(f"    fx: {_obj(fx_cfg) if isinstance(fx_cfg, dict) else json.dumps(fx_cfg)}")
+
+	lines.append("return Plot.plot({")
+	lines.append(",\n".join(f"    {p}" if not p.startswith("    ") else p for p in plot_parts) + ",")
+	lines.append("});")
+	return "\n".join(lines)
+
+
+@app.post("/api/evaluate")
+async def evaluate(req: EvalRequest, request: Request):
+	username = get_current_user(request)
+	evaldb.save_evaluation(req.msg_id, req.rating, username or req.user, req.comment)
+	if req.rating == "good":
+		rd = evaldb.get_result_data(req.msg_id)
+		sql = rd.get("sql", "")
+		if sql:
+			desc = req.comment or rd.get("user_prompt", req.msg_id)
+			safe_name = re.sub(r"[^a-zA-Z0-9_\-\s]", "_", desc.strip())[:60].strip().replace(" ", "_").lower()
+			if not safe_name:
+				safe_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", req.msg_id)
+			tpl = {"description": desc, "sql": _literal_str(sql)}
+			template_plots = rd.get("template_plots")
+			plot_config    = rd.get("plot_config")
+			if template_plots:
+				tpl["plots"] = [
+					{**p, "code": _literal_str(p["code"])} if "code" in p else p
+					for p in template_plots
+				]
+			else:
+				js = _plot_config_to_js(plot_config)
+				if js:
+					tpl["plots"] = [{"id": "chart", "title": desc[:80], "code": _literal_str(js)}]
+			path = os.path.join(EVAL_TEMPLATE_DIR, safe_name + ".yaml")
+			with open(path, "w") as f:
+				yaml.dump(tpl, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+			print(f"[evaluate] saved template {path}")
+	return {"ok": True}
+
+
+@app.get("/api/evaluations")
+async def list_evaluations():
+	return {"evaluations": evaldb.get_evaluations()}
+
+
+@app.get("/api/evaluated-sessions")
+async def list_evaluated_sessions():
+	return {"sessions": evaldb.get_evaluated_sessions()}
+
+
+@app.get("/api/conversations/{conv_id}/evaluations")
+async def get_conversation_evals(conv_id: str):
+	return {"evaluations": evaldb.get_conversation_evaluations(conv_id)}
+
+
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "template")
+EVAL_TEMPLATE_DIR = os.path.join(TEMPLATE_DIR, "evaluations")
+os.makedirs(EVAL_TEMPLATE_DIR, exist_ok=True)
 
 
 def _safe_yaml_path(name):

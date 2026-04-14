@@ -218,6 +218,49 @@ body {
 	color: var(--color-white);
 }
 
+.admin-users-divider {
+	color: rgba(255, 255, 255, 0.3);
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	margin-top: 12px;
+	padding: 6px 10px 4px;
+	text-transform: uppercase;
+}
+
+.admin-user-header {
+	align-items: center;
+	border-radius: 6px;
+	color: rgba(255, 255, 255, 0.6);
+	cursor: pointer;
+	display: flex;
+	font-size: 12px;
+	gap: 5px;
+	padding: 5px 10px;
+}
+
+.admin-user-header:hover {
+	background: rgba(255, 255, 255, 0.08);
+	color: var(--color-white);
+}
+
+.admin-user-chevron {
+	font-size: 10px;
+	width: 10px;
+}
+
+.admin-user-name {
+	flex: 1;
+}
+
+.admin-user-count {
+	color: rgba(255, 255, 255, 0.3);
+	font-size: 11px;
+}
+
+.admin-user-conv {
+	padding-left: 24px;
+}
+
 .sidebar-bottom {
 	border-top: 1px solid rgba(255, 255, 255, 0.1);
 	flex-shrink: 0;
