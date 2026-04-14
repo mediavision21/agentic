@@ -231,7 +231,7 @@ function ChatMessage(options) {
 					<details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streaming_text}</pre></details>
 				)}
 
-				{error && <p className="error-msg">{error}</p>}
+				{error && <p className="no-data-msg">No data returned</p>}
 
 				{/* conversational reply — show as markdown, no SQL block */}
 				{text && !sql && <Markdown text={text} />}

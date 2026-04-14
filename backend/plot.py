@@ -13,10 +13,18 @@ _PROMPT_HEADER = """You are a data analyst. Given a user question and sample que
 	"y": {"label": "<text>", "grid": true, "tickFormat": ".0% when ratio values 0-1"},
 	"color": {"legend": true}
   },
-  "summary": "<2-4 sentence summary of key trends, totals, or notable values>"
+  "summary": "<2-4 sentence summary — always state the time period covered; if there is a trend describe direction and magnitude; if there is a comparison highlight the top/bottom and the gap>"
 }
 
 Data is always in long/tidy form: one row per observation, a single `value` column, with categorical keys (service, country, period_label, …) as separate columns. Map those keys to `stroke`, `fill`, or `fx` facets — not to separate y columns.
+
+- line mark with spline if prefered option
+- only use bar plot when there is clear comparsion side by side for at most 3 categories.
+- only add area mark when use clear requested
+- categorical stroke/fill/fx columns: if more than 8 unique values exist, include only the top 8 by total value in the config (add a note in summary)
+- for comparison charts (fx facets or top-growth), limit to top 8 categories by value
+- in the summary text, avoid using the words "reach" or "penetration" as generic explanatory words (e.g. "reaching X" or "penetrating the market") — these are metric names in the data and would be confusing; use alternatives like "grew to", "rose to", "climbed", "expanded", "achieved" instead
+- for the y-axis label: if the data contains columns kpi_type, kpi_dimension, or kpi_service, use their distinct value(s) as the label (e.g. "reach", "svod penetration", "linear reach") — prefer kpi_dimension over kpi_type when both present
 """
 
 _PROMPT_EXAMPLES = """
@@ -41,7 +49,7 @@ Sample rows:
 20261, Q1 2026, disney, 0.21
 
 ```json
-{"plot":{"marks":[{"type":"barY","fx":"service","x":"period_label","y":"value","fill":"period_label"}],"fx":{"label":null},"x":{"axis":null},"y":{"label":"Penetration %","grid":true,"tickFormat":".0%"},"color":{"legend":true}},"summary":"Netflix penetration grew from 42% to 45% between Q1 2025 and Q1 2026. Disney+ also increased from 18% to 21%."}
+{"plot":{"marks":[{"type":"barY","fx":"service","x":"period_label","y":"value","fill":"period_label"}],"fx":{"label":null},"x":{"axis":null},"y":{"label":"Penetration %","grid":true,"tickFormat":".0%"},"color":{"legend":true}},"summary":"Netflix grew from 42% to 45% between Q1 2025 and Q1 2026. Disney+ also climbed from 18% to 21%."}
 ```
 
 Input columns: period_sort, period_label, service, value
@@ -81,6 +89,11 @@ async def generate_plot_and_summary(options):
 	lines = [header] + [", ".join(str(v) for v in row.values()) for row in sample]
 	data_text = "\n".join(lines)
 	user_msg = f"User question: {user_prompt}\n\nQuery result columns: {header}\nSample rows ({len(sample)}):\n{data_text}"
+	for kpi_col in ("kpi_dimension", "kpi_type", "kpi_service"):
+		if kpi_col in columns:
+			vals = list(dict.fromkeys(str(r[kpi_col]) for r in rows if r.get(kpi_col)))
+			if vals:
+				user_msg += f"\n{kpi_col} values: {', '.join(vals)}"
 	if prior_plot_config:
 		prior_json = json.dumps(prior_plot_config, indent=2, default=str)
 		user_msg += (

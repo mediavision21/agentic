@@ -75,13 +75,12 @@ plots:
         if (!_seenP[d.period_label]) { _seenP[d.period_label] = true; _periodOrder.push(d.period_label); }
     });
     return Plot.plot({
-        ...voiTheme,
         marks: [
         Plot.barY(rows, { "x": "period_label", "y": "penetration_pct", "fill": "period_label", "fx": "service" }),
         Plot.ruleY([0])
         ],
-        x: { ...voiTheme.x, "axis": null },
-        y: { ...voiTheme.y, "label": "Penetration %", "grid": true },
-        color: { ...voiTheme.color, "legend": true, domain: _periodOrder },
+        x: { "axis": null },
+        y: { "label": "Penetration %", "grid": true },
+        color: { "legend": true, domain: _periodOrder },
         fx: { "label": null },
     });

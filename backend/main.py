@@ -270,7 +270,7 @@ def _plot_config_to_js(config):
 	def _obj(d):
 		return "{ " + ", ".join(f'"{k}": {json.dumps(v)}' for k, v in d.items()) + " }"
 
-	color_expr = "{ ...voiTheme.color, \"legend\": true"
+	color_expr = "{ \"legend\": true"
 	if needs_period_sort:
 		color_expr += ", domain: _periodOrder"
 	elif col_cfg:
@@ -280,17 +280,12 @@ def _plot_config_to_js(config):
 	color_expr += " }"
 
 	plot_parts = [
-		"    ...voiTheme",
 		"    marks: [\n" + ",\n".join(mark_lines) + "\n    ]",
 	]
 	if x_cfg:
-		plot_parts.append(f"    x: {{ ...voiTheme.x, {', '.join(f'{json.dumps(k)}: {json.dumps(v)}' for k, v in x_cfg.items())} }}")
-	else:
-		plot_parts.append("    x: voiTheme.x")
+		plot_parts.append(f"    x: {{ {', '.join(f'{json.dumps(k)}: {json.dumps(v)}' for k, v in x_cfg.items())} }}")
 	if y_cfg:
-		plot_parts.append(f"    y: {{ ...voiTheme.y, {', '.join(f'{json.dumps(k)}: {json.dumps(v)}' for k, v in y_cfg.items())} }}")
-	else:
-		plot_parts.append("    y: voiTheme.y")
+		plot_parts.append(f"    y: {{ {', '.join(f'{json.dumps(k)}: {json.dumps(v)}' for k, v in y_cfg.items())} }}")
 	plot_parts.append(f"    color: {color_expr}")
 	if fx_cfg:
 		plot_parts.append(f"    fx: {_obj(fx_cfg) if isinstance(fx_cfg, dict) else json.dumps(fx_cfg)}")

@@ -1,6 +1,5 @@
 import { useRef, useEffect, useState } from "react"
 import * as Plot from "@observablehq/plot"
-import { voiTheme, voiColors } from "../voi-theme.js"
 import { highlightJSON } from "../highlight.js"
 
 // mark type → Plot function map
@@ -94,18 +93,41 @@ function sortedXDomain(options) {
 	return Array.from(seen.entries()).sort(function (a, b) { return a[1] - b[1] }).map(function (e) { return e[0] })
 }
 
-// when many x-axis labels, rotate and thin them so they don't overlap
+// when many x-axis labels, rotate them so they don't overlap
 function applyTickDensity(xOpts, domain) {
 	const count = domain ? domain.length : 0
 	if (count > 6) {
 		xOpts.tickRotate = -45
-		if (count > 12) {
-			// show every Nth label to avoid overlap
-			const step = Math.ceil(count / 12)
-			const keep = new Set(domain.filter(function (_, i) { return i % step === 0 }))
-			xOpts.tickFormat = function (d) { return keep.has(d) ? d : "" }
-		}
 	}
+}
+
+function truncLabel(d) {
+	const s = String(d)
+	return s.length > 8 ? s.slice(0, 7) + '…' : s
+}
+
+function top8Filter(options) {
+	const { rows, catCol, yCol } = options
+	const agg = new Map()
+	for (const r of rows) {
+		const key = r[catCol]
+		agg.set(key, (agg.get(key) || 0) + (Number(r[yCol]) || 0))
+	}
+	const topSet = new Set(
+		Array.from(agg.entries())
+			.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+			.slice(0, 8)
+			.map(e => e[0])
+	)
+	return rows.filter(r => topSet.has(r[catCol]))
+}
+
+// when fx facets are used, limit x-domain to the most recent N periods that fit
+function maxPeriodsForFacets(options) {
+    const { rows, xCol, fxCol, width } = options
+    const numFacets = new Set(rows.map(r => r[fxCol])).size || 1
+    const facetWidth = (width || 700) / numFacets
+    return Math.max(2, Math.floor(facetWidth / 24)) // ~24px minimum per x tick
 }
 
 // for bar charts, sort x-domain by y-value descending (highest first)
@@ -122,7 +144,7 @@ function sortedBarDomain(options) {
 		}
 	}
 	return Array.from(agg.entries())
-		.sort(function (a, b) { return b[1] - a[1] })
+		.sort(function (a, b) { return Math.abs(b[1]) - Math.abs(a[1]) })
 		.map(function (e) { return e[0] })
 }
 
@@ -132,31 +154,55 @@ function buildFromConfig(options) {
 	const xCol = config.marks[0] ? config.marks[0].x : null
 	const yCol = config.marks[0] ? config.marks[0].y : null
 	const isBar = config.marks[0] && config.marks[0].type === "barY"
-	// for bar charts without time axis, sort by y-value descending
-	const xDomain = isBar && xCol !== "period_label"
-		? sortedBarDomain({ rows, xCol, yCol })
-		: xCol ? sortedXDomain({ rows, xCol }) : undefined
+
+	// apply top-8 filtering for categorical dimensions
+	let filteredRows = rows
+	for (const m of config.marks) {
+		if (m.fx) {
+			const unique = new Set(filteredRows.map(r => r[m.fx]))
+			if (unique.size > 8) filteredRows = top8Filter({ rows: filteredRows, catCol: m.fx, yCol: m.y })
+		}
+		const seriesCol = m.stroke || m.fill
+		if (seriesCol && seriesCol !== "period_label") {
+			const unique = new Set(filteredRows.map(r => r[seriesCol]))
+			if (unique.size > 8) filteredRows = top8Filter({ rows: filteredRows, catCol: seriesCol, yCol: m.y })
+		}
+	}
+
+	// for bar charts without time axis, sort by y-value descending, cap at 8
+	let xDomain = isBar && xCol !== "period_label"
+		? sortedBarDomain({ rows: filteredRows, xCol, yCol }).slice(0, 8)
+		: xCol ? sortedXDomain({ rows: filteredRows, xCol }) : undefined
+
+	// filter rows to xDomain if bar with categorical x
+	if (isBar && xCol !== "period_label" && xDomain) {
+		const xSet = new Set(xDomain)
+		filteredRows = filteredRows.filter(r => xSet.has(r[xCol]))
+	}
+
+	// when fx facets are used, limit x to most recent periods that fit per-facet width
+	const fxCol = config.marks[0] && config.marks[0].fx
+	if (fxCol && xCol && xDomain) {
+		const maxX = maxPeriodsForFacets({ rows: filteredRows, xCol, fxCol, width })
+		if (xDomain.length > maxX) {
+			xDomain = xDomain.slice(-maxX) // keep most recent
+			const xSet = new Set(xDomain)
+			filteredRows = filteredRows.filter(r => xSet.has(r[xCol]))
+		}
+	}
 
 	for (const m of config.marks) {
 		const fn = MARK_FN[m.type]
 		if (!fn) continue
-		const data = prepareData({ rows, columns, mark: m })
+		const data = prepareData({ rows: filteredRows, columns, mark: m })
 		const opts = { x: m.x, y: m.y }
 		if (m.fx) opts.fx = m.fx
 		if (m.stroke) opts.stroke = m.stroke
 		if (m.fill) opts.fill = m.fill
 		// always use spline for lines
 		if (m.type === "lineY") opts.curve = m.curve || "catmull-rom"
-		// default color when no stroke/fill specified
-		if (!m.stroke && !m.fill) {
-			if (m.type === "lineY") opts.stroke = voiColors.series1
-			else opts.fill = voiColors.series1
-		}
 		marks.push(fn(data, opts))
 		if (m.type === "barY") marks.push(Plot.ruleY([0]))
-		if (m.type === "lineY") {
-			marks.push(Plot.dot(data, { x: m.x, y: m.y, fill: opts.stroke || voiColors.series1, r: 3 }))
-		}
 		// hover tip — use proper channel names (stroke/fill), not raw column names
 		const tipChannels = { x: m.x, y: m.y }
 		if (m.stroke) tipChannels.stroke = m.stroke
@@ -164,20 +210,25 @@ function buildFromConfig(options) {
 		marks.push(Plot.tip(data, Plot.pointerX(tipChannels)))
 	}
 
-	marks.unshift(Plot.gridY({ stroke: voiColors.grid, strokeWidth: 1 }))
+	marks.unshift(Plot.gridY())
 
-	const xOpts = { ...voiTheme.x, ...(config.x || {}) }
+	const xOpts = { ...(config.x || {}) }
 	// use time scale when x values are dates
-	if (xCol && rows.length > 0 && isDateLike(rows[0][xCol]) && !isBar) {
+	if (xCol && filteredRows.length > 0 && isDateLike(filteredRows[0][xCol]) && !isBar) {
 		xOpts.type = xOpts.type || "time"
 	}
 	if (xDomain) {
 		xOpts.domain = xDomain
 		applyTickDensity(xOpts, xDomain)
 	}
+	// categorical x: always show labels, truncate at 8 chars
+	const isCategorical = xCol && filteredRows.length > 0 && !isDateLike(filteredRows[0][xCol]) && !isNumeric(filteredRows[0][xCol])
+	if (isCategorical && !xOpts.tickFormat) {
+		xOpts.tickFormat = truncLabel
+	}
 	// bar charts with long categorical labels need rotation even without explicit domain
 	if (isBar && !xDomain) {
-		const uniqueX = new Set(rows.map(function (r) { return r[xCol] }))
+		const uniqueX = new Set(filteredRows.map(r => r[xCol]))
 		if (uniqueX.size > 6) {
 			xOpts.tickRotate = -45
 		}
@@ -185,22 +236,21 @@ function buildFromConfig(options) {
 
 	const colorCfg = normalizeColorConfig(config.color) || {}
 	// sort legend chronologically when series is period_label
-	const categoryCol = config.marks.map(function (m) { return m.stroke || m.fill }).find(Boolean)
+	const categoryCol = config.marks.map(m => m.stroke || m.fill).find(Boolean)
 	if (categoryCol === "period_label") {
-		const periodDomain = sortedXDomain({ rows, xCol: "period_label" })
+		const periodDomain = sortedXDomain({ rows: filteredRows, xCol: "period_label" })
 		if (periodDomain) colorCfg.domain = periodDomain
 	}
 
 	const plotOpts = {
 		className: "plot",
 		style: ".plot-swatch { white-space: nowrap; }",
-		...voiTheme,
 		width: width || 600,
 		height: xOpts.tickRotate ? 340 : 300,
 		marginBottom: xOpts.tickRotate ? 80 : undefined,
 		x: xOpts,
-		y: { ...voiTheme.y, grid: false, ...(config.y || {}) },
-		color: { ...voiTheme.color, legend: true, ...colorCfg },
+		y: { grid: false, ...(config.y || {}) },
+		color: { legend: true, ...colorCfg },
 		marks,
 	}
 	if (config.fx) plotOpts.fx = config.fx
@@ -250,7 +300,26 @@ function buildFallback(options) {
 	const chartInfo = detectChartType({ columns, rows })
 	if (!chartInfo) return null
 
-	const data = rows.map(function (row) {
+	// apply top-8 filtering for categorical dimensions
+	let filteredRows = rows
+	const seriesCol = chartInfo.stroke || chartInfo.fill
+	if (seriesCol && seriesCol !== "period_label") {
+		const unique = new Set(filteredRows.map(r => r[seriesCol]))
+		if (unique.size > 8) filteredRows = top8Filter({ rows: filteredRows, catCol: seriesCol, yCol: chartInfo.y })
+	}
+
+	// for bar charts with categorical x, sort by y-value and cap at 8; otherwise sort by period_sort
+	let xDomain = chartInfo.type === "bar" && chartInfo.x !== "period_label"
+		? sortedBarDomain({ rows: filteredRows, xCol: chartInfo.x, yCol: chartInfo.y }).slice(0, 8)
+		: sortedXDomain({ rows: filteredRows, xCol: chartInfo.x })
+
+	// filter rows to xDomain if bar with categorical x
+	if (chartInfo.type === "bar" && chartInfo.x !== "period_label" && xDomain) {
+		const xSet = new Set(xDomain)
+		filteredRows = filteredRows.filter(r => xSet.has(r[chartInfo.x]))
+	}
+
+	const data = filteredRows.map(function (row) {
 		const d = {}
 		for (const col of columns) {
 			d[col] = row[col]
@@ -265,18 +334,13 @@ function buildFallback(options) {
 		return d
 	})
 
-	// for bar charts with categorical x, sort by y-value; otherwise sort by period_sort
-	const xDomain = chartInfo.type === "bar" && chartInfo.x !== "period_label"
-		? sortedBarDomain({ rows, xCol: chartInfo.x, yCol: chartInfo.y })
-		: sortedXDomain({ rows, xCol: chartInfo.x })
-
 	const tipChannels = { x: chartInfo.x, y: chartInfo.y }
 	if (chartInfo.stroke) tipChannels.stroke = chartInfo.stroke
 	if (chartInfo.fill) tipChannels.fill = chartInfo.fill
 	const hasCategory = chartInfo.stroke || chartInfo.fill
 	let marks = []
 	if (chartInfo.type === "bar") {
-		const barOpts = { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.fill || voiColors.series1 }
+		const barOpts = { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.fill }
 		if (chartInfo.fx) barOpts.fx = chartInfo.fx
 		marks = [
 			Plot.barY(data, barOpts),
@@ -285,43 +349,45 @@ function buildFallback(options) {
 		]
 	}
 	if (chartInfo.type === "line") {
-		const lineOpts = { x: chartInfo.x, y: chartInfo.y, stroke: chartInfo.stroke || voiColors.series1, curve: "catmull-rom", sort: null }
-		const dotOpts = { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.stroke || voiColors.series1, r: 3 }
+		const lineOpts = { x: chartInfo.x, y: chartInfo.y, stroke: chartInfo.stroke, curve: "catmull-rom", sort: null }
 		marks = [
 			Plot.lineY(data, lineOpts),
-			Plot.dot(data, dotOpts),
 			Plot.tip(data, Plot.pointerX(tipChannels)),
 		]
 	}
 	if (chartInfo.type === "dot") {
 		marks = [
-			Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.stroke || voiColors.series2 }),
+			Plot.dot(data, { x: chartInfo.x, y: chartInfo.y, fill: chartInfo.stroke }),
 			Plot.tip(data, Plot.pointerX(tipChannels)),
 		]
 	}
 
-	marks.unshift(Plot.gridY({ stroke: voiColors.grid, strokeWidth: 1 }))
+	marks.unshift(Plot.gridY())
 
-	const xOpts = { ...voiTheme.x, label: chartInfo.x }
+	const xOpts = { label: chartInfo.x }
 	if (xDomain) {
 		xOpts.domain = xDomain
 		applyTickDensity(xOpts, xDomain)
 	}
+	// categorical x: always show labels, truncate at 8 chars
+	const isCategorical = chartInfo.x && filteredRows.length > 0 && !isDateLike(filteredRows[0][chartInfo.x]) && !isNumeric(filteredRows[0][chartInfo.x])
+	if (isCategorical && !xOpts.tickFormat) {
+		xOpts.tickFormat = truncLabel
+	}
 
 	const plotOpts = {
-		...voiTheme,
 		width: width || 600,
 		height: xOpts.tickRotate ? 340 : 300,
 		marginBottom: xOpts.tickRotate ? 80 : undefined,
 		x: xOpts,
-		y: { ...voiTheme.y, label: chartInfo.y, grid: false },
+		y: { label: chartInfo.y, grid: false },
 		marks,
 	}
 	if (hasCategory) {
 		const categoryCol = chartInfo.stroke || chartInfo.fill
-		const colorCfg = { ...voiTheme.color, legend: true }
+		const colorCfg = { legend: true }
 		if (categoryCol === "period_label") {
-			const periodDomain = sortedXDomain({ rows, xCol: "period_label" })
+			const periodDomain = sortedXDomain({ rows: filteredRows, xCol: "period_label" })
 			if (periodDomain) colorCfg.domain = periodDomain
 		}
 		plotOpts.color = colorCfg

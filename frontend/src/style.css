@@ -57,6 +57,7 @@ body {
 	font-family: var(--font-body);
 	font-size: 14px;
 	line-height: 1.6;
+	-webkit-font-smoothing: antialiased;
 }
 
 /* ── layout ── */
@@ -624,7 +625,12 @@ body {
 
 .error-msg {
 	color: var(--color-red-500);
-	font-size: 13px;
+	/* font-size: 13px; */
+}
+
+.no-data-msg {
+	color: var(--color-gray-light);
+	/* font-size: 13px; */
 }
 
 .preamble {
@@ -1493,6 +1499,7 @@ body {
 /* let the legend label does not wrap so that they will have the same height */
 .plot-swatch {
 	white-space: nowrap;
+	text-transform: capitalize;
 }
 
 .debug-round .collapsible {
