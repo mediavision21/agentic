@@ -32,7 +32,7 @@ Always return results in **long / tidy form**:
 - one row per observation,
 - a single metric column named `value` (numeric),
 - categorical keys as separate columns (e.g. `period_date`, `period_label`, `country`, `service`, `age_group`, `genre`).
-
+- the final SELECT MUST always include the `value` column
 Do NOT pivot to wide form. Never produce one column per service/country/category via `CASE WHEN ... END`. Observable Plot groups and facets client-side using the key columns.
 
 ## Database Schema
@@ -41,6 +41,7 @@ Do NOT pivot to wide form. Never produce one column per service/country/category
 ## SQL rules
 - Generate ONLY SELECT queries. Never INSERT, UPDATE, DELETE, DROP.
 - Use column names and types from the schema exactly.
+- the final SELECT MUST always include the `value` column
 - PostgreSQL (Supabase) restrictions — strictly follow:
   - Never nest aggregate functions (e.g. `SUM(AVG(...))` is illegal). Use a subquery or CTE to compute the inner aggregate first.
   - Never use a window function directly inside an aggregate, or vice versa. Stage them in separate CTEs.
