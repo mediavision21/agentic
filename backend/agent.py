@@ -1,7 +1,6 @@
 from datetime import datetime
 import generate
 import evaldb
-from plot_config import generate_summary
 from template_router import load_templates, match_top_templates, run_matched_template
 from intent import extract_intent, is_data_query, resolve_defaults, build_preamble, build_suggestions, build_intent_prompt_block
 
@@ -29,7 +28,8 @@ def _collect(event, content):
 		content["raw_text"] = event["text"]
 	elif t == "sql":
 		content["sql"] = event["sql"]
-		content["explanation"] = event.get("explanation")
+		if event.get("explanation"):
+			content["explanation"] = event["explanation"]
 		if event.get("plot_config") is not None:
 			content["plot_config"] = event["plot_config"]
 		if content.get("streaming_text"):
@@ -42,6 +42,8 @@ def _collect(event, content):
 		if content["rounds"]:
 			content["rounds"][-1]["columns"] = event["columns"]
 			content["rounds"][-1]["rows"] = event["rows"]
+	elif t == "explanation":
+		content["explanation"] = event["text"]
 	elif t == "summary":
 		content["summary"] = event["text"]
 	elif t == "suggestions":
@@ -94,42 +96,33 @@ def _last_assistant_ctx(history):
 
 
 def is_continuation(partial, prior_ctx):
-	# user guidance: default to continuation unless the new prompt clearly starts a new topic
 	if prior_ctx is None:
 		return False
 	if not is_data_query(partial):
-		# conversational modifier like "add Q1 2024" / "även lägga till"
 		return True
-	# has some signals — continuation only when NONE of the strong signals fired
 	has_strong = any(partial.get(k) for k in _STRONG_SIGNAL_KEYS)
 	if has_strong:
 		return False
 	return True
 
-def is_new_question(partial, prior_ctx):
-	return not is_continuation(partial, prior_ctx)
-
 
 def _merge_partial_over_intent(prior_intent, partial):
-	# prior intent as base, current partial fields override specific slots
 	merged = {}
-	# seed with prior intent's raw-extracted fields (strip applied_defaults and resolved-only fields)
 	for k in ("kpi_type", "kpi_dimension", "kpi_detail", "category", "countries",
 			  "service_ids", "service_filter", "top_n", "year", "quarter",
 			  "trend_mode", "age_group", "population_segment", "service_level",
 			  "video_type_comparison"):
 		if prior_intent.get(k) is not None:
 			merged[k] = prior_intent[k]
-	# override with current partial
 	for k, v in partial.items():
 		merged[k] = v
 	return merged
 
 
-async def generate_agent_stream(prompt, backend="claude", history=None, user="", conversation_id=""):
+async def generate_agent_stream(prompt, history=None, user="", conversation_id=""):
 	content = {"loading": False, "rounds": []}
 	try:
-		async for event in _generate_agent_stream_inner(prompt, backend, history, user, conversation_id):
+		async for event in _generate_agent_stream_inner(prompt, history, user, conversation_id):
 			_collect(event, content)
 			yield event
 	finally:
@@ -141,7 +134,7 @@ async def generate_agent_stream(prompt, backend="claude", history=None, user="",
 				print(f"[agent] persist content failed: {e}")
 
 
-async def _generate_agent_stream_inner(prompt, backend="claude", history=None, user="", conversation_id=""):
+async def _generate_agent_stream_inner(prompt, history=None, user="", conversation_id=""):
 	if history is None:
 		history = []
 
@@ -200,11 +193,9 @@ async def _generate_agent_stream_inner(prompt, backend="claude", history=None, u
 				"prompt": prompt,
 				"match": matches[0],
 				"template": templates[matches[0]["file"]],
-				"backend": backend,
 				"msg_id": msg_id,
 				"user": user,
 				"conversation_id": conversation_id,
-				"generate_summary": generate_summary,
 				"intent": intent,
 			}):
 				if event.get("type") == "summary":
@@ -230,7 +221,6 @@ async def _generate_agent_stream_inner(prompt, backend="claude", history=None, u
 		"prompt": prompt,
 		"matches": matches,
 		"templates": templates,
-		"backend": backend,
 		"history": history,
 		"msg_id": msg_id,
 		"user": user,

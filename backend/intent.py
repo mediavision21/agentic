@@ -123,14 +123,22 @@ KPI_DIMENSION_DEFAULTS = {
     "gross_access": "svod",
 }
 
-# kpi_dimension→inferred kpi_type (reverse lookup)
+# kpi_dimension→inferred kpi_type (reverse lookup) — static fallback only
 DIMENSION_TO_KPI = {
     "svod": "penetration", "ssvod": "penetration", "bsvod": "penetration", "hvod": "penetration",
     "social": "reach", "online_total": "reach", "online_excluding_social": "reach",
     "public_service": "reach",
     "genre": "reach",
-    "avod": "penetration", "fast": "penetration",
+    "avod": "penetration", "fast": "reach",
 }
+
+_dynamic_dim_to_kpi = None
+
+
+def set_dimension_to_kpi(mapping):
+    global _dynamic_dim_to_kpi
+    _dynamic_dim_to_kpi = mapping
+    print(f"[intent] using dynamic dim_to_kpi ({len(mapping)} entries)")
 
 # household-level kpis (weight by population_household)
 HOUSEHOLD_KPIS = {"penetration", "spend", "churn_intention", "stacking", "account_sharing", "gross_access"}
@@ -331,8 +339,9 @@ def resolve_defaults(partial):
     # Step 1: kpi_type
     if "kpi_type" not in r:
         # infer from dimension if present
-        if r.get("kpi_dimension") and r["kpi_dimension"] in DIMENSION_TO_KPI:
-            r["kpi_type"] = DIMENSION_TO_KPI[r["kpi_dimension"]]
+        active_map = _dynamic_dim_to_kpi if _dynamic_dim_to_kpi else DIMENSION_TO_KPI
+        if r.get("kpi_dimension") and r["kpi_dimension"] in active_map:
+            r["kpi_type"] = active_map[r["kpi_dimension"]]
             defaults.append(f"kpi_type: inferred {r['kpi_type']} from dimension")
         else:
             r["kpi_type"] = "penetration"

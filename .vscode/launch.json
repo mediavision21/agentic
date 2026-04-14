@@ -14,7 +14,7 @@
 			"justMyCode": true
 		},
 		{
-			"name": "backend2",
+			"name": "backend",
 			"type": "debugpy",
 			"request": "launch",
 			"python": "${workspaceFolder}/.venv/bin/python",
@@ -24,7 +24,7 @@
 				"--port",
 				"8000"
 			],
-			"cwd": "${workspaceFolder}/backend2",
+			"cwd": "${workspaceFolder}/backend",
 			"console": "integratedTerminal",
 			"justMyCode": true,
 			"envFile": "${workspaceFolder}/.env"

@@ -1,7 +1,11 @@
-from db import execute_query
+from db import execute_query, get_kpi_type_dimensions
 
 _data_examples_cache = None
 _kpi_combinations_cache = None
+_dim_to_kpi_cache = None
+
+# priority order when a dimension maps to multiple kpi_types
+_KPI_TYPE_PRIORITY = ["reach", "penetration", "viewing_time", "spend", "churn_intention", "stacking", "account_sharing", "gross_access"]
 
 DATA_EXAMPLES_SQL = """
 WITH latest AS (
@@ -69,6 +73,32 @@ async def load_data_examples():
         print(f"[data_examples] load_data_examples error: {e}")
         _data_examples_cache = ""
     return _data_examples_cache
+
+
+async def load_dimension_to_kpi():
+    global _dim_to_kpi_cache
+    if _dim_to_kpi_cache is not None:
+        return _dim_to_kpi_cache
+    try:
+        kpi_dims = await get_kpi_type_dimensions("nordic")  # {kpi_type: [dim, ...]}
+        # invert: {dimension: kpi_type}, pick highest-priority kpi_type when multiple
+        inverted = {}
+        for kpi_type, dims in kpi_dims.items():
+            for dim in dims:
+                if dim and dim not in inverted:
+                    inverted[dim] = kpi_type
+                elif dim:
+                    # keep whichever has lower priority index
+                    existing_pri = _KPI_TYPE_PRIORITY.index(inverted[dim]) if inverted[dim] in _KPI_TYPE_PRIORITY else 999
+                    new_pri = _KPI_TYPE_PRIORITY.index(kpi_type) if kpi_type in _KPI_TYPE_PRIORITY else 999
+                    if new_pri < existing_pri:
+                        inverted[dim] = kpi_type
+        _dim_to_kpi_cache = inverted
+        print(f"[data_examples] loaded dimension_to_kpi: {inverted}")
+    except Exception as e:
+        print(f"[data_examples] load_dimension_to_kpi error: {e}")
+        _dim_to_kpi_cache = {}
+    return _dim_to_kpi_cache
 
 
 async def load_kpi_combinations():
