@@ -2,10 +2,7 @@ description: Share of online video viewing time by service — population-weight
 sql: |
   WITH base AS (
     SELECT
-      n.period_sort,
-      n.period_label,
-      n.year,
-      n.quarter_label,
+      n.period_date,
       n.country,
       n.canonical_name AS service,
       n.value * r.value AS viewing_time_per_individual,
@@ -13,8 +10,7 @@ sql: |
     FROM macro.nordic n
     JOIN macro.nordic r
       ON  n.country        = r.country
-      AND n.year           = r.year
-      AND n.quarter        = r.quarter
+      AND n.period_date    = r.period_date
       AND n.canonical_name = r.canonical_name
     WHERE
       n.category            = 'online_video'
@@ -27,51 +23,51 @@ sql: |
       AND r.kpi_dimension    IS NULL
       AND r.age_group        = '15-74'
       AND (r.is_streaming_service OR r.is_avod OR r.is_fast OR r.is_public_service)
-      AND n.period_sort     >= 20243
-      AND n.quarter         IN (1, 3)
+      AND n.period_date     >= '2024-07-01'
+      AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
   ),
   service_time_country AS (
     SELECT
-      period_sort, period_label, year, quarter_label, country, service,
+      period_date, country, service,
       SUM(viewing_time_per_individual) AS vt_individual,
       MAX(population)                  AS population
     FROM base
-    GROUP BY period_sort, period_label, year, quarter_label, country, service
+    GROUP BY period_date, country, service
   ),
   shares_within_country AS (
     SELECT
-      period_sort, period_label, year, quarter_label, country, service,
-      vt_individual / NULLIF(SUM(vt_individual) OVER (PARTITION BY period_sort, country), 0) AS share_in_country,
+      period_date, country, service,
+      vt_individual / NULLIF(SUM(vt_individual) OVER (PARTITION BY period_date, country), 0) AS share_in_country,
       population
     FROM service_time_country
   ),
   country_weights AS (
     SELECT
-      period_sort, country,
-      population / NULLIF(SUM(population) OVER (PARTITION BY period_sort), 0) AS country_weight
-    FROM (SELECT DISTINCT period_sort, country, population FROM shares_within_country) x
+      period_date, country,
+      population / NULLIF(SUM(population) OVER (PARTITION BY period_date), 0) AS country_weight
+    FROM (SELECT DISTINCT period_date, country, population FROM shares_within_country) x
   ),
   shares_weighted AS (
     SELECT
-      s.period_sort, s.period_label, s.year, s.quarter_label, s.service,
+      s.period_date, s.service,
       SUM(s.share_in_country * w.country_weight) AS share_of_total
     FROM shares_within_country s
-    JOIN country_weights w ON s.period_sort = w.period_sort AND s.country = w.country
-    GROUP BY s.period_sort, s.period_label, s.year, s.quarter_label, s.service
+    JOIN country_weights w ON s.period_date = w.period_date AND s.country = w.country
+    GROUP BY s.period_date, s.service
   ),
   latest_quarter AS (
-    SELECT MAX(period_sort) AS max_period_sort FROM shares_weighted
+    SELECT MAX(period_date) AS max_period_date FROM shares_weighted
   ),
   service_order AS (
     SELECT service,
            ROW_NUMBER() OVER (ORDER BY share_of_total DESC) AS global_rank
     FROM shares_weighted
-    WHERE period_sort = (SELECT max_period_sort FROM latest_quarter)
+    WHERE period_date = (SELECT max_period_date FROM latest_quarter)
       AND share_of_total > 0
   ),
   labeled AS (
     SELECT
-      f.period_sort, f.period_label, f.year, f.quarter_label,
+      f.period_date,
       CASE WHEN o.global_rank <= 10 THEN f.service ELSE 'Others' END AS service,
       CASE WHEN o.global_rank > 10  THEN 0 ELSE 11 - o.global_rank  END AS stack_order,
       f.share_of_total
@@ -79,47 +75,35 @@ sql: |
     JOIN service_order o ON f.service = o.service
   )
   SELECT
-    period_sort, period_label, year, quarter_label, service,
+    period_date, service,
     stack_order,
     SUM(share_of_total) * 100 AS share_of_total
   FROM labeled
-  GROUP BY period_sort, period_label, year, quarter_label, service, stack_order
-  ORDER BY period_sort, stack_order
+  GROUP BY period_date, service, stack_order
+  ORDER BY period_date, stack_order
 
 plots:
   - id: share_online_video_by_service
     title: "Share of online video viewing by service"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           share_of_total: +d.share_of_total,
-          period_sort: +d.period_sort,
-          stack_order: +d.stack_order
+          stack_order: +d.stack_order,
+          period_label: fmtPeriod(d.period_date)
         });
       });
 
-      // Two most recent periods (same quarter, one year apart)
-      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
-        .sort(function(a, b) { return b - a });
-      var latest = sortedPeriods[0];
-      var yearAgo = sortedPeriods.find(function(s) {
-        return Math.floor(s / 10) === Math.floor(latest / 10) - 1 &&
-               (s % 10) === (latest % 10);
-      }) || sortedPeriods[1];
-
-      var subset = rows.filter(function(d) {
-        return d.period_sort === latest || d.period_sort === yearAgo;
-      });
-
-      var latestLabel  = (rows.find(function(d) { return d.period_sort === latest;  }) || {}).period_label || "";
-      var yearAgoLabel = (rows.find(function(d) { return d.period_sort === yearAgo; }) || {}).period_label || "";
+      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_date; }))).sort();
+      var latest = sortedPeriods[sortedPeriods.length - 1];
+      var latestD = new Date(latest); var yearAgoD = new Date(latestD); yearAgoD.setUTCFullYear(yearAgoD.getUTCFullYear() - 1);
+      var yearAgo = yearAgoD.toISOString().slice(0, 10);
+      var subset = rows.filter(function(d) { return d.period_date === latest || d.period_date === yearAgo; });
+      var latestLabel = fmtPeriod(latest);
+      var yearAgoLabel = fmtPeriod(yearAgo);
       var periodOrder  = [yearAgoLabel, latestLabel];
 
-      // Stack order from SQL:
-      //   stack_order 1 = rank 10 (smallest of top 10) → near top of chart
-      //   stack_order 10 = rank 1 (largest, e.g. Netflix) → bottom of chart
-      //   stack_order 0 = Others → very top
-      // We draw bottom-to-top: stack_order 10 first, then 9..1, then 0 (Others)
       var servicesMeta = [];
       var seenSvc = {};
       subset.forEach(function(d) {
@@ -128,15 +112,13 @@ plots:
           servicesMeta.push({ service: d.service, stack_order: d.stack_order });
         }
       });
-      // Sort: 10 → 9 → ... → 1 → 0(Others at top)
       servicesMeta.sort(function(a, b) {
         var ao = a.stack_order === 0 ? -1 : a.stack_order;
         var bo = b.stack_order === 0 ? -1 : b.stack_order;
-        return bo - ao; // descending: 10,9,...,1,0
+        return bo - ao;
       });
       var stackedServices = servicesMeta.map(function(s) { return s.service; });
 
-      // Color palette matching screenshot aesthetics
       var colorPalette = {
         "Netflix":         "#1a5c38",
         "Youtube":         "#52b788",
@@ -157,7 +139,6 @@ plots:
         colorAssigned[svc] = colorPalette[svc] || fallbackColors[fallbackIdx++ % fallbackColors.length];
       });
 
-      // Compute stacked y1/y2 per period, drawing bottom-to-top in stackedServices order
       var stackPos = {};
       periodOrder.forEach(function(period) {
         stackPos[period] = {};
@@ -170,7 +151,6 @@ plots:
         });
       });
 
-      // Band rectangles
       var bandData = [];
       stackedServices.forEach(function(svc) {
         periodOrder.forEach(function(period) {
@@ -179,9 +159,6 @@ plots:
         });
       });
 
-      // Lines + dots: drawn at the TOP boundary of each band.
-      // This means the line for Netflix sits at the top of the Netflix band (= bottom of Youtube band),
-      // which visually appears as the dividing line between segments — matching the screenshot.
       var lineFlatTop = [];
       stackedServices.forEach(function(svc) {
         periodOrder.forEach(function(period) {
@@ -189,9 +166,7 @@ plots:
         });
       });
 
-      // Legend order: top of stack first (Others → ... → Netflix)
-      var legendServices = stackedServices.slice(); // already Others-last; reverse for legend top-first
-      legendServices = legendServices.slice().reverse();
+      var legendServices = stackedServices.slice().reverse();
 
       var chart = Plot.plot({
         width: 380,
@@ -209,7 +184,6 @@ plots:
           tickFormat: function(v) { return v + "%"; }
         },
         marks: [
-          // Filled stacked bands
           Plot.areaY(bandData, {
             x: "period_label",
             y1: "y1",
@@ -218,7 +192,6 @@ plots:
             tip: true,
             title: function(d) { return d.service + ": " + (d.y2 - d.y1).toFixed(1) + "%"; }
           }),
-          // Boundary lines at top of each band
           Plot.line(lineFlatTop, {
             x: "period_label",
             y: "y",
@@ -226,7 +199,6 @@ plots:
             z: "service",
             strokeWidth: 1.8
           }),
-          // Hollow circle endpoints
           Plot.dot(lineFlatTop, {
             x: "period_label",
             y: "y",
@@ -239,7 +211,6 @@ plots:
         ]
       });
 
-      // Right-side legend
       var legendHtml = legendServices.map(function(svc) {
         return '<div style="display:flex;align-items:center;gap:7px;margin-bottom:7px;font-size:12px;white-space:nowrap;">'
           + '<svg width="12" height="12" style="flex-shrink:0"><circle cx="6" cy="6" r="5" fill="'

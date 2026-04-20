@@ -6,6 +6,7 @@ from db import execute_query, fetch_schema_text
 from data_examples import load_data_examples, load_kpi_combinations
 from plot import generate_plot_and_summary
 from sql_utils import postprocess_sql, build_messages
+from verify import verify_rows
 
 
 SYSTEM_PROMPT_TEMPLATE = """You are a data analyst assistant for MediaVision, a media intelligence platform with a PostgreSQL database of Nordic TV and streaming viewership data.
@@ -24,16 +25,23 @@ Option text 2
 
 Each line inside the block becomes a clickable button the user can tap instead of typing.
 
-## Database — use only `macro.nordic`
-The only queryable object is the view `macro.nordic`. All underlying fact/dim tables are used to build this view; you must NOT query them directly.
+- When you have returned data rows, append key takeaways (3-5 short bullet strings) when the data shows clear trends, comparisons, or seasonal patterns. Omit when data is too simple or sparse.
 
-## Long / tidy output (required for Observable Plot)
-Always return results in **long / tidy form**:
-- one row per observation,
-- a single metric column named `value` (numeric),
-- categorical keys as separate columns (e.g. `period_date`, `period_label`, `country`, `service`, `age_group`, `genre`).
-- the final SELECT MUST always include the `value` column
-Do NOT pivot to wide form. Never produce one column per service/country/category via `CASE WHEN ... END`. Observable Plot groups and facets client-side using the key columns.
+<!--key-takeaways
+Takeaway 1
+Takeaway 2
+-->
+
+Each line becomes a bullet point shown below the chart.
+
+## Output format: long/tidy (required for Observable Plot)
+
+Return **long/tidy data only**:
+- One row per observation
+- Must inluce exactly ONE numeric column, named `value`
+- All categorical dimensions as separate key columns (e.g. `period_date`, `country`, `service`, `age_group`)
+
+**Never pivot to wide form.** No `CASE WHEN ... END` per-category columns — Observable Plot handles grouping and faceting client-side from the key columns.
 
 ## Database Schema
 {schema}
@@ -48,7 +56,7 @@ Do NOT pivot to wide form. Never produce one column per service/country/category
   - Never reference a column alias defined in the same SELECT in a WHERE or HAVING clause — repeat the expression or use a subquery.
   - Use `FILTER (WHERE ...)` instead of `CASE WHEN ... END` inside aggregates where possible.
   - Prefer CTEs (`WITH ...`) over deeply nested subqueries to keep aggregation stages flat and readable.
-  - Never join any population / fact / dim table — use the columns already on every `macro.nordic` row (`population`, `population_1574`, `population_household`, `is_*` flags, `canonical_name`, `period_label`, `quarter_label`, `period_sort`, `period_date`).
+  - Never join any population / fact / dim table — use the columns already on every `macro.nordic` row (`population`, `population_1574`, `population_household`, `is_*` flags, `canonical_name`, `period_date`).
   - `ROUND(x, n)` requires `x` to be `numeric`. Cast the entire expression: `ROUND((expr)::numeric, 1)`. Do NOT cast only part of it.
   - When self-joining the view (e.g. `macro.nordic vt JOIN macro.nordic r`), every column in SELECT, GROUP BY, and ORDER BY must be prefixed with a table alias.
 
@@ -65,14 +73,18 @@ SQL MUST always include:
 NEVER aggregate across multiple kpi_type values.
 NEVER use OR on kpi_type. NEVER omit the kpi_type filter.
 
+when we talk about age group, we should NEVER infer what's the total number of individuals per age group
+when use ask all age group, mean age group 15-74 only
+
 ## Tool usage
 - The `query` tool runs a single SELECT against `macro.nordic` and returns `{{"columns": [...], "row_count": N, "rows": [...]}}`. Rows are truncated to 20 in the tool result but the full set is shown to the user.
 - Prefer one answer query. If the first attempt returns 0 rows, make at most 1–2 exploratory calls before a corrected answer query.
+- If a query result contains a `note` field starting with "VERIFICATION FAILED", the data does not adequately answer the question — revise the SQL and call again.
 - After you have data, respond in 1–2 plain-text sentences describing what the data shows. Do NOT paste the SQL back into the text reply — the SQL is already visible to the user via the tool call.
 """
 
 
-async def build_system_prompt(matches=None, templates=None, data_examples="", kpi_combinations="", intent_block="", prior_sql=None):
+async def build_system_prompt(matches=None, templates=None, data_examples="", kpi_combinations="", intent_block="", prior_sql=None, template_fallback_feedback=None):
 	schema = await fetch_schema_text()
 	base = SYSTEM_PROMPT_TEMPLATE.format(schema=schema)
 	if kpi_combinations:
@@ -89,6 +101,11 @@ async def build_system_prompt(matches=None, templates=None, data_examples="", kp
 			"Keep the same kpi_type, services, countries, and grouping unless the user explicitly asks to change them."
 			f"\n\nPrior SQL:\n```sql\n{prior_sql}\n```"
 		)
+	if template_fallback_feedback:
+		base = (
+			f"## Context: A pre-built template was tried but failed verification: {template_fallback_feedback}. "
+			"Generate SQL from scratch.\n\n"
+		) + base
 	if matches and templates:
 		example_parts = []
 		for m in matches[:3]:
@@ -126,10 +143,11 @@ async def run(options):
 	prior_sql       = options.get("prior_sql")
 	prior_plot_config = options.get("prior_plot_config")
 	label           = options.get("label", "Generation")
+	template_fallback_feedback = options.get("template_fallback_feedback")
 
 	data_examples   = await load_data_examples()
 	kpi_combinations = await load_kpi_combinations()
-	system_prompt   = await build_system_prompt(matches, templates, data_examples, kpi_combinations, intent_block, prior_sql)
+	system_prompt   = await build_system_prompt(matches, templates, data_examples, kpi_combinations, intent_block, prior_sql, template_fallback_feedback)
 	messages        = build_messages(history, prompt)
 	print(f"[generate] running with {len(matches)} template hints")
 
@@ -152,17 +170,23 @@ async def run(options):
 			}
 		columns = result["columns"]
 		rows = result["rows"]
-		if rows:
-			last_success["sql"]     = sql
-			last_success["columns"] = columns
-			last_success["rows"]    = rows
-		# emit sql + rows into the CURRENT round (the one where this tool_call
-		# fired) so each iteration's <details> shows its own SQL and data.
 		per_round_events = [
 			{"type": "sql",  "sql": sql, "plot_config": None, "explanation": ""},
 			{"type": "rows", "columns": columns, "rows": rows},
 		]
-		return {"content": _format_tool_result(columns, rows), "events": per_round_events, "rows": len(rows)}
+		if rows:
+			verdict = await verify_rows(prompt, columns, rows)
+			if verdict["ok"]:
+				last_success["sql"]     = sql
+				last_success["columns"] = columns
+				last_success["rows"]    = rows
+				return {"content": _format_tool_result(columns, rows), "events": per_round_events, "rows": len(rows)}
+			else:
+				print(f"[generate] verification failed: {verdict['reason']}")
+				content_obj = json.loads(_format_tool_result(columns, rows))
+				content_obj["note"] = f"VERIFICATION FAILED: {verdict['reason']}. Revise the SQL to better answer: {prompt}"
+				return {"content": json.dumps(content_obj), "events": per_round_events, "rows": len(rows)}
+		return {"content": _format_tool_result(columns, rows), "events": per_round_events, "rows": 0}
 
 	tools = [{
 		"name": "query",
@@ -211,14 +235,28 @@ async def run(options):
 	# canonical top-level explanation from the model's final prose (without
 	# re-emitting sql/rows, which would double-attach to the final round).
 	explanation = re.sub(r"```sql.*?```", "", full_text, flags=re.DOTALL).strip()
+	suggestions = []
+	sugg_match = re.search(r"<!--suggestions\s*(.*?)\s*-->", explanation, re.DOTALL)
+	if sugg_match:
+		suggestions = [line.strip() for line in sugg_match.group(1).splitlines() if line.strip()]
+		explanation = re.sub(r"\s*<!--suggestions.*?-->", "", explanation, flags=re.DOTALL).strip()
+	key_takeaways_from_agent = []
+	kt_match = re.search(r"<!--key-takeaways\s*(.*?)\s*-->", explanation, re.DOTALL)
+	if kt_match:
+		key_takeaways_from_agent = [line.strip() for line in kt_match.group(1).splitlines() if line.strip()]
+		explanation = re.sub(r"\s*<!--key-takeaways.*?-->", "", explanation, flags=re.DOTALL).strip()
 	if explanation:
 		yield {"type": "explanation", "text": explanation}
+	if suggestions:
+		yield {"type": "suggestions", "items": suggestions}
+	if key_takeaways_from_agent:
+		yield {"type": "key_takeaways", "items": key_takeaways_from_agent}
 
 	yield {"type": "round", "label": "Plot & Summary"}
 	plot_config = None
 	summary = None
 	try:
-		plot_config, summary, plot_debug = await generate_plot_and_summary({
+		plot_config, summary, key_takeaways, plot_debug = await generate_plot_and_summary({
 			"user_prompt": prompt,
 			"columns": last_success["columns"],
 			"rows": last_success["rows"],
@@ -235,7 +273,10 @@ async def run(options):
 			yield {"type": "plot_config", "plot_config": plot_config}
 		if summary:
 			yield {"type": "summary", "text": summary}
+		if key_takeaways and not key_takeaways_from_agent:
+			yield {"type": "key_takeaways", "items": key_takeaways}
 	except Exception as e:
-		print(f"[generate] plot+summary error: {e}")
+		import traceback
+		print(f"[generate] plot+summary error: {e}\n{traceback.format_exc()}")
 
 	evaldb.update_result_data(msg_id, {"columns": last_success["columns"], "rows": last_success["rows"], "plot_config": plot_config, "summary": summary})

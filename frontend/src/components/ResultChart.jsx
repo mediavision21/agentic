@@ -1,6 +1,9 @@
 import { useRef, useEffect, useState } from "react"
-import * as Plot from "@observablehq/plot"
+import * as _Plot from "@observablehq/plot"
 import { highlightJSON } from "../highlight.js"
+
+// fix Observable Plot to always use a stable className instead of a random hash
+const Plot = { ..._Plot, plot: opts => _Plot.plot({ className: "plot", ...opts }) }
 
 // mark type → Plot function map
 const MARK_FN = {
@@ -74,16 +77,15 @@ function labelSortKey(val) {
 	return null
 }
 
-// sort x domain chronologically — prefer period_sort column, fallback to label parsing
+// sort x domain chronologically using labelSortKey or Date.parse
 function sortedXDomain(options) {
 	const { rows, xCol } = options
 	if (!rows[0]) return undefined
-	const hasPeriodSort = rows[0].period_sort != null
 	const seen = new Map()
 	for (const r of rows) {
 		const key = r[xCol]
 		if (seen.has(key)) continue
-		const sortKey = hasPeriodSort ? +r.period_sort : labelSortKey(key)
+		const sortKey = labelSortKey(key)
 		seen.set(key, sortKey)
 	}
 	// bail out if we could not derive a numeric sort key for any entry
@@ -106,7 +108,7 @@ function truncLabel(d) {
 	return s.length > 8 ? s.slice(0, 7) + '…' : s
 }
 
-function top8Filter(options) {
+function topFilter(options) {
 	const { rows, catCol, yCol } = options
 	const agg = new Map()
 	for (const r of rows) {
@@ -116,7 +118,7 @@ function top8Filter(options) {
 	const topSet = new Set(
 		Array.from(agg.entries())
 			.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
-			.slice(0, 8)
+			.slice(0, 30)
 			.map(e => e[0])
 	)
 	return rows.filter(r => topSet.has(r[catCol]))
@@ -124,10 +126,10 @@ function top8Filter(options) {
 
 // when fx facets are used, limit x-domain to the most recent N periods that fit
 function maxPeriodsForFacets(options) {
-    const { rows, xCol, fxCol, width } = options
-    const numFacets = new Set(rows.map(r => r[fxCol])).size || 1
-    const facetWidth = (width || 700) / numFacets
-    return Math.max(2, Math.floor(facetWidth / 24)) // ~24px minimum per x tick
+	const { rows, xCol, fxCol, width } = options
+	const numFacets = new Set(rows.map(r => r[fxCol])).size || 1
+	const facetWidth = (width || 700) / numFacets
+	return Math.max(2, Math.floor(facetWidth / 24)) // ~24px minimum per x tick
 }
 
 // for bar charts, sort x-domain by y-value descending (highest first)
@@ -160,22 +162,22 @@ function buildFromConfig(options) {
 	for (const m of config.marks) {
 		if (m.fx) {
 			const unique = new Set(filteredRows.map(r => r[m.fx]))
-			if (unique.size > 8) filteredRows = top8Filter({ rows: filteredRows, catCol: m.fx, yCol: m.y })
+			if (unique.size > 30) filteredRows = topFilter({ rows: filteredRows, catCol: m.fx, yCol: m.y })
 		}
 		const seriesCol = m.stroke || m.fill
-		if (seriesCol && seriesCol !== "period_label") {
+		if (seriesCol) {
 			const unique = new Set(filteredRows.map(r => r[seriesCol]))
-			if (unique.size > 8) filteredRows = top8Filter({ rows: filteredRows, catCol: seriesCol, yCol: m.y })
+			if (unique.size > 30) filteredRows = topFilter({ rows: filteredRows, catCol: seriesCol, yCol: m.y })
 		}
 	}
 
-	// for bar charts without time axis, sort by y-value descending, cap at 8
-	let xDomain = isBar && xCol !== "period_label"
-		? sortedBarDomain({ rows: filteredRows, xCol, yCol }).slice(0, 8)
+	// for bar charts without time axis, sort by y-value descending, cap at 30
+	let xDomain = isBar && xCol !== "period_date"
+		? sortedBarDomain({ rows: filteredRows, xCol, yCol }).slice(0, 30)
 		: xCol ? sortedXDomain({ rows: filteredRows, xCol }) : undefined
 
 	// filter rows to xDomain if bar with categorical x
-	if (isBar && xCol !== "period_label" && xDomain) {
+	if (isBar && xCol !== "period_date" && xDomain) {
 		const xSet = new Set(xDomain)
 		filteredRows = filteredRows.filter(r => xSet.has(r[xCol]))
 	}
@@ -235,10 +237,10 @@ function buildFromConfig(options) {
 	}
 
 	const colorCfg = normalizeColorConfig(config.color) || {}
-	// sort legend chronologically when series is period_label
+	// sort legend chronologically when series is period_date
 	const categoryCol = config.marks.map(m => m.stroke || m.fill).find(Boolean)
-	if (categoryCol === "period_label") {
-		const periodDomain = sortedXDomain({ rows: filteredRows, xCol: "period_label" })
+	if (categoryCol === "period_date") {
+		const periodDomain = sortedXDomain({ rows: filteredRows, xCol: "period_date" })
 		if (periodDomain) colorCfg.domain = periodDomain
 	}
 
@@ -258,7 +260,7 @@ function buildFromConfig(options) {
 }
 
 // columns that are never a useful y-axis metric
-const SKIP_Y_COLS = new Set(["year", "period_sort", "period_label", "period_date", "quarter_label"])
+const SKIP_Y_COLS = new Set(["period_date"])
 // known categorical columns that should be used as stroke/fill for multi-series
 const CATEGORY_COLS = new Set(["country", "service", "service_name", "business_model", "reach_type", "kpi_dimension", "age_group", "genre"])
 
@@ -266,8 +268,8 @@ const CATEGORY_COLS = new Set(["country", "service", "service_name", "business_m
 function detectChartType(options) {
 	const { columns, rows } = options
 	if (columns.length < 2 || rows.length === 0) return null
-	// prefer period_label as x if available, else first column
-	const xCol = columns.includes("period_label") ? "period_label" : columns[0]
+	// prefer period_date as x if available, else first column
+	const xCol = columns.includes("period_date") ? "period_date" : columns[0]
 	const yCols = columns.filter(function (col) {
 		if (col === xCol || SKIP_Y_COLS.has(col)) return false
 		return rows.some(function (r) { return isNumeric(r[col]) })
@@ -283,11 +285,11 @@ function detectChartType(options) {
 	}) || null
 	const firstX = rows[0][xCol]
 	if (isDateLike(firstX)) return { type: "line", x: xCol, y: yCol, stroke: strokeCol }
-	// period_label: few periods + category → grouped bars; many periods → line
-	if (xCol === "period_label") {
+	// period_date: few periods + category → grouped bars; many periods → line
+	if (xCol === "period_date") {
 		const uniquePeriods = new Set(rows.map(function (r) { return r[xCol] }))
 		if (uniquePeriods.size <= 3 && strokeCol) {
-			return { type: "bar", x: xCol, y: yCol, fill: "period_label", fx: strokeCol }
+			return { type: "bar", x: xCol, y: yCol, fill: "period_date", fx: strokeCol }
 		}
 		return { type: "line", x: xCol, y: yCol, stroke: strokeCol }
 	}
@@ -300,21 +302,21 @@ function buildFallback(options) {
 	const chartInfo = detectChartType({ columns, rows })
 	if (!chartInfo) return null
 
-	// apply top-8 filtering for categorical dimensions
+	// apply top-30 filtering for categorical dimensions
 	let filteredRows = rows
 	const seriesCol = chartInfo.stroke || chartInfo.fill
-	if (seriesCol && seriesCol !== "period_label") {
+	if (seriesCol) {
 		const unique = new Set(filteredRows.map(r => r[seriesCol]))
-		if (unique.size > 8) filteredRows = top8Filter({ rows: filteredRows, catCol: seriesCol, yCol: chartInfo.y })
+		if (unique.size > 30) filteredRows = topFilter({ rows: filteredRows, catCol: seriesCol, yCol: chartInfo.y })
 	}
 
-	// for bar charts with categorical x, sort by y-value and cap at 8; otherwise sort by period_sort
-	let xDomain = chartInfo.type === "bar" && chartInfo.x !== "period_label"
-		? sortedBarDomain({ rows: filteredRows, xCol: chartInfo.x, yCol: chartInfo.y }).slice(0, 8)
+	// for bar charts with categorical x, sort by y-value and cap at 30
+	let xDomain = chartInfo.type === "bar" && chartInfo.x !== "period_date"
+		? sortedBarDomain({ rows: filteredRows, xCol: chartInfo.x, yCol: chartInfo.y }).slice(0, 30)
 		: sortedXDomain({ rows: filteredRows, xCol: chartInfo.x })
 
 	// filter rows to xDomain if bar with categorical x
-	if (chartInfo.type === "bar" && chartInfo.x !== "period_label" && xDomain) {
+	if (chartInfo.type === "bar" && chartInfo.x !== "period_date" && xDomain) {
 		const xSet = new Set(xDomain)
 		filteredRows = filteredRows.filter(r => xSet.has(r[chartInfo.x]))
 	}
@@ -376,6 +378,8 @@ function buildFallback(options) {
 	}
 
 	const plotOpts = {
+		className: "plot",
+		style: ".plot-swatch { white-space: nowrap; }",
 		width: width || 600,
 		height: xOpts.tickRotate ? 340 : 300,
 		marginBottom: xOpts.tickRotate ? 80 : undefined,
@@ -384,13 +388,7 @@ function buildFallback(options) {
 		marks,
 	}
 	if (hasCategory) {
-		const categoryCol = chartInfo.stroke || chartInfo.fill
-		const colorCfg = { legend: true }
-		if (categoryCol === "period_label") {
-			const periodDomain = sortedXDomain({ rows: filteredRows, xCol: "period_label" })
-			if (periodDomain) colorCfg.domain = periodDomain
-		}
-		plotOpts.color = colorCfg
+		plotOpts.color = { legend: true }
 	}
 	if (chartInfo.fx) {
 		plotOpts.fx = { label: null }

@@ -34,10 +34,11 @@ function TemplateCategory(options) {
 }
 
 function EvalSidebar(options) {
-	const { onSelectEval, activeEvalId, style, user, onSelectTemplate, activeTemplateName } = options
+	const { onSelectEval, activeEvalId, style, user, onSelectTemplate, activeTemplateName, onSelectPlotEval, activePlotEvalName } = options
 	const [tab, setTab] = useState("template")
 	const [evalSessions, setEvalSessions] = useState([])
 	const [templates, setTemplates] = useState([])
+	const [plotEvalFiles, setPlotEvalFiles] = useState([])
 
 	function fetchEvalSessions() {
 		fetch("/api/evaluated-sessions", { credentials: "include" })
@@ -51,11 +52,18 @@ function EvalSidebar(options) {
 			.then(function (d) { setTemplates(d.templates || []) })
 	}
 
+	function fetchPlotEvalFiles() {
+		fetch("/eval/files")
+			.then(function (r) { return r.json() })
+			.then(function (d) { setPlotEvalFiles(d || []) })
+	}
+
 	useEffect(function () { fetchTemplates() }, [])
 
 	function switchTab(name) {
 		setTab(name)
 		if (name === "eval" && evalSessions.length === 0) fetchEvalSessions()
+		if (name === "ploteval" && plotEvalFiles.length === 0) fetchPlotEvalFiles()
 	}
 
 	// group templates by category preserving order of first appearance
@@ -84,6 +92,10 @@ function EvalSidebar(options) {
 					className={"sidebar-tab" + (tab === "template" ? " active" : "")}
 					onClick={function () { switchTab("template") }}
 				>Template</button>
+				<button
+					className={"sidebar-tab" + (tab === "ploteval" ? " active" : "")}
+					onClick={function () { switchTab("ploteval") }}
+				>Plot Eval</button>
 			</div>
 
 			{tab === "eval" && (
@@ -121,6 +133,25 @@ function EvalSidebar(options) {
 								activeTemplateName={activeTemplateName}
 								onSelectTemplate={onSelectTemplate}
 							/>
+						)
+					})}
+				</div>
+			)}
+
+			{tab === "ploteval" && (
+				<div className="skills-list">
+					{plotEvalFiles.length === 0 && (
+						<div className="skill-item eval-empty">No eval files found</div>
+					)}
+					{plotEvalFiles.map(function (name) {
+						return (
+							<div
+								key={name}
+								className={"skill-item eval-item" + (activePlotEvalName === name ? " active" : "")}
+								onClick={function () { onSelectPlotEval(name) }}
+							>
+								<div className="eval-item-title">{name}</div>
+							</div>
 						)
 					})}
 				</div>

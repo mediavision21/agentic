@@ -1,8 +1,7 @@
 description: Daily reach of online video (Social video, Other online, Total online) across Nordic countries
 sql: |
   SELECT
-    period_sort,
-    period_label,
+    period_date,
     CASE kpi_dimension
       WHEN 'social'                   THEN 'Social video'
       WHEN 'online_excluding_social'  THEN 'Other online'
@@ -20,21 +19,22 @@ sql: |
     AND kpi_dimension IN ('social', 'online_excluding_social', 'online_total')
     AND canonical_name IS NULL
     AND age_group     = '15-74'
-    AND period_sort   >= 20243
-    AND quarter       IN (1, 3)
-  GROUP BY period_sort, period_label, kpi_dimension
-  ORDER BY period_sort, reach_order
+    AND period_date   >= '2024-07-01'
+    AND EXTRACT(MONTH FROM period_date) IN (1, 7)
+  GROUP BY period_date, kpi_dimension
+  ORDER BY period_date, reach_order
 
 plots:
   - id: daily_reach_trend
     title: "Daily reach of online video — trend"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
-        return Object.assign({}, d, { value: +d.value, period_sort: +d.period_sort });
+        return Object.assign({}, d, { value: +d.value, period_label: fmtPeriod(d.period_date) });
       });
       var periods = [];
       var seen = {};
-      rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort }).forEach(function(d) {
+      rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).forEach(function(d) {
         if (!seen[d.period_label]) { seen[d.period_label] = true; periods.push(d.period_label); }
       });
       var colorMap = {
@@ -70,25 +70,18 @@ plots:
   - id: daily_reach_compare
     title: "Daily reach of online video — latest vs year-ago"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
-        return Object.assign({}, d, { value: +d.value, period_sort: +d.period_sort });
+        return Object.assign({}, d, { value: +d.value, period_label: fmtPeriod(d.period_date) });
       });
-      // Identify the two most recent distinct period_sort values (same quarter, one year apart)
-      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
-        .sort(function(a, b) { return b - a });
-      var latest = sortedPeriods[0];
-      var yearAgo = sortedPeriods.find(function(s) {
-        return Math.floor(s / 10) === Math.floor(latest / 10) - 1 &&
-               (s % 10) === (latest % 10);
-      }) || sortedPeriods[1];
-      var subset = rows.filter(function(d) {
-        return d.period_sort === latest || d.period_sort === yearAgo;
-      });
-      var latestLabel  = (rows.find(function(d) { return d.period_sort === latest;  }) || {}).period_label || "";
-      var yearAgoLabel = (rows.find(function(d) { return d.period_sort === yearAgo; }) || {}).period_label || "";
+      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_date; }))).sort();
+      var latest = sortedPeriods[sortedPeriods.length - 1];
+      var latestD = new Date(latest); var yearAgoD = new Date(latestD); yearAgoD.setUTCFullYear(yearAgoD.getUTCFullYear() - 1);
+      var yearAgo = yearAgoD.toISOString().slice(0, 10);
+      var subset = rows.filter(function(d) { return d.period_date === latest || d.period_date === yearAgo; });
+      var latestLabel = fmtPeriod(latest);
+      var yearAgoLabel = fmtPeriod(yearAgo);
       var typeOrder = ["Social video", "Other online", "Total online"];
-      // Use fx (facet-x) = reach_type, x = period_label so each reach type
-      // gets its own facet with the two period bars side by side — matching the screenshot.
       return Plot.plot({
         width: 680,
         height: 320,

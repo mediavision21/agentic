@@ -1,10 +1,7 @@
 description: Daily viewing time of social video (minutes/day) across Nordic countries, population-weighted average
 sql: |
   SELECT
-      n.period_sort,
-      n.period_label,
-      n.year::text AS year,
-      n.quarter_label,
+      n.period_date,
       SUM(n.value * n.population) / NULLIF(SUM(n.population), 0) AS viewing_time_minutes
   FROM macro.nordic n
   WHERE
@@ -13,31 +10,29 @@ sql: |
       AND n.kpi_dimension = 'social'
       -- AND n.canonical_name IS NULL
       AND n.age_group = '15-74'
-      AND n.quarter IN (1, 3)
+      AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
       [[ AND {{country}} ]]
       [[ AND {{year}} ]]
       [[ AND {{quarter_label}} ]]
   GROUP BY
-      n.period_sort,
-      n.period_label,
-      n.year,
-      n.quarter_label
+      n.period_date
   ORDER BY
-      n.period_sort;
+      n.period_date;
 
 plots:
   - id: social_video_viewing_time_trend
     title: "Daily viewing time of social video — trend"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           viewing_time_minutes: +d.viewing_time_minutes,
-          period_sort: +d.period_sort
+          period_label: fmtPeriod(d.period_date)
         });
       });
       var periods = [];
       var seen = {};
-      rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort }).forEach(function(d) {
+      rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).forEach(function(d) {
         if (!seen[d.period_label]) { seen[d.period_label] = true; periods.push(d.period_label); }
       });
       return Plot.plot({
@@ -75,24 +70,22 @@ plots:
   - id: social_video_viewing_time_compare
     title: "Daily viewing time of social video — latest vs year-ago"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           viewing_time_minutes: +d.viewing_time_minutes,
-          period_sort: +d.period_sort
+          period_label: fmtPeriod(d.period_date)
         });
       });
-      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
-        .sort(function(a, b) { return b - a });
-      var latest = sortedPeriods[0];
-      var yearAgo = sortedPeriods.find(function(s) {
-        return Math.floor(s / 10) === Math.floor(latest / 10) - 1 &&
-               (s % 10) === (latest % 10);
-      }) || sortedPeriods[1];
+      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_date; }))).sort();
+      var latest = sortedPeriods[sortedPeriods.length - 1];
+      var latestD = new Date(latest); var yearAgoD = new Date(latestD); yearAgoD.setUTCFullYear(yearAgoD.getUTCFullYear() - 1);
+      var yearAgo = yearAgoD.toISOString().slice(0, 10);
       var subset = rows.filter(function(d) {
-        return d.period_sort === latest || d.period_sort === yearAgo;
+        return d.period_date === latest || d.period_date === yearAgo;
       });
-      var latestLabel  = (rows.find(function(d) { return d.period_sort === latest;  }) || {}).period_label || "";
-      var yearAgoLabel = (rows.find(function(d) { return d.period_sort === yearAgo; }) || {}).period_label || "";
+      var latestLabel  = fmtPeriod(latest);
+      var yearAgoLabel = fmtPeriod(yearAgo);
       return Plot.plot({
         width: 340,
         height: 320,

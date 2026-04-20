@@ -11,11 +11,10 @@ filters:
 sql: |
   WITH spend_data AS (
       SELECT
-          n.country, n.year, n.quarter, n.period_sort, n.period_label,
+          n.country, n.period_date,
           n.category, n.kpi_dimension, n.value AS spend, n.population_household
       FROM macro.nordic n
       WHERE n.kpi_type = 'spend'
-        -- AND n.canonical_name IS NULL
         AND n.age_group = '15-74'
         AND n.value IS NOT NULL
         AND (
@@ -23,13 +22,13 @@ sql: |
           OR (n.category = 'tv' AND n.population_segment = 'subscribers')
           OR (n.category IN ('cinema', 'dvd_blu_ray', 'tvod') AND n.population_segment = 'users')
         )
-        AND n.period_sort >= 20201
+        AND n.period_date >= '2020-01-01'
         [[ AND {{country}} ]]
         [[ AND {{year}} ]]
         [[ AND {{quarter_label}} ]]
   ),
   penetration_data AS (
-      SELECT n.country, n.year, n.quarter, n.category, n.kpi_dimension, n.value AS penetration
+      SELECT n.country, n.period_date, n.category, n.kpi_dimension, n.value AS penetration
       FROM macro.nordic n
       WHERE n.age_group = '15-74'
         AND n.value IS NOT NULL
@@ -41,8 +40,7 @@ sql: |
   ),
   combined AS (
       SELECT
-          s.period_sort,
-          s.period_label,
+          s.period_date,
           s.country,
           CASE
               WHEN s.category = 'online_video' AND s.kpi_dimension = 'ssvod' THEN 'SSVOD'
@@ -58,8 +56,7 @@ sql: |
       FROM spend_data s
       JOIN penetration_data p
         ON s.country = p.country
-       AND s.year = p.year
-       AND s.quarter = p.quarter
+       AND s.period_date = p.period_date
        AND s.category = p.category
        AND (
            (s.category = 'online_video' AND s.kpi_dimension = p.kpi_dimension)
@@ -83,8 +80,7 @@ sql: |
         [[ AND {{currency_code}} ]]
   )
   SELECT
-      c.period_sort,
-      c.period_label,
+      c.period_date,
       c.business_model,
       SUM(
           (c.spend * c.rate_country / tf.rate_to_eur)
@@ -94,9 +90,9 @@ sql: |
   FROM combined c
   CROSS JOIN target_fx tf
   WHERE tf.rate_to_eur IS NOT NULL
-  GROUP BY c.period_sort, c.period_label, c.business_model
+  GROUP BY c.period_date, c.business_model
   ORDER BY
-      c.period_sort,
+      c.period_date,
       CASE c.business_model
           WHEN 'SSVOD' THEN 1
           WHEN 'Pay TV' THEN 2
@@ -109,15 +105,16 @@ plots:
   - id: media_wallet_video_spend
     title: "Media wallet: average monthly household video spend"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           value: +d.spend_population,
-          period_sort: +d.period_sort
+          period_label: fmtPeriod(d.period_date)
         });
       });
 
       var periods = Array.from(new Set(
-        rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort; }).map(function(d) { return d.period_label; })
+        rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).map(function(d) { return d.period_label; })
       ));
 
       var seriesOrder = ["SSVOD", "Pay TV", "Cinema", "DVD/Blu-ray", "TVOD"];

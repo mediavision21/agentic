@@ -2,8 +2,7 @@ description: Share of online viewing by genre — population-weighted Nordic ave
 sql: |
   WITH base_reach AS (
     SELECT
-      n.period_sort,
-      n.period_label,
+      n.period_date,
       n.country,
       n.kpi_detail AS genre_code,
       g.genre_label AS genre,
@@ -16,7 +15,6 @@ sql: |
       AND n.kpi_type = 'reach'
       AND n.kpi_dimension = 'genre'
       AND n.population_segment = 'viewers'
-      -- AND n.canonical_name IS NULL
       AND n.kpi_detail IN (
         'drama_foreign',
         'drama_local',
@@ -24,42 +22,37 @@ sql: |
         'news_debate',
         'sports_foreign'
       )
-      AND n.period_sort >= 20221
-      AND n.quarter IN (1)
+      AND n.period_date >= '2022-01-01'
+      AND EXTRACT(MONTH FROM n.period_date) IN (1)
       [[ AND {{country}} ]]
       [[ AND {{year}} ]]
       [[ AND {{quarter_label}} ]]
-      -- [[ AND {{period_label}} ]]
   ),
   genre_reach_country AS (
     SELECT
-      period_sort,
-      period_label,
+      period_date,
       country,
       genre_code,
       genre,
       SUM(reach_viewers * population_1574) / NULLIF(SUM(population_1574), 0) AS genre_reach_viewers_weighted,
       SUM(population_1574) AS country_population
     FROM base_reach
-    GROUP BY period_sort, period_label, country, genre_code, genre
+    GROUP BY period_date, country, genre_code, genre
   ),
   online_total AS (
     SELECT
       n.country,
-      n.period_sort,
+      n.period_date,
       n.value AS online_total_reach
     FROM macro.nordic n
     WHERE n.category = 'online_video'
       AND n.kpi_type = 'reach'
       AND n.kpi_dimension = 'online_total'
-      -- AND n.kpi_detail IS NULL
-      -- AND n.canonical_name IS NULL
       AND n.age_group = '15-74'
   ),
   genre_reach_pop_country AS (
     SELECT
-      g.period_sort,
-      g.period_label,
+      g.period_date,
       g.country,
       g.genre_code,
       g.genre,
@@ -68,12 +61,11 @@ sql: |
     FROM genre_reach_country g
     JOIN online_total ot
       ON g.country = ot.country
-     AND g.period_sort = ot.period_sort
+     AND g.period_date = ot.period_date
   ),
   base_vt AS (
     SELECT
-      n.period_sort,
-      n.period_label,
+      n.period_date,
       n.country,
       n.kpi_detail AS genre_code,
       g.genre_label AS genre,
@@ -94,29 +86,26 @@ sql: |
         'news_debate',
         'sports_foreign'
       )
-      AND n.period_sort >= 20221
-      AND n.quarter IN (1)
+      AND n.period_date >= '2022-01-01'
+      AND EXTRACT(MONTH FROM n.period_date) IN (1)
       [[ AND {{country}} ]]
       [[ AND {{year}} ]]
       [[ AND {{quarter_label}} ]]
-      -- [[ AND {{period_label}} ]]
   ),
   genre_vt_country AS (
     SELECT
-      period_sort,
-      period_label,
+      period_date,
       country,
       genre_code,
       genre,
       SUM(viewing_time_genre_viewers * population_1574) / NULLIF(SUM(population_1574), 0) AS vt_weighted,
       SUM(population_1574) AS country_population
     FROM base_vt
-    GROUP BY period_sort, period_label, country, genre_code, genre
+    GROUP BY period_date, country, genre_code, genre
   ),
   genre_combined_country AS (
     SELECT
-      r.period_sort,
-      r.period_label,
+      r.period_date,
       r.country,
       r.genre_code,
       r.genre,
@@ -125,34 +114,31 @@ sql: |
     FROM genre_reach_pop_country r
     JOIN genre_vt_country vt
       ON r.country = vt.country
-     AND r.period_sort = vt.period_sort
+     AND r.period_date = vt.period_date
      AND r.genre_code = vt.genre_code
   ),
   genre_nordic AS (
     SELECT
-      period_sort,
-      period_label,
+      period_date,
       genre_code,
       genre,
       SUM(viewing_time_population * country_population)
         / NULLIF(SUM(country_population), 0) AS viewing_time_population
     FROM genre_combined_country
-    GROUP BY period_sort, period_label, genre_code, genre
+    GROUP BY period_date, genre_code, genre
   ),
   normalized AS (
     SELECT
-      period_sort,
-      period_label,
+      period_date,
       genre_code,
       genre,
       viewing_time_population,
-      SUM(viewing_time_population) OVER (PARTITION BY period_sort) AS total_selected
+      SUM(viewing_time_population) OVER (PARTITION BY period_date) AS total_selected
     FROM genre_nordic
   ),
   shares AS (
     SELECT
-      period_sort,
-      period_label,
+      period_date,
       genre_code,
       genre,
       (viewing_time_population / NULLIF(total_selected, 0)) AS share
@@ -166,23 +152,23 @@ sql: |
     GROUP BY genre_code
   )
   SELECT
-    s.period_label,
-    s.period_sort,
+    s.period_date,
     s.genre,
     s.share AS viewing_time_population_share
   FROM shares s
   JOIN genre_rank r
     ON s.genre_code = r.genre_code
-  ORDER BY r.genre_rank_desc DESC, s.period_sort
+  ORDER BY r.genre_rank_desc DESC, s.period_date
 
 plots:
   - id: share_online_viewing_by_genre
     title: "Share of online viewing by genre"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
-          period_sort: +d.period_sort,
-          share: +d.viewing_time_population_share
+          share: +d.viewing_time_population_share,
+          period_label: fmtPeriod(d.period_date)
         });
       });
 
@@ -197,10 +183,9 @@ plots:
       }
 
       var periods = Array.from(new Set(
-        rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort; }).map(function(d) { return d.period_label; })
+        rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).map(function(d) { return d.period_label; })
       ));
 
-      // Stack order: bottom-to-top by descending total share (largest at bottom)
       var genreTotals = {};
       rows.forEach(function(d) {
         genreTotals[d.genre] = (genreTotals[d.genre] || 0) + d.share;

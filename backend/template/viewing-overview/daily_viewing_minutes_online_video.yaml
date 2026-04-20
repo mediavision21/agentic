@@ -1,8 +1,7 @@
 description: Daily viewing minutes of online video (Social video + Other online video) — population-weighted Nordic average
 sql: |
   SELECT
-    n.period_sort,
-    n.period_label,
+    n.period_date,
     CASE n.kpi_dimension
       WHEN 'social'                  THEN 'Social video'
       WHEN 'online_excluding_social' THEN 'Other online video'
@@ -11,14 +10,12 @@ sql: |
       WHEN 'social'                  THEN 1
       WHEN 'online_excluding_social' THEN 2
     END AS series_order,
-    -- viewing_time_population = reach × viewing_time_viewers, weighted by population
     SUM(n.value * r.value * n.population_1574)
         / NULLIF(SUM(n.population_1574), 0) AS viewing_time_population
   FROM macro.nordic n
   JOIN macro.nordic r
     ON  n.country       = r.country
-    AND n.year          = r.year
-    AND n.quarter       = r.quarter
+    AND n.period_date   = r.period_date
     AND n.kpi_dimension = r.kpi_dimension
   WHERE
     n.category           = 'online_video'
@@ -29,41 +26,35 @@ sql: |
     AND r.category        = 'online_video'
     AND r.kpi_type        = 'reach'
     AND r.age_group       = '15-74'
-    AND n.period_sort   >= 20243
-    AND n.quarter        IN (1, 3)
-  GROUP BY n.period_sort, n.period_label, n.kpi_dimension
-  ORDER BY n.period_sort, series_order
+    AND n.period_date   >= '2024-07-01'
+    AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
+  GROUP BY n.period_date, n.kpi_dimension
+  ORDER BY n.period_date, series_order
 
 plots:
   - id: daily_viewing_minutes_stacked
     title: "Daily viewing minutes of online video"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           value: +d.viewing_time_population,
-          period_sort: +d.period_sort
+          period_label: fmtPeriod(d.period_date)
         });
       });
 
       // Identify the two most recent periods (same quarter, one year apart)
-      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
-        .sort(function(a, b) { return b - a });
-      var latest = sortedPeriods[0];
-      var yearAgo = sortedPeriods.find(function(s) {
-        return Math.floor(s / 10) === Math.floor(latest / 10) - 1 &&
-               (s % 10) === (latest % 10);
-      }) || sortedPeriods[1];
-
-      var subset = rows.filter(function(d) {
-        return d.period_sort === latest || d.period_sort === yearAgo;
-      });
-
-      var latestLabel  = (rows.find(function(d) { return d.period_sort === latest;  }) || {}).period_label || "";
-      var yearAgoLabel = (rows.find(function(d) { return d.period_sort === yearAgo; }) || {}).period_label || "";
+      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_date; }))).sort();
+      var latest = sortedPeriods[sortedPeriods.length - 1];
+      var latestD = new Date(latest); var yearAgoD = new Date(latestD); yearAgoD.setUTCFullYear(yearAgoD.getUTCFullYear() - 1);
+      var yearAgo = yearAgoD.toISOString().slice(0, 10);
+      var latestLabel = fmtPeriod(latest);
+      var yearAgoLabel = fmtPeriod(yearAgo);
       var periodOrder  = [yearAgoLabel, latestLabel];
 
+      var subset = rows.filter(function(d) { return d.period_date === latest || d.period_date === yearAgo; });
+
       // Stack order: Other online video bottom (darker #3ecfac), Social video top (lighter #b2f0e0)
-      // stackY requires y1/y2 — we compute manually so we control order and can place labels
       var stackOrder = ["Other online video", "Social video"];
 
       // Build stacked rows with y1 (base) and y2 (top) for each segment
@@ -93,7 +84,6 @@ plots:
           range: ["#b2f0e0", "#3ecfac"]
         },
         marks: [
-          // Stacked bars using explicit y1/y2 — no offset needed
           Plot.barY(stackedRows, {
             x: "period_label",
             y1: "y1",
@@ -103,7 +93,6 @@ plots:
             insetRight: 40,
             tip: false
           }),
-          // Inner segment labels at midpoint of each segment
           Plot.text(stackedRows, {
             x: "period_label",
             y: "mid",
@@ -112,17 +101,16 @@ plots:
             fontWeight: "bold",
             fill: "#1a5c38"
           }),
-          // Total labels above each bar
           Plot.text(
             periodOrder.map(function(p) { return { period_label: p, total: totals[p] }; }),
             {
               x: "period_label",
               y: "total",
               text: function(d) { return Math.round(d.total) + " min"; },
-              fontSize: 13,
+              fontSize: 14,
               fontWeight: "bold",
               fill: "#111",
-              dy: -10
+              dy: -12
             }
           ),
           Plot.ruleY([0])
@@ -130,48 +118,5 @@ plots:
         marginTop: 40,
         marginBottom: 50,
         marginLeft: 55,
-        marginRight: 30
-      });
-
-  - id: daily_viewing_minutes_trend
-    title: "Daily viewing minutes of online video — trend"
-    code: |
-      var rows = data.map(function(d) {
-        return Object.assign({}, d, {
-          value: +d.viewing_time_population,
-          period_sort: +d.period_sort
-        });
-      });
-      var periods = [];
-      var seen = {};
-      rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort }).forEach(function(d) {
-        if (!seen[d.period_label]) { seen[d.period_label] = true; periods.push(d.period_label); }
-      });
-      return Plot.plot({
-        width: Math.max(700, periods.length * 60),
-        marks: [
-          Plot.line(rows, {
-            x: "period_label",
-            y: "value",
-            stroke: "business_model",
-            curve: "catmull-rom",
-            strokeWidth: 2,
-            tip: true
-          }),
-          Plot.dot(rows, {
-            x: "period_label",
-            y: "value",
-            fill: "business_model",
-            r: 4
-          })
-        ],
-        x: { label: null, domain: periods, tickRotate: -45 },
-        y: { label: "Minutes per day", grid: true },
-        color: {
-          legend: true,
-          domain: ["Social video", "Other online video"],
-          range: ["#b2f0e0", "#3ecfac"]
-        },
-        marginRight: 160,
-        marginBottom: 80
+        marginRight: 20
       });

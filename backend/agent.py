@@ -3,6 +3,7 @@ import generate
 import evaldb
 from template_router import load_templates, match_top_templates, run_matched_template
 from intent import extract_intent, is_data_query, resolve_defaults, build_preamble, build_suggestions, build_intent_prompt_block
+from verify import verify_rows
 
 
 def make_timestamp_id():
@@ -48,6 +49,8 @@ def _collect(event, content):
 		content["summary"] = event["text"]
 	elif t == "suggestions":
 		content["suggestions"] = event["items"]
+	elif t == "key_takeaways":
+		content["key_takeaways"] = event["items"]
 	elif t == "plot_config":
 		content["plot_config"] = event["plot_config"]
 	elif t == "template_plots":
@@ -175,6 +178,7 @@ async def _generate_agent_stream_inner(prompt, history=None, user="", conversati
 	templates = {}
 	matches = []
 	match_debug = None
+	template_fallback_feedback = None
 	if not continuation:
 		templates = load_templates()
 		if templates:
@@ -189,6 +193,9 @@ async def _generate_agent_stream_inner(prompt, history=None, user="", conversati
 		if matches and matches[0]["score"] >= 0.95:
 			yield {"type": "round", "label": "Template Execution"}
 			distilled = ""
+			template_events = []
+			template_cols = None
+			template_rows = None
 			async for event in run_matched_template({
 				"prompt": prompt,
 				"match": matches[0],
@@ -202,12 +209,24 @@ async def _generate_agent_stream_inner(prompt, history=None, user="", conversati
 					distilled = event.get("text", "")
 				elif event.get("type") == "text" and not distilled:
 					distilled = event.get("text", "")[:500]
-				yield event
-			if intent:
-				yield {"type": "suggestions", "items": build_suggestions(intent)}
-			if distilled:
-				yield {"type": "distilled_summary", "text": distilled}
-			return
+				elif event.get("type") == "rows":
+					template_cols = event["columns"]
+					template_rows = event["rows"]
+				elif event.get("type") == "error":
+					template_rows = []
+				template_events.append(event)
+
+			verdict = await verify_rows(prompt, template_cols, template_rows or [])
+			print(f"[agent] template verify: ok={verdict['ok']} reason={verdict['reason']}")
+			if verdict["ok"]:
+				for e in template_events:
+					yield e
+				if intent:
+					yield {"type": "suggestions", "items": build_suggestions(intent)}
+				if distilled:
+					yield {"type": "distilled_summary", "text": distilled}
+				return
+			template_fallback_feedback = verdict["reason"]
 
 	# stage 2: tool-loop generation — LLM with `query` tool, optional template hints
 	if continuation:
@@ -217,6 +236,7 @@ async def _generate_agent_stream_inner(prompt, history=None, user="", conversati
 	else:
 		label = "Open Generation"
 	distilled = ""
+	suggestions_yielded = False
 	async for event in generate.run({
 		"prompt": prompt,
 		"matches": matches,
@@ -229,13 +249,16 @@ async def _generate_agent_stream_inner(prompt, history=None, user="", conversati
 		"prior_sql": prior_sql,
 		"prior_plot_config": prior_plot_config,
 		"label": label,
+		"template_fallback_feedback": template_fallback_feedback,
 	}):
 		if event.get("type") == "summary":
 			distilled = event.get("text", "")
 		elif event.get("type") == "text" and not distilled:
 			distilled = event.get("text", "")[:500]
+		elif event.get("type") == "suggestions":
+			suggestions_yielded = True
 		yield event
-	if intent:
+	if intent and not suggestions_yielded:
 		yield {"type": "suggestions", "items": build_suggestions(intent)}
 	if distilled:
 		yield {"type": "distilled_summary", "text": distilled}

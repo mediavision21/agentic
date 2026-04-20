@@ -2,11 +2,7 @@ description: HVOD household penetration by service across Nordic countries, top 
 sql: |
   WITH base AS (
       SELECT
-          n.period_sort,
-          n.period_label,
-          n.year::text AS year,
-          n.quarter_label,
-          n.quarter,
+          n.period_date,
           n.country,
           n.canonical_name AS service,
           n.value AS penetration_country,
@@ -20,26 +16,22 @@ sql: |
           AND n.age_group = '15-74'
           AND n.value IS NOT NULL
           AND n.value > 0
-          AND n.period_sort >= 20241
+          AND n.period_date >= '2024-01-01'
           [[ AND {{country}} ]]
           [[ AND {{year}} ]]
           [[ AND {{quarter_label}} ]]
   ),
   penetration_weighted AS (
       SELECT
-          period_sort,
-          period_label,
-          year,
-          quarter_label,
+          period_date,
           service,
           SUM(penetration_country * population_household)
               / NULLIF(SUM(population_household), 0) AS penetration_household_weighted
       FROM base
-      GROUP BY
-          period_sort, period_label, year, quarter_label, service
+      GROUP BY period_date, service
   ),
   latest_period AS (
-      SELECT MAX(period_sort) AS max_period_sort
+      SELECT MAX(period_date) AS max_period_date
       FROM penetration_weighted
   ),
   service_rank AS (
@@ -47,7 +39,7 @@ sql: |
           service,
           ROW_NUMBER() OVER (ORDER BY penetration_household_weighted DESC) AS service_rank
       FROM penetration_weighted
-      WHERE period_sort = (SELECT max_period_sort FROM latest_period)
+      WHERE period_date = (SELECT max_period_date FROM latest_period)
   ),
   top_services AS (
       SELECT service, service_rank
@@ -55,53 +47,45 @@ sql: |
       WHERE service_rank <= 15
   ),
   periods AS (
-      SELECT DISTINCT period_sort, period_label, year, quarter_label
+      SELECT DISTINCT period_date
       FROM penetration_weighted
   ),
   service_period_grid AS (
       SELECT
           ts.service,
           ts.service_rank,
-          p.period_sort,
-          p.period_label,
-          p.year,
-          p.quarter_label
+          p.period_date
       FROM top_services ts
       CROSS JOIN periods p
   )
   SELECT
-      g.period_label,
-      g.year,
-      g.quarter_label,
-      g.period_sort,
+      g.period_date,
       g.service,
       g.service_rank,
       pw.penetration_household_weighted AS penetration
   FROM service_period_grid g
   LEFT JOIN penetration_weighted pw
     ON pw.service = g.service
-   AND pw.period_sort = g.period_sort
+   AND pw.period_date = g.period_date
   ORDER BY
       g.service_rank,
-      g.period_sort;
+      g.period_date;
 
 plots:
   - id: hvod_penetration_by_service
     title: "HVOD household penetration by service"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           penetration: +d.penetration * 100,
-          period_sort: +d.period_sort,
-          service_rank: +d.service_rank
+          service_rank: +d.service_rank,
+          period_label: fmtPeriod(d.period_date)
         });
       });
-      var periods = Array.from(new Set(rows.map(function(d) { return d.period_label; })))
-        .sort(function(a, b) {
-          var pa = (rows.find(function(r) { return r.period_label === a; }) || {}).period_sort || 0;
-          var pb = (rows.find(function(r) { return r.period_label === b; }) || {}).period_sort || 0;
-          return pa - pb;
-        });
+      var periods = Array.from(new Set(
+        rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).map(function(d) { return d.period_label; })
+      ));
       var services = Array.from(
         new Map(rows.map(function(d) { return [d.service, d.service_rank]; })).entries()
       ).sort(function(a, b) { return a[1] - b[1]; }).map(function(e) { return e[0]; });

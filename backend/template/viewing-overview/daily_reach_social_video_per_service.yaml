@@ -3,10 +3,7 @@ description: Daily reach of social video per service — population-weighted Nor
 sql: |
   WITH weighted AS (
     SELECT
-      period_sort,
-      period_label,
-      year,
-      quarter_label,
+      period_date,
       canonical_name AS service,
       SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS reach_population
     FROM macro.nordic
@@ -15,65 +12,52 @@ sql: |
       AND canonical_name     IS NOT NULL
       AND kpi_dimension      IS NULL
       AND age_group          = '15-74'
-      AND quarter            IN (1, 3)
-      AND period_sort        >= 20201
+      AND EXTRACT(MONTH FROM period_date) IN (1, 7)
+      AND period_date        >= '2020-01-01'
       AND is_social_video = TRUE
-    GROUP BY period_sort, period_label, year, quarter_label, canonical_name
+    GROUP BY period_date, canonical_name
   ),
   latest_period AS (
-    SELECT MAX(period_sort) AS max_period_sort FROM weighted
+    SELECT MAX(period_date) AS max_period_date FROM weighted
   ),
   service_rank AS (
     SELECT service,
            ROW_NUMBER() OVER (ORDER BY reach_population DESC) AS rnk
     FROM weighted
-    WHERE period_sort = (SELECT max_period_sort FROM latest_period)
+    WHERE period_date = (SELECT max_period_date FROM latest_period)
   )
   SELECT
-    w.period_sort,
-    w.period_label,
-    w.year,
-    w.quarter_label,
+    w.period_date,
     w.service,
     w.reach_population
   FROM weighted w
   JOIN service_rank sr ON w.service = sr.service
-  ORDER BY sr.rnk, w.period_sort
+  ORDER BY sr.rnk, w.period_date
 
 plots:
   - id: daily_reach_social_video_per_service
     title: "Daily reach of social video per service"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           reach_population: +d.reach_population,
-          period_sort: +d.period_sort
+          period_label: fmtPeriod(d.period_date)
         });
       });
 
-      // All periods oldest -> newest
-      var allPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
-        .sort(function(a, b) { return a - b });
-
-      // Show 6 most recent periods
+      var allPeriods = Array.from(new Set(rows.map(function(d) { return d.period_date; }))).sort();
       var shownPeriods = allPeriods.slice(-6);
-      var shownPeriodLabels = shownPeriods.map(function(ps) {
-        return (rows.find(function(d) { return d.period_sort === ps; }) || {}).period_label || String(ps);
-      });
+      var shownPeriodLabels = shownPeriods.map(function(pd) { return fmtPeriod(pd); });
 
-      // Filter to shown periods only
-      var subset = rows.filter(function(d) {
-        return shownPeriods.indexOf(d.period_sort) !== -1;
-      });
+      var subset = rows.filter(function(d) { return shownPeriods.indexOf(d.period_date) !== -1; });
 
-      // Service order: ranked by reach in the latest period, descending
       var latestPs = shownPeriods[shownPeriods.length - 1];
       var services = subset
-        .filter(function(d) { return d.period_sort === latestPs; })
-        .slice().sort(function(a, b) { return b.reach_population - a.reach_population })
+        .filter(function(d) { return d.period_date === latestPs; })
+        .slice().sort(function(a, b) { return b.reach_population - a.reach_population; })
         .map(function(d) { return d.service; });
 
-      // Green gradient: darkest = oldest, brightest = latest
       var greens = ["#1a5c38", "#1e6b42", "#237a4c", "#2d8f5a", "#38a86b", "#52c985"];
       var colorRange = greens.slice(0, shownPeriods.length);
 

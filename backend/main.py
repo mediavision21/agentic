@@ -7,13 +7,12 @@ import hmac
 import time
 import yaml
 from contextlib import asynccontextmanager
-from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+import env  # noqa: F401
 
 from db import create_pool, close_pool, execute_query
 from template_filters import detect_placeholders, build_default_filters, apply_filters
@@ -21,6 +20,7 @@ from agent import generate_agent_stream
 from data_examples import load_dimension_to_kpi
 from intent import set_dimension_to_kpi
 import evaldb
+from eval_router import router as eval_router
 
 
 @asynccontextmanager
@@ -34,13 +34,14 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(eval_router)
 
 SESSION_SECRET  = os.getenv("SESSION_SECRET", "mv-default-secret-change-me")
 SESSION_MAX_AGE = 7 * 24 * 3600  # 7 days
 
 app.add_middleware(
 	CORSMiddleware,
-	allow_origins=["http://localhost:5173"],
+	allow_origins=["http://localhost:5173", "http://localhost:5174"],
 	allow_methods=["*"],
 	allow_headers=["*"],
 	allow_credentials=True,

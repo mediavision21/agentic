@@ -101,10 +101,12 @@ def apply_filters(sql, resolved):
     # All templates use macro.nordic aliased as n, so columns are prefixed n.
     # Exception: columns not on macro.nordic (e.g. currency_code on fact_fx_rate_quarterly)
     NORDIC_COLUMNS = {
-        'country', 'year', 'quarter', 'quarter_label', 'period_label',
-        'period_sort', 'category', 'kpi_type', 'kpi_dimension', 'kpi_detail',
+        'country', 'period_date', 'category', 'kpi_type', 'kpi_dimension', 'kpi_detail',
         'age_group', 'population_segment', 'canonical_name',
     }
+
+    # quarter_label Q1→month 1, Q2→4, Q3→7, Q4→10
+    QUARTER_MONTH = {'Q1': 1, 'Q2': 4, 'Q3': 7, 'Q4': 10}
 
     def replace_block(m):
         full = m.group(0)
@@ -114,6 +116,15 @@ def apply_filters(sql, resolved):
         name = name_match.group(1)
         values = resolved.get(name)
         if values:
+            if name == 'year':
+                nums = ", ".join(str(int(v)) for v in values)
+                return f"AND EXTRACT(YEAR FROM n.period_date) IN ({nums})"
+            if name == 'quarter_label':
+                months = [QUARTER_MONTH[v] for v in values if v in QUARTER_MONTH]
+                if months:
+                    nums = ", ".join(str(m) for m in months)
+                    return f"AND EXTRACT(MONTH FROM n.period_date) IN ({nums})"
+                return ""
             quoted = ", ".join(f"'{v}'" for v in values)
             col = f"n.{name}" if name in NORDIC_COLUMNS else name
             return f"AND {col} IN ({quoted})"

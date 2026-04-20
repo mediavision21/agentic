@@ -7,6 +7,7 @@ export default defineConfig({
     server: {
         proxy: {
             "/api": "http://localhost:8000",
+            "/eval": "http://localhost:8000",
         },
     },
 })

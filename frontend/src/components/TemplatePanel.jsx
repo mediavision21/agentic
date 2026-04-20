@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react"
-import * as Plot from "@observablehq/plot"
+import * as _Plot from "@observablehq/plot"
+
+const Plot = { ..._Plot, plot: opts => _Plot.plot({ className: "plot", ...opts }) }
 
 function TemplatePlotView(options) {
 	const { plot, rows } = options
@@ -51,7 +53,7 @@ function TemplatePanel(options) {
 								{rows && rows.length > 0 && plots && plots.map(function (p) {
 									return <TemplatePlotView key={p.id} plot={p} rows={rows} />
 								})}
-								{rows && rows.length === 0 && <div className="eval-empty">No data returned</div>}
+								{/* {rows && rows.length === 0 && <div className="eval-empty">No data returned</div>} */}
 							</div>
 						</div>
 					)}

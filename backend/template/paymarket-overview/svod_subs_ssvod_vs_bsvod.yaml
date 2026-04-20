@@ -5,7 +5,7 @@ filters:
     default: [Q1]
 sql: |
   WITH svod AS (
-      SELECT n.country, n.year, n.quarter, n.period_sort, n.period_label,
+      SELECT n.country, n.period_date,
              n.value AS penetration_svod, n.population_household
       FROM macro.nordic n
       WHERE n.category = 'online_video'
@@ -16,10 +16,10 @@ sql: |
         AND n.value IS NOT NULL
         [[ AND {{country}} ]]
         [[ AND {{year}} ]]
-        [[ AND {{quarter_label}} ]]        
+        [[ AND {{quarter_label}} ]]
   ),
   svod_stacking AS (
-      SELECT n.country, n.year, n.quarter, n.value AS stacking_svod
+      SELECT n.country, n.period_date, n.value AS stacking_svod
       FROM macro.nordic n
       WHERE n.category = 'online_video'
         AND n.kpi_type = 'stacking'
@@ -30,7 +30,7 @@ sql: |
         AND n.value IS NOT NULL
   ),
   ssvod AS (
-      SELECT n.country, n.year, n.quarter, n.value AS penetration_ssvod
+      SELECT n.country, n.period_date, n.value AS penetration_ssvod
       FROM macro.nordic n
       WHERE n.category = 'online_video'
         AND n.kpi_type = 'penetration'
@@ -40,7 +40,7 @@ sql: |
         AND n.value IS NOT NULL
   ),
   ssvod_stacking AS (
-      SELECT n.country, n.year, n.quarter, n.value AS stacking_ssvod
+      SELECT n.country, n.period_date, n.value AS stacking_ssvod
       FROM macro.nordic n
       WHERE n.category = 'online_video'
         AND n.kpi_type = 'stacking'
@@ -52,48 +52,46 @@ sql: |
   ),
   base AS (
       SELECT
-          sv.period_sort,
-          sv.period_label,
+          sv.period_date,
           sv.country,
           sv.penetration_svod * svs.stacking_svod * sv.population_household AS svod_subs,
           ssv.penetration_ssvod * ssvs.stacking_ssvod * sv.population_household AS ssvod_subs
       FROM svod sv
       JOIN svod_stacking svs
-        ON sv.country = svs.country AND sv.year = svs.year AND sv.quarter = svs.quarter
+        ON sv.country = svs.country AND sv.period_date = svs.period_date
       JOIN ssvod ssv
-        ON sv.country = ssv.country AND sv.year = ssv.year AND sv.quarter = ssv.quarter
+        ON sv.country = ssv.country AND sv.period_date = ssv.period_date
       JOIN ssvod_stacking ssvs
-        ON sv.country = ssvs.country AND sv.year = ssvs.year AND sv.quarter = ssvs.quarter
-      WHERE sv.period_sort >= 20203
-
+        ON sv.country = ssvs.country AND sv.period_date = ssvs.period_date
+      WHERE sv.period_date >= '2020-07-01'
   ),
   agg AS (
       SELECT
-          period_sort,
-          period_label,
+          period_date,
           SUM(ssvod_subs) AS ssvod_total,
           SUM(svod_subs - ssvod_subs) AS bsvod_total
       FROM base
-      GROUP BY period_sort, period_label
+      GROUP BY period_date
   )
-  SELECT period_sort, period_label, 'SSVOD' AS subscription_type, ssvod_total AS subscriptions FROM agg
+  SELECT period_date, 'SSVOD' AS subscription_type, ssvod_total AS subscriptions FROM agg
   UNION ALL
-  SELECT period_sort, period_label, 'BSVOD' AS subscription_type, bsvod_total AS subscriptions FROM agg
-  ORDER BY period_sort, subscription_type
+  SELECT period_date, 'BSVOD' AS subscription_type, bsvod_total AS subscriptions FROM agg
+  ORDER BY period_date, subscription_type
 
 plots:
   - id: svod_subs_ssvod_vs_bsvod
     title: "Number of SVOD subs (million): S-SVOD vs B-SVOD"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           value: +d.subscriptions / 1000,
-          period_sort: +d.period_sort
+          period_label: fmtPeriod(d.period_date)
         });
       });
 
       var periods = Array.from(new Set(
-        rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort; }).map(function(d) { return d.period_label; })
+        rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).map(function(d) { return d.period_label; })
       ));
 
       // Stack order: SSVOD bottom, BSVOD top

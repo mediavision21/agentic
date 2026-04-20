@@ -10,7 +10,7 @@ filters:
     default: [EUR]
 sql: |
   WITH spend AS (
-      SELECT n.country, n.year, n.quarter, n.period_sort, n.period_label,
+      SELECT n.country, n.period_date,
              n.value AS spend_ssvod, n.population_household
       FROM macro.nordic n
       WHERE n.category = 'online_video'
@@ -20,13 +20,13 @@ sql: |
         AND n.age_group = '15-74'
         AND n.value IS NOT NULL
         AND n.canonical_name IS NULL
-        AND n.period_sort >= 20221
+        AND n.period_date >= '2022-01-01'
         [[ AND {{country}} ]]
         [[ AND {{year}} ]]
         [[ AND {{quarter_label}} ]]
   ),
   penetration AS (
-      SELECT n.country, n.year, n.quarter, n.value AS penetration_ssvod
+      SELECT n.country, n.period_date, n.value AS penetration_ssvod
       FROM macro.nordic n
       WHERE n.category = 'online_video'
         AND n.kpi_type = 'penetration'
@@ -42,8 +42,7 @@ sql: |
         [[ AND {{currency_code}} ]]
   )
   SELECT
-      s.period_sort,
-      s.period_label,
+      s.period_date,
       INITCAP(s.country) AS country,
       (s.spend_ssvod * fx.rate_to_eur / tf.rate_to_eur)
         * p.penetration_ssvod
@@ -59,8 +58,7 @@ sql: |
   FROM spend s
   JOIN penetration p
     ON s.country = p.country
-   AND s.year = p.year
-   AND s.quarter = p.quarter
+   AND s.period_date = p.period_date
   JOIN macro.fact_fx_rate_quarterly fx
     ON fx.period_key = '2025q4'
    AND fx.currency_code = CASE s.country
@@ -72,27 +70,27 @@ sql: |
   CROSS JOIN target_fx tf
   WHERE tf.rate_to_eur IS NOT NULL
     AND p.penetration_ssvod >= 0
-  ORDER BY s.period_sort, s.country
+  ORDER BY s.period_date, s.country
 
 plots:
   - id: ssvod_revenue_ex_vat_by_country
     title: "Total S-SVOD subscription revenue ex VAT, by country"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           value: +d.revenue,
-          period_sort: +d.period_sort
+          period_label: fmtPeriod(d.period_date)
         });
       });
 
       var periods = Array.from(new Set(
-        rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort; }).map(function(d) { return d.period_label; })
+        rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).map(function(d) { return d.period_label; })
       ));
 
       var countryOrder = ["Sweden", "Norway", "Finland", "Denmark"];
       var countryColors = ["#e8a838", "#7aafc4", "#52b788", "#e07a5f"];
 
-      // compute totals per period for top labels
       var totals = {};
       rows.forEach(function(d) {
         if (totals[d.period_label] == undefined) {

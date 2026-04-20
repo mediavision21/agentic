@@ -3,16 +3,6 @@ DROP MATERIALIZED VIEW macro.nordic;
 -- CREATE OR REPLACE  VIEW macro.nordic AS
 CREATE MATERIALIZED VIEW macro.nordic AS
 SELECT
-    l.year::integer                                                         AS year,
-    p.period_sort,
-    p.period_label,
-    p.quarter_label,
-    CASE l.quarter
-        WHEN 'q1' THEN 1
-        WHEN 'q2' THEN 2
-        WHEN 'q3' THEN 3
-        WHEN 'q4' THEN 4
-    END::integer                                                            AS quarter,
     MAKE_DATE(
         l.year::integer,
         CASE l.quarter WHEN 'q1' THEN 1 WHEN 'q2' THEN 4 WHEN 'q3' THEN 7 WHEN 'q4' THEN 10 END,
@@ -47,7 +37,6 @@ SELECT
     hh.value                                                                AS population_household
 FROM macro.nordic_long_v2       l
 LEFT JOIN macro.dim_service      s   ON l.service_id = s.service_id
-LEFT JOIN macro.dim_period       p   ON l.year = p.year AND l.quarter = p.quarter
 LEFT JOIN macro.fact_population  pop ON l.country = pop.country
                                     AND l.year::integer = pop.year
                                     AND COALESCE(NULLIF(l.age_group, ''), '15-74') = pop.age
@@ -59,4 +48,5 @@ LEFT JOIN macro.fact_population  ind ON l.country = ind.country
 LEFT JOIN macro.fact_population  hh  ON l.country = hh.country
                                     AND l.year::integer = hh.year
                                     AND hh.age = '15-74'
-                                    AND hh.population_type = 'households';
+                                    AND hh.population_type = 'households'
+WHERE l.year >= '2013'

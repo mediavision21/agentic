@@ -136,6 +136,9 @@ async def complete(options):
 	conversation_id = options.get("conversation_id", "")
 	max_tokens      = options.get("max_tokens", 100 if model_key == "haiku" else 4096)
 
+	prefill        = options.get("prefill")
+	stop_sequences = options.get("stop_sequences")
+
 	model = MODELS[model_key]
 	conv = [dict(m) for m in messages]
 	total_input = 0
@@ -151,15 +154,20 @@ async def complete(options):
 		yield {"type": "messages", "messages": [dict(m) for m in conv]}
 
 		iter_text = ""
+		call_conv = conv
+		if prefill and iteration == 0:
+			call_conv = conv + [{"role": "assistant", "content": prefill}]
 		stream_kwargs = {
 			"model": model,
 			"max_tokens": max_tokens,
 			"temperature": 0,
 			"system": system_prompt,
-			"messages": conv,
+			"messages": call_conv,
 		}
 		if tools:
 			stream_kwargs["tools"] = tools
+		if stop_sequences:
+			stream_kwargs["stop_sequences"] = stop_sequences
 
 		async with client.messages.stream(**stream_kwargs) as stream:
 			async for text in stream.text_stream:

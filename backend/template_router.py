@@ -5,7 +5,7 @@ import yaml
 import llm
 import evaldb
 from db import execute_query
-from template_filters import detect_placeholders, load_filter_choices, apply_filters, FILTER_REGISTRY
+from template_filters import detect_placeholders, load_filter_choices, apply_filters, FILTER_REGISTRY, _merge_spec
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "template")
 
@@ -92,7 +92,7 @@ async def match_top_templates(prompt, templates):
 
 FILTER_RESOLVE_PROMPT = """You are given a user message and a list of SQL template filter placeholders with their available choices.
 Extract any filter values the user mentioned and return JSON only:
-{"resolved": {"country_label": ["Denmark"], "year": ["2024"]}, "missing": ["quarter_label"]}
+{"resolved": {"country": ["denmark"], "year": ["2024"]}, "missing": ["quarter_label"]}
 - "resolved": filters the user specified (use exact values from the choices list, case-insensitive match)
 - "missing": filters the user did not mention
 If the user did not specify ANY filter values at all, output exactly: NONE
@@ -105,7 +105,7 @@ async def _resolve_filters(prompt, placeholders, choices_map):
 		choices = choices_map.get(name, [])
 		spec = FILTER_REGISTRY.get(name, {})
 		label = spec.get("label", name)
-		lines.append(f"- {name} ({label}): {', '.join(str(c) for c in choices)}")
+		lines.append(f"- {name}: {', '.join(str(c) for c in choices)}")
 	user_msg = "\n".join(lines)
 	messages = [{"role": "user", "content": user_msg}]
 	debug = {"prompt": FILTER_RESOLVE_PROMPT, "messages": messages, "response": ""}
@@ -170,7 +170,7 @@ async def run_matched_template(options):
 		choices_map = await load_filter_choices(placeholders, yaml_filters)
 		result, filter_debug = await _resolve_filters(prompt, placeholders, choices_map)
 		# always surface the filter-resolution Haiku round to the frontend
-		yield {"type": "round",    "label": "Filter Resolution"}
+		# yield {"type": "round",    "label": "Filter Resolution"}
 		yield {"type": "prompt",   "text": filter_debug["prompt"]}
 		yield {"type": "messages", "messages": filter_debug["messages"]}
 		yield {"type": "response", "text": filter_debug["response"] or "(no response)"}
@@ -183,7 +183,7 @@ async def run_matched_template(options):
 		if result is None:
 			registry_defaults = {}
 			for name in placeholders:
-				spec = FILTER_REGISTRY.get(name, {})
+				spec = _merge_spec(name, yaml_filters)
 				if spec.get("default"):
 					registry_defaults[name] = spec["default"]
 			if registry_defaults:

@@ -3,7 +3,8 @@ import PromptInput from "./components/PromptInput.jsx"
 import ChatMessage from "./components/ChatMessage.jsx"
 import EvalSidebar from "./components/EvalSidebar.jsx"
 import EvalPanel from "./components/EvalPanel.jsx"
-import TemplatePanel from "./components/TemplatePanel.jsx"
+import PlotPanel from "./components/PlotPanel.jsx"
+import PlotEvalPanel from "./components/PlotEvalPanel.jsx"
 import LoginDialog from "./components/LoginDialog.jsx"
 import parseRawResponse from "./parseResponse.js"
 
@@ -20,6 +21,7 @@ function App() {
 	const [loading, setLoading] = useState(false)
 	const [evalView, setEvalView] = useState(null) // {id, prompt, response, user, rating, comment}
 	const [templateView, setTemplateView] = useState(null)
+	const [plotEvalView, setPlotEvalView] = useState(null)
 	const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT)
 	const [rightWidth, setRightWidth] = useState(DEFAULT_RIGHT)
 	const [dragTarget, setDragTarget] = useState(null) // "left" | "right" | null
@@ -151,10 +153,20 @@ function App() {
 		}
 	}
 
+	async function onSelectPlotEval(name) {
+		setEvalView(null)
+		setTemplateView(null)
+		setPlotEvalView({ name, loading: true })
+		const resp = await fetch("/eval/files/" + encodeURIComponent(name))
+		const data = await resp.json()
+		setPlotEvalView({ name, ...data, loading: false })
+	}
+
 	function selectSession(id) {
 		setActiveId(id)
 		setEvalView(null)
 		setTemplateView(null)
+		setPlotEvalView(null)
 
 		const session = sessions.find(function (s) { return s.id === id })
 		if (session && session.loaded === false) {
@@ -164,11 +176,13 @@ function App() {
 
 	function onSelectEval(ev) {
 		setTemplateView(null)
+		setPlotEvalView(null)
 		setEvalView(ev)
 	}
 
 	async function onSelectTemplate(tpl) {
 		setEvalView(null)
+		setPlotEvalView(null)
 		setTemplateView({ name: tpl.name, description: tpl.description, loading: true })
 		try {
 			const resp = await fetch("/api/templates/" + tpl.name, { credentials: "include" })
@@ -374,6 +388,8 @@ function App() {
 							})
 						} else if (event.type === "summary") {
 							patchLastMsg(sessionId, function (c) { return { ...c, summary: event.text } })
+						} else if (event.type === "key_takeaways") {
+							patchLastMsg(sessionId, function (c) { return { ...c, key_takeaways: event.items } })
 						} else if (event.type === "suggestions") {
 							patchLastMsg(sessionId, function (c) { return { ...c, suggestions: event.items } })
 						} else if (event.type === "plot_config") {
@@ -455,7 +471,7 @@ function App() {
 		width: rightWidth,
 	}
 
-	const panelClass = (evalView || templateView) ? " eval-open" : ""
+	const panelClass = (evalView || templateView || plotEvalView) ? " eval-open" : ""
 
 	const userInitial = user ? user[0].toUpperCase() : "?"
 
@@ -558,7 +574,8 @@ function App() {
 				{/* eval panel — slides in from right when an eval or template is selected */}
 				<div className="eval-panel">
 					{evalView && <EvalPanel evalView={evalView} onClose={function () { setEvalView(null) }} />}
-					{templateView && <TemplatePanel templateView={templateView} onClose={function () { setTemplateView(null) }} />}
+					{templateView && <PlotPanel plotView={templateView} onClose={function () { setTemplateView(null) }} />}
+					{plotEvalView && <PlotEvalPanel plotEvalView={plotEvalView} onClose={function () { setPlotEvalView(null) }} />}
 				</div>
 			</main>
 
@@ -580,6 +597,8 @@ function App() {
 				user={user}
 				onSelectTemplate={onSelectTemplate}
 				activeTemplateName={templateView ? templateView.name : null}
+				onSelectPlotEval={onSelectPlotEval}
+				activePlotEvalName={plotEvalView ? plotEvalView.name : null}
 			/>
 		</div>
 	)

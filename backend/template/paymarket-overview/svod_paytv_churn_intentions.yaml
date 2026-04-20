@@ -5,8 +5,7 @@ filters:
     default: [Q1]
 sql: |
   SELECT
-      n.period_sort,
-      n.period_label,
+      n.period_date,
       CASE
           WHEN n.category = 'online_video' AND n.kpi_dimension = 'svod' THEN 'SVOD'
           WHEN n.category = 'tv' THEN 'Pay TV'
@@ -27,22 +26,23 @@ sql: |
       [[ AND {{country}} ]]
       [[ AND {{year}} ]]
       [[ AND {{quarter_label}} ]]
-  GROUP BY n.period_sort, n.period_label, n.category, n.kpi_dimension
-  ORDER BY n.period_sort, business_model
+  GROUP BY n.period_date, n.category, n.kpi_dimension
+  ORDER BY n.period_date, business_model
 
 plots:
   - id: svod_paytv_churn_intentions
     title: "SVOD and Pay TV churn intentions"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           value: +d.churn_intention,
-          period_sort: +d.period_sort
+          period_label: fmtPeriod(d.period_date)
         });
       });
 
       var periods = Array.from(new Set(
-        rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort; }).map(function(d) { return d.period_label; })
+        rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).map(function(d) { return d.period_label; })
       ));
 
       return Plot.plot({

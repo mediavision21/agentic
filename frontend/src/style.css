@@ -502,6 +502,21 @@ body {
 	background: var(--color-green-100);
 }
 
+/* ── key takeaways ── */
+
+.key-takeaways {
+	/* border-left: 3px solid var(--color-blue-300); */
+	color: var(--color-text-secondary, var(--color-text));
+	font-size: 0.875em;
+	list-style: disc;
+	margin: 10px 0 0 0;
+	padding: 6px 0 6px 20px;
+}
+
+.key-takeaways li {
+	margin-bottom: 4px;
+}
+
 /* ── suggestion chips ── */
 
 .suggestion-chips {
@@ -1505,4 +1520,75 @@ body {
 .debug-round .collapsible {
 	/* margin-left: 15px; */
 	padding-left: 15px;
+}
+
+/* ── plot eval panel ── */
+
+.plot-eval-grid {
+	display: flex;
+	flex-direction: row;
+	gap: 12px;
+	overflow-x: auto;
+	padding: 12px;
+}
+
+.plot-eval-version-panel {
+	border: 1px solid var(--color-gray-lighter);
+
+	border-radius: 6px;
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 280px;
+	padding: 10px;
+}
+
+.plot-eval-data-panel {
+	border: 1px solid var(--color-gray-lighter);
+	border-radius: 6px;
+	flex: 0 0 auto;
+	max-width: 360px;
+	overflow-x: auto;
+	padding: 10px;
+}
+
+.plot-eval-panel-label {
+	color: var(--color-gray-light);
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+}
+
+.plot-eval-score {
+	background: var(--color-green-900);
+	border-radius: 4px;
+	color: var(--color-green-100);
+	font-size: 13px;
+	line-height: 1.4;
+	padding: 6px 8px;
+}
+
+.plot-eval-desc {
+	color: var(--color-gray-light);
+	font-size: 12px;
+	margin-bottom: 6px;
+}
+
+.plot-eval-table {
+	border-collapse: collapse;
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+.plot-eval-table th,
+.plot-eval-table td {
+	border: 1px solid var(--color-gray-dark);
+	padding: 3px 6px;
+	text-align: left;
+}
+
+.plot-eval-table th {
+	background: var(--color-gray-dark);
+	color: var(--color-gray-light);
 }

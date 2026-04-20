@@ -168,7 +168,7 @@ function ChatMessage(options) {
 	}
 
 	// assistant
-	const { loading, error, sql, explanation, text, columns, rows, summary, plot_config, streaming_text, suggestions, msg_id, template_plots, rounds } = message.content
+	const { loading, error, sql, explanation, text, columns, rows, summary, key_takeaways, plot_config, streaming_text, suggestions, msg_id, template_plots, rounds } = message.content
 	const displayColumns = localColumns || columns
 	const displayRows = localRows || rows
 	// const showDebug = location.hostname === "localhost" || localStorage.getItem("debug") === "1"
@@ -231,7 +231,7 @@ function ChatMessage(options) {
 					<details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streaming_text}</pre></details>
 				)}
 
-				{error && <p className="no-data-msg">No data returned</p>}
+				{/* {error && <p className="no-data-msg">No data returned</p>} */}
 
 				{/* conversational reply — show as markdown, no SQL block */}
 				{text && !sql && <Markdown text={text} />}
@@ -245,6 +245,14 @@ function ChatMessage(options) {
 						<summary>Data ({displayRows.length} rows)</summary>
 						<ResultTable columns={displayColumns} rows={displayRows} />
 					</details>
+				)}
+
+				{key_takeaways && key_takeaways.length > 0 && (
+					<ul className="key-takeaways">
+						{key_takeaways.map(function (t, i) {
+							return <li key={i}>{t}</li>
+						})}
+					</ul>
 				)}
 
 				{summary && <Markdown text={summary} />}

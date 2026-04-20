@@ -2,10 +2,7 @@ description: Household penetration by video type (SVOD, SSVOD, BSVOD, HVOD, Pay 
 sql: |
   WITH base AS (
       SELECT
-          n.period_label,
-          n.year::text AS year,
-          n.quarter_label,
-          n.period_sort,
+          n.period_date,
           n.country,
           n.kpi_dimension,
           n.value AS penetration_country,
@@ -22,57 +19,51 @@ sql: |
               'tve',
               'pay_tv_channel'
           )
-          -- AND n.canonical_name IS NULL
           AND n.age_group = '15-74'
           AND (
               (
                   n.kpi_dimension IN ('svod', 'ssvod', 'bsvod')
-                  AND (n.year::int > 2016 OR (n.year::int = 2016 AND n.quarter = 1))
+                  AND n.period_date >= '2016-01-01'
               )
               OR (
                   n.kpi_dimension = 'hvod'
-                  AND (n.year::int > 2022 OR (n.year::int = 2022 AND n.quarter = 3))
+                  AND n.period_date >= '2022-07-01'
               )
               OR n.kpi_dimension = 'tve'
               OR n.kpi_dimension = 'pay_tv_channel'
           )
-          AND n.quarter IN (1, 3)
+          AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
           [[ AND {{country}} ]]
           [[ AND {{year}} ]]
           [[ AND {{quarter_label}} ]]
   )
   SELECT
-      period_label,
-      year,
-      quarter_label,
-      period_sort,
+      period_date,
       UPPER(kpi_dimension) AS business_model,
       SUM(penetration_country * population_household)
           / NULLIF(SUM(population_household), 0) AS penetration
   FROM base
   GROUP BY
-      period_label,
-      year,
-      quarter_label,
-      period_sort,
+      period_date,
       kpi_dimension
   ORDER BY
-      period_sort,
+      period_date,
       business_model;
 
 plots:
   - id: household_penetration_trend
     title: "Household penetration by video type — trend"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           penetration: +d.penetration * 100,
-          period_sort: +d.period_sort
+          period_label: fmtPeriod(d.period_date)
         });
       });
       var periods = [];
       var seen = {};
-      rows.slice().sort(function(a, b) { return a.period_sort - b.period_sort }).forEach(function(d) {
+      rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).forEach(function(d) {
         if (!seen[d.period_label]) { seen[d.period_label] = true; periods.push(d.period_label); }
       });
       var colorMap = {
@@ -116,24 +107,20 @@ plots:
   - id: household_penetration_compare
     title: "Household penetration by video type — latest vs year-ago"
     code: |
+      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
       var rows = data.map(function(d) {
         return Object.assign({}, d, {
           penetration: +d.penetration * 100,
-          period_sort: +d.period_sort
+          period_label: fmtPeriod(d.period_date)
         });
       });
-      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_sort; })))
-        .sort(function(a, b) { return b - a });
-      var latest = sortedPeriods[0];
-      var yearAgo = sortedPeriods.find(function(s) {
-        return Math.floor(s / 10) === Math.floor(latest / 10) - 1 &&
-               (s % 10) === (latest % 10);
-      }) || sortedPeriods[1];
-      var subset = rows.filter(function(d) {
-        return d.period_sort === latest || d.period_sort === yearAgo;
-      });
-      var latestLabel  = (rows.find(function(d) { return d.period_sort === latest;  }) || {}).period_label || "";
-      var yearAgoLabel = (rows.find(function(d) { return d.period_sort === yearAgo; }) || {}).period_label || "";
+      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_date; }))).sort();
+      var latest = sortedPeriods[sortedPeriods.length - 1];
+      var latestD = new Date(latest); var yearAgoD = new Date(latestD); yearAgoD.setUTCFullYear(yearAgoD.getUTCFullYear() - 1);
+      var yearAgo = yearAgoD.toISOString().slice(0, 10);
+      var subset = rows.filter(function(d) { return d.period_date === latest || d.period_date === yearAgo; });
+      var latestLabel = fmtPeriod(latest);
+      var yearAgoLabel = fmtPeriod(yearAgo);
       var modelOrder = ["SVOD", "SSVOD", "BSVOD", "HVOD", "PAY_TV_CHANNEL", "TVE"];
       return Plot.plot({
         width: 900,
