@@ -6,16 +6,31 @@ filters:
     - Q1
     default:
     - Q1
-sql: "SELECT\n    n.period_date,\n    CASE\n        WHEN n.category = 'online_video'\
-  \ AND n.kpi_dimension = 'svod' THEN 'SVOD'\n        WHEN n.category = 'tv' THEN\
-  \ 'Pay TV'\n    END AS business_model,\n    SUM(n.value * n.population_household)\n\
-  \        / NULLIF(SUM(n.population_household), 0) * 100 AS churn_intention\nFROM\
-  \ macro.nordic n\nWHERE\n    n.kpi_type = 'churn_intention'\n    AND n.population_segment\
-  \ = 'subscribers'\n    AND n.canonical_name IS NULL\n    AND n.age_group = '15-74'\n\
-  \    AND n.value IS NOT NULL\n    AND (\n        (n.category = 'online_video' AND\
-  \ n.kpi_dimension = 'svod')\n        OR n.category = 'tv'\n    )\n    [[ AND {{country}}\
-  \ ]]\n    [[ AND {{year}} ]]\n    [[ AND {{quarter_label}} ]]\nGROUP BY n.period_date,\
-  \ n.category, n.kpi_dimension\nORDER BY n.period_date, business_model\n"
+sql: |-
+    SELECT
+        n.period_date,
+        CASE
+            WHEN n.category = 'online_video' AND n.kpi_dimension = 'svod' THEN 'SVOD'
+            WHEN n.category = 'tv' THEN 'Pay TV'
+        END AS business_model,
+        SUM(n.value * n.population_household)
+            / NULLIF(SUM(n.population_household), 0) * 100 AS churn_intention
+    FROM macro.nordic n
+    WHERE
+        n.kpi_type = 'churn_intention'
+        AND n.population_segment = 'subscribers'
+        AND n.canonical_name IS NULL
+        AND n.age_group = '15-74'
+        AND n.value IS NOT NULL
+        AND (
+            (n.category = 'online_video' AND n.kpi_dimension = 'svod')
+            OR n.category = 'tv'
+        )
+        [[ AND {{country}} ]]
+        [[ AND {{year}} ]]
+        [[ AND {{quarter_label}} ]]
+    GROUP BY n.period_date, n.category, n.kpi_dimension
+    ORDER BY n.period_date, business_model
 plots:
 - id: svod_paytv_churn_intentions
   title: SVOD and Pay TV churn intentions

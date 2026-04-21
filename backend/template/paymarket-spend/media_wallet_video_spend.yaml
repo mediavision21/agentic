@@ -16,45 +16,98 @@ filters:
     - DKK
     default:
     - EUR
-sql: "WITH spend_data AS (\n    SELECT\n        n.country, n.period_date,\n      \
-  \  n.category, n.kpi_dimension, n.value AS spend, n.population_household\n    FROM\
-  \ macro.nordic n\n    WHERE n.kpi_type = 'spend'\n      AND n.age_group = '15-74'\n\
-  \      AND n.value IS NOT NULL\n      AND (\n        (n.category = 'online_video'\
-  \ AND n.kpi_dimension = 'ssvod' AND n.population_segment = 'subscribers')\n    \
-  \    OR (n.category = 'tv' AND n.population_segment = 'subscribers')\n        OR\
-  \ (n.category IN ('cinema', 'dvd_blu_ray', 'tvod') AND n.population_segment = 'users')\n\
-  \      )\n      AND n.period_date >= '2020-01-01'\n      [[ AND {{country}} ]]\n\
-  \      [[ AND {{year}} ]]\n      [[ AND {{quarter_label}} ]]\n),\npenetration_data\
-  \ AS (\n    SELECT n.country, n.period_date, n.category, n.kpi_dimension, n.value\
-  \ AS penetration\n    FROM macro.nordic n\n    WHERE n.age_group = '15-74'\n   \
-  \   AND n.value IS NOT NULL\n      AND (\n        (n.category = 'online_video' AND\
-  \ n.kpi_type = 'penetration' AND n.kpi_dimension = 'ssvod')\n        OR (n.category\
-  \ = 'tv' AND n.kpi_type = 'penetration' AND n.kpi_dimension = 'pay_tv_channel')\n\
-  \        OR (n.category IN ('cinema', 'dvd_blu_ray', 'tvod') AND n.kpi_type = 'reach_monthly')\n\
-  \      )\n),\ncombined AS (\n    SELECT\n        s.period_date,\n        s.country,\n\
-  \        CASE\n            WHEN s.category = 'online_video' AND s.kpi_dimension\
-  \ = 'ssvod' THEN 'SSVOD'\n            WHEN s.category = 'tv' THEN 'Pay TV'\n   \
-  \         WHEN s.category = 'cinema' THEN 'Cinema'\n            WHEN s.category\
-  \ = 'dvd_blu_ray' THEN 'DVD/Blu-ray'\n            WHEN s.category = 'tvod' THEN\
-  \ 'TVOD'\n        END AS business_model,\n        s.spend,\n        p.penetration,\n\
-  \        s.population_household,\n        fx.rate_to_eur AS rate_country\n    FROM\
-  \ spend_data s\n    JOIN penetration_data p\n      ON s.country = p.country\n  \
-  \   AND s.period_date = p.period_date\n     AND s.category = p.category\n     AND\
-  \ (\n         (s.category = 'online_video' AND s.kpi_dimension = p.kpi_dimension)\n\
-  \         OR (s.category = 'tv')\n         OR (s.category IN ('cinema', 'dvd_blu_ray',\
-  \ 'tvod'))\n     )\n    JOIN macro.fact_fx_rate_quarterly fx\n      ON fx.period_key\
-  \ = '2025q4'\n     AND fx.currency_code = CASE s.country\n            WHEN 'sweden'\
-  \ THEN 'SEK'\n            WHEN 'norway' THEN 'NOK'\n            WHEN 'denmark' THEN\
-  \ 'DKK'\n            WHEN 'finland' THEN 'EUR'\n         END\n    WHERE p.penetration\
-  \ >= 0\n),\ntarget_fx AS (\n    SELECT rate_to_eur\n    FROM macro.fact_fx_rate_quarterly\n\
-  \    WHERE period_key = '2025q4'\n      [[ AND {{currency_code}} ]]\n)\nSELECT\n\
-  \    c.period_date,\n    c.business_model,\n    SUM(\n        (c.spend * c.rate_country\
-  \ / tf.rate_to_eur)\n        * c.penetration\n        * c.population_household\n\
-  \    ) / NULLIF(SUM(c.population_household), 0) AS spend_population\nFROM combined\
-  \ c\nCROSS JOIN target_fx tf\nWHERE tf.rate_to_eur IS NOT NULL\nGROUP BY c.period_date,\
-  \ c.business_model\nORDER BY\n    c.period_date,\n    CASE c.business_model\n  \
-  \      WHEN 'SSVOD' THEN 1\n        WHEN 'Pay TV' THEN 2\n        WHEN 'Cinema'\
-  \ THEN 3\n        WHEN 'DVD/Blu-ray' THEN 4\n        WHEN 'TVOD' THEN 5\n    END\n"
+sql: |-
+    WITH spend_data AS (
+        SELECT
+            n.country, n.period_date,
+            n.category, n.kpi_dimension, n.value AS spend, n.population_household
+        FROM macro.nordic n
+        WHERE n.kpi_type = 'spend'
+          AND n.age_group = '15-74'
+          AND n.value IS NOT NULL
+          AND (
+            (n.category = 'online_video' AND n.kpi_dimension = 'ssvod' AND n.population_segment = 'subscribers')
+            OR (n.category = 'tv' AND n.population_segment = 'subscribers')
+            OR (n.category IN ('cinema', 'dvd_blu_ray', 'tvod') AND n.population_segment = 'users')
+          )
+          AND n.period_date >= '2020-01-01'
+          [[ AND {{country}} ]]
+          [[ AND {{year}} ]]
+          [[ AND {{quarter_label}} ]]
+    ),
+    penetration_data AS (
+        SELECT n.country, n.period_date, n.category, n.kpi_dimension, n.value AS penetration
+        FROM macro.nordic n
+        WHERE n.age_group = '15-74'
+          AND n.value IS NOT NULL
+          AND (
+            (n.category = 'online_video' AND n.kpi_type = 'penetration' AND n.kpi_dimension = 'ssvod')
+            OR (n.category = 'tv' AND n.kpi_type = 'penetration' AND n.kpi_dimension = 'pay_tv_channel')
+            OR (n.category IN ('cinema', 'dvd_blu_ray', 'tvod') AND n.kpi_type = 'reach_monthly')
+          )
+    ),
+    combined AS (
+        SELECT
+            s.period_date,
+            s.country,
+            CASE
+                WHEN s.category = 'online_video' AND s.kpi_dimension = 'ssvod' THEN 'SSVOD'
+                WHEN s.category = 'tv' THEN 'Pay TV'
+                WHEN s.category = 'cinema' THEN 'Cinema'
+                WHEN s.category = 'dvd_blu_ray' THEN 'DVD/Blu-ray'
+                WHEN s.category = 'tvod' THEN 'TVOD'
+            END AS business_model,
+            s.spend,
+            p.penetration,
+            s.population_household,
+            fx.rate_to_eur AS rate_country
+        FROM spend_data s
+        JOIN penetration_data p
+          ON s.country = p.country
+         AND s.period_date = p.period_date
+         AND s.category = p.category
+         AND (
+             (s.category = 'online_video' AND s.kpi_dimension = p.kpi_dimension)
+             OR (s.category = 'tv')
+             OR (s.category IN ('cinema', 'dvd_blu_ray', 'tvod'))
+         )
+        JOIN macro.fact_fx_rate_quarterly fx
+          ON fx.period_key = '2025q4'
+         AND fx.currency_code = CASE s.country
+                WHEN 'sweden' THEN 'SEK'
+                WHEN 'norway' THEN 'NOK'
+                WHEN 'denmark' THEN 'DKK'
+                WHEN 'finland' THEN 'EUR'
+             END
+        WHERE p.penetration >= 0
+    ),
+    target_fx AS (
+        SELECT rate_to_eur
+        FROM macro.fact_fx_rate_quarterly
+        WHERE period_key = '2025q4'
+          [[ AND {{currency_code}} ]]
+    )
+    SELECT
+        c.period_date,
+        c.business_model,
+        SUM(
+            (c.spend * c.rate_country / tf.rate_to_eur)
+            * c.penetration
+            * c.population_household
+        ) / NULLIF(SUM(c.population_household), 0) AS spend_population
+    FROM combined c
+    CROSS JOIN target_fx tf
+    WHERE tf.rate_to_eur IS NOT NULL
+    GROUP BY c.period_date, c.business_model
+    ORDER BY
+        c.period_date,
+        CASE c.business_model
+            WHEN 'SSVOD' THEN 1
+            WHEN 'Pay TV' THEN 2
+            WHEN 'Cinema' THEN 3
+            WHEN 'DVD/Blu-ray' THEN 4
+            WHEN 'TVOD' THEN 5
+        END
 plots:
 - id: media_wallet_video_spend
   title: 'Media wallet: average monthly household video spend'

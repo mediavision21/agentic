@@ -6,13 +6,26 @@ filters:
     - Q1
     default:
     - Q1
-sql: "SELECT\n    n.period_date,\n    SUM(n.value * n.population_household)\n    \
-  \    / NULLIF(SUM(n.population_household), 0) AS stacking\nFROM macro.nordic n\n\
-  WHERE\n    n.category = 'online_video'\n    AND n.kpi_type = 'stacking'\n    AND\
-  \ n.kpi_dimension = 'svod'\n    AND n.population_segment = 'subscribers'\n    AND\
-  \ n.age_group = '15-74'\n    AND n.canonical_name IS NULL\n    AND n.kpi_detail\
-  \ IS NULL\n    AND n.value IS NOT NULL\n    [[ AND {{country}} ]]\n    [[ AND {{year}}\
-  \ ]]\n    [[ AND {{quarter_label}} ]]\nGROUP BY n.period_date\nORDER BY n.period_date\n"
+sql: |-
+    SELECT
+        n.period_date,
+        SUM(n.value * n.population_household)
+            / NULLIF(SUM(n.population_household), 0) AS stacking
+    FROM macro.nordic n
+    WHERE
+        n.category = 'online_video'
+        AND n.kpi_type = 'stacking'
+        AND n.kpi_dimension = 'svod'
+        AND n.population_segment = 'subscribers'
+        AND n.age_group = '15-74'
+        AND n.canonical_name IS NULL
+        AND n.kpi_detail IS NULL
+        AND n.value IS NOT NULL
+        [[ AND {{country}} ]]
+        [[ AND {{year}} ]]
+        [[ AND {{quarter_label}} ]]
+    GROUP BY n.period_date
+    ORDER BY n.period_date
 plots:
 - id: svod_stacking
   title: SVOD stacking

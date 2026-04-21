@@ -1,37 +1,92 @@
 description: Daily viewing minutes of video averaged across age groups (Social video,
   Other online video, TV) — population-weighted Nordic average
-sql: "WITH reach AS (\n  SELECT\n    country,\n    period_date,\n    age_group,\n\
-  \    population_1574,\n    CASE\n      WHEN category = 'online_video' AND kpi_dimension\
-  \ = 'social' THEN 'Social video'\n      WHEN category = 'online_video' AND kpi_dimension\
-  \ = 'online_excluding_social' THEN 'Other online video'\n      WHEN category = 'tv'\
-  \ THEN 'TV'\n    END AS business_model,\n    value AS reach\n  FROM macro.nordic\n\
-  \  WHERE canonical_name IS NULL\n    AND age_group IN ('15-24', '25-34', '35-44',\
-  \ '45-54', '55-64', '65-74')\n    AND (\n      (category = 'online_video' AND kpi_type\
-  \ = 'reach' AND kpi_dimension IN ('social', 'online_excluding_social'))\n      OR\n\
-  \      (category = 'tv' AND kpi_type = 'reach')\n    )\n),\nviewing_time AS (\n\
-  \  SELECT\n    country,\n    period_date,\n    age_group,\n    CASE\n      WHEN\
-  \ category = 'online_video' AND kpi_dimension = 'social' THEN 'Social video'\n \
-  \     WHEN category = 'online_video' AND kpi_dimension = 'online_excluding_social'\
-  \ THEN 'Other online video'\n      WHEN category = 'tv' THEN 'TV'\n    END AS business_model,\n\
-  \    value AS viewing_time_viewers\n  FROM macro.nordic\n  WHERE canonical_name\
-  \ IS NULL\n    AND age_group IN ('15-24', '25-34', '35-44', '45-54', '55-64', '65-74')\n\
-  \    AND (\n      (category = 'online_video' AND kpi_type = 'viewing_time' AND kpi_dimension\
-  \ IN ('social', 'online_excluding_social'))\n      OR\n      (category = 'tv' AND\
-  \ kpi_type = 'viewing_time')\n    )\n),\nagg_age AS (\n  SELECT\n    r.period_date,\n\
-  \    r.age_group,\n    r.business_model,\n    SUM(r.reach * vt.viewing_time_viewers\
-  \ * r.population_1574)\n      / NULLIF(SUM(r.population_1574), 0) AS viewing_time_population\n\
-  \  FROM reach r\n  JOIN viewing_time vt\n    ON r.country = vt.country\n   AND r.period_date\
-  \ = vt.period_date\n   AND r.age_group = vt.age_group\n   AND r.business_model =\
-  \ vt.business_model\n  -- population_1574 is always 15-74 individuals regardless\
-  \ of age_group row\n  WHERE r.period_date >= '2024-07-01'\n    AND EXTRACT(MONTH\
-  \ FROM r.period_date) IN (1, 7)\n    AND r.reach IS NOT NULL\n    AND vt.viewing_time_viewers\
-  \ IS NOT NULL\n  GROUP BY\n    r.period_date,\n    r.age_group,\n    r.business_model\n\
-  ),\nagg AS (\n  SELECT\n    period_date,\n    business_model,\n    AVG(viewing_time_population)\
-  \ AS viewing_time_population\n  FROM agg_age\n  GROUP BY\n    period_date,\n   \
-  \ business_model\n)\nSELECT\n  period_date,\n  business_model,\n  CASE business_model\n\
-  \    WHEN 'Social video' THEN 1\n    WHEN 'Other online video' THEN 2\n    WHEN\
-  \ 'TV' THEN 3\n    ELSE 99\n  END AS series_order,\n  viewing_time_population\n\
-  FROM agg\nORDER BY period_date, series_order\n"
+sql: |-
+    WITH reach AS (
+      SELECT
+        country,
+        period_date,
+        age_group,
+        population_1574,
+        CASE
+          WHEN category = 'online_video' AND kpi_dimension = 'social' THEN 'Social video'
+          WHEN category = 'online_video' AND kpi_dimension = 'online_excluding_social' THEN 'Other online video'
+          WHEN category = 'tv' THEN 'TV'
+        END AS business_model,
+        value AS reach
+      FROM macro.nordic
+      WHERE canonical_name IS NULL
+        AND age_group IN ('15-24', '25-34', '35-44', '45-54', '55-64', '65-74')
+        AND (
+          (category = 'online_video' AND kpi_type = 'reach' AND kpi_dimension IN ('social', 'online_excluding_social'))
+          OR
+          (category = 'tv' AND kpi_type = 'reach')
+        )
+    ),
+    viewing_time AS (
+      SELECT
+        country,
+        period_date,
+        age_group,
+        CASE
+          WHEN category = 'online_video' AND kpi_dimension = 'social' THEN 'Social video'
+          WHEN category = 'online_video' AND kpi_dimension = 'online_excluding_social' THEN 'Other online video'
+          WHEN category = 'tv' THEN 'TV'
+        END AS business_model,
+        value AS viewing_time_viewers
+      FROM macro.nordic
+      WHERE canonical_name IS NULL
+        AND age_group IN ('15-24', '25-34', '35-44', '45-54', '55-64', '65-74')
+        AND (
+          (category = 'online_video' AND kpi_type = 'viewing_time' AND kpi_dimension IN ('social', 'online_excluding_social'))
+          OR
+          (category = 'tv' AND kpi_type = 'viewing_time')
+        )
+    ),
+    agg_age AS (
+      SELECT
+        r.period_date,
+        r.age_group,
+        r.business_model,
+        SUM(r.reach * vt.viewing_time_viewers * r.population_1574)
+          / NULLIF(SUM(r.population_1574), 0) AS viewing_time_population
+      FROM reach r
+      JOIN viewing_time vt
+        ON r.country = vt.country
+       AND r.period_date = vt.period_date
+       AND r.age_group = vt.age_group
+       AND r.business_model = vt.business_model
+      -- population_1574 is always 15-74 individuals regardless of age_group row
+      WHERE r.period_date >= '2024-07-01'
+        AND EXTRACT(MONTH FROM r.period_date) IN (1, 7)
+        AND r.reach IS NOT NULL
+        AND vt.viewing_time_viewers IS NOT NULL
+      GROUP BY
+        r.period_date,
+        r.age_group,
+        r.business_model
+    ),
+    agg AS (
+      SELECT
+        period_date,
+        business_model,
+        AVG(viewing_time_population) AS viewing_time_population
+      FROM agg_age
+      GROUP BY
+        period_date,
+        business_model
+    )
+    SELECT
+      period_date,
+      business_model,
+      CASE business_model
+        WHEN 'Social video' THEN 1
+        WHEN 'Other online video' THEN 2
+        WHEN 'TV' THEN 3
+        ELSE 99
+      END AS series_order,
+      viewing_time_population
+    FROM agg
+    ORDER BY period_date, series_order
 plots:
 - id: daily_viewing_minutes_age_group_average
   title: Daily viewing minutes of video

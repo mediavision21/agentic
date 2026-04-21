@@ -205,6 +205,7 @@ export function buildFromConfig(options) {
 		if (m.stack) {
 			// stacked area/bar: use Plot.stackY transform
 			const stackOpts = { x: m.x, y: m.y }
+			if (m.fx) stackOpts.fx = m.fx
 			if (m.fill) stackOpts.fill = m.fill
 			if (m.stroke) stackOpts.stroke = m.stroke
 			if (m.z) stackOpts.z = m.z
@@ -244,6 +245,10 @@ export function buildFromConfig(options) {
 			xOpts.tickRotate = -45
 		}
 	}
+	// when fx+x coexist, ticks are squeezed within each facet — always rotate
+	if (fxCol && !xOpts.tickRotate) {
+		xOpts.tickRotate = -45
+	}
 
 	const colorCfg = normalizeColorConfig(config.color) || {}
 	const categoryCol = config.marks.map(m => m.stroke || m.fill).find(Boolean)
@@ -257,7 +262,7 @@ export function buildFromConfig(options) {
 		style: ".plot-swatch { white-space: nowrap; }",
 		width: width || 600,
 		height: xOpts.tickRotate ? 340 : 300,
-		marginBottom: xOpts.tickRotate ? 80 : undefined,
+		marginBottom: xOpts.tickRotate ? 50 : undefined,
 		x: xOpts,
 		y: { grid: false, ...(config.y || {}) },
 		color: { legend: true, ...colorCfg },
@@ -269,8 +274,8 @@ export function buildFromConfig(options) {
 		const hasLongFxLabel = uniqueFx.some(d => String(d).length > 10) || uniqueFx.size > 6
 		if (hasLongFxLabel) {
 			plotOpts.fx = { tickRotate: 20, ...(plotOpts.fx || {}) }
-			plotOpts.marginBottom = (plotOpts.marginBottom || 0) + 50
-			plotOpts.marginTop = (plotOpts.marginTop || 0) + 50
+			// plotOpts.marginBottom = Math.min((plotOpts.marginBottom || 0) + 50
+			// plotOpts.marginTop = (plotOpts.marginTop || 0) + 50
 		}
 	}
 	return Plot.plot(plotOpts)

@@ -5,12 +5,24 @@ filters:
     - Q1
     default:
     - Q1
-sql: "SELECT\n    n.period_date,\n    'TVOD' AS business_model,\n    SUM(n.value *\
-  \ n.population_household)\n        / NULLIF(SUM(n.population_household), 0) * 100\
-  \ AS tvod\nFROM macro.nordic n\nWHERE\n    n.category = 'tvod'\n    AND n.kpi_type\
-  \ = 'reach_monthly'\n    AND n.canonical_name IS NULL\n    AND n.age_group = '15-74'\n\
-  \    AND n.value IS NOT NULL\n    [[ AND {{country}} ]]\n    [[ AND {{year}} ]]\n\
-  \    [[ AND {{quarter_label}} ]]\nGROUP BY n.period_date\nORDER BY n.period_date\n"
+sql: |-
+    SELECT
+        n.period_date,
+        'TVOD' AS business_model,
+        SUM(n.value * n.population_household)
+            / NULLIF(SUM(n.population_household), 0) * 100 AS tvod
+    FROM macro.nordic n
+    WHERE
+        n.category = 'tvod'
+        AND n.kpi_type = 'reach_monthly'
+        AND n.canonical_name IS NULL
+        AND n.age_group = '15-74'
+        AND n.value IS NOT NULL
+        [[ AND {{country}} ]]
+        [[ AND {{year}} ]]
+        [[ AND {{quarter_label}} ]]
+    GROUP BY n.period_date
+    ORDER BY n.period_date
 plots:
 - id: tvod_monthly_purchases
   title: 'TVOD: monthly purchases'

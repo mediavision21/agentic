@@ -1,23 +1,57 @@
 description: Top five services side by side?
-sql: "WITH base AS (\n  SELECT\n    n.period_date,\n    n.country,\n    n.canonical_name\
-  \ AS service,\n    n.value,\n    n.population_household\n  FROM macro.nordic n\n\
-  \  WHERE n.category       = 'online_video'\n    AND n.kpi_type       = 'penetration'\n\
-  \    AND n.kpi_dimension  = 'svod'\n    AND n.canonical_name IS NOT NULL\n    AND\
-  \ n.age_group      = '15-74'\n    AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)\n\
-  \    AND n.country        IN ('sweden', 'norway', 'denmark', 'finland')\n),\nlatest_shared\
-  \ AS (\n  SELECT MIN(max_pd) AS latest_period_date\n  FROM (SELECT country, MAX(period_date)\
-  \ AS max_pd FROM base GROUP BY country) x\n),\n-- Population-weighted penetration\
-  \ per service per period (all periods)\nweighted AS (\n  SELECT\n    b.period_date,\n\
-  \    b.service,\n    SUM(b.value * b.population_household) / NULLIF(SUM(b.population_household),\
-  \ 0) * 100 AS penetration_pct\n  FROM base b\n  GROUP BY b.period_date, b.service\n\
-  ),\ntop5 AS (\n  SELECT service\n  FROM weighted\n  WHERE period_date = (SELECT\
-  \ latest_period_date FROM latest_shared)\n  ORDER BY penetration_pct DESC\n  LIMIT\
-  \ 5\n),\n-- Two most recent periods for top5 services\nrecent_periods AS (\n  SELECT\
-  \ DISTINCT period_date\n  FROM weighted\n  WHERE service IN (SELECT service FROM\
-  \ top5)\n  ORDER BY period_date DESC\n  LIMIT 2\n)\nSELECT\n  w.period_date,\n \
-  \ w.service,\n  ROUND((w.penetration_pct)::numeric, 1) AS penetration_pct\nFROM\
-  \ weighted w\nJOIN top5 ON w.service = top5.service\nJOIN recent_periods rp ON w.period_date\
-  \ = rp.period_date\nORDER BY w.period_date, w.penetration_pct DESC"
+sql: |-
+    WITH base AS (
+      SELECT
+        n.period_date,
+        n.country,
+        n.canonical_name AS service,
+        n.value,
+        n.population_household
+      FROM macro.nordic n
+      WHERE n.category       = 'online_video'
+        AND n.kpi_type       = 'penetration'
+        AND n.kpi_dimension  = 'svod'
+        AND n.canonical_name IS NOT NULL
+        AND n.age_group      = '15-74'
+        AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
+        AND n.country        IN ('sweden', 'norway', 'denmark', 'finland')
+    ),
+    latest_shared AS (
+      SELECT MIN(max_pd) AS latest_period_date
+      FROM (SELECT country, MAX(period_date) AS max_pd FROM base GROUP BY country) x
+    ),
+    -- Population-weighted penetration per service per period (all periods)
+    weighted AS (
+      SELECT
+        b.period_date,
+        b.service,
+        SUM(b.value * b.population_household) / NULLIF(SUM(b.population_household), 0) * 100 AS penetration_pct
+      FROM base b
+      GROUP BY b.period_date, b.service
+    ),
+    top5 AS (
+      SELECT service
+      FROM weighted
+      WHERE period_date = (SELECT latest_period_date FROM latest_shared)
+      ORDER BY penetration_pct DESC
+      LIMIT 5
+    ),
+    -- Two most recent periods for top5 services
+    recent_periods AS (
+      SELECT DISTINCT period_date
+      FROM weighted
+      WHERE service IN (SELECT service FROM top5)
+      ORDER BY period_date DESC
+      LIMIT 2
+    )
+    SELECT
+      w.period_date,
+      w.service,
+      ROUND((w.penetration_pct)::numeric, 1) AS penetration_pct
+    FROM weighted w
+    JOIN top5 ON w.service = top5.service
+    JOIN recent_periods rp ON w.period_date = rp.period_date
+    ORDER BY w.period_date, w.penetration_pct DESC
 plots:
 - id: chart
   title: Top five services side by side?

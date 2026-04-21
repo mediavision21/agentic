@@ -15,30 +15,69 @@ filters:
     - DKK
     default:
     - EUR
-sql: "WITH spend AS (\n    SELECT n.country, n.period_date,\n           n.value AS\
-  \ spend_ssvod, n.population_household\n    FROM macro.nordic n\n    WHERE n.category\
-  \ = 'online_video'\n      AND n.kpi_type = 'spend'\n      AND n.kpi_dimension =\
-  \ 'ssvod'\n      AND n.population_segment = 'subscribers'\n      AND n.age_group\
-  \ = '15-74'\n      AND n.value IS NOT NULL\n      AND n.canonical_name IS NULL\n\
-  \      AND n.period_date >= '2022-01-01'\n      [[ AND {{country}} ]]\n      [[\
-  \ AND {{year}} ]]\n      [[ AND {{quarter_label}} ]]\n),\npenetration AS (\n   \
-  \ SELECT n.country, n.period_date, n.value AS penetration_ssvod\n    FROM macro.nordic\
-  \ n\n    WHERE n.category = 'online_video'\n      AND n.kpi_type = 'penetration'\n\
-  \      AND n.kpi_dimension = 'ssvod'\n      AND n.age_group = '15-74'\n      AND\
-  \ n.value IS NOT NULL\n      AND n.canonical_name IS NULL\n),\ntarget_fx AS (\n\
-  \    SELECT rate_to_eur\n    FROM macro.fact_fx_rate_quarterly\n    WHERE period_key\
-  \ = '2025q4'\n      [[ AND {{currency_code}} ]]\n)\nSELECT\n    s.period_date,\n\
-  \    INITCAP(s.country) AS country,\n    (s.spend_ssvod * fx.rate_to_eur / tf.rate_to_eur)\n\
-  \      * p.penetration_ssvod\n      * s.population_household\n      * 3\n      /\
-  \ (1.0 + CASE s.country\n          WHEN 'sweden' THEN 0.25\n          WHEN 'norway'\
-  \ THEN 0.25\n          WHEN 'denmark' THEN 0.25\n          WHEN 'finland' THEN 0.255\n\
-  \      END)\n      * 1000 AS revenue\nFROM spend s\nJOIN penetration p\n  ON s.country\
-  \ = p.country\n AND s.period_date = p.period_date\nJOIN macro.fact_fx_rate_quarterly\
-  \ fx\n  ON fx.period_key = '2025q4'\n AND fx.currency_code = CASE s.country\n  \
-  \      WHEN 'sweden' THEN 'SEK'\n        WHEN 'norway' THEN 'NOK'\n        WHEN\
-  \ 'denmark' THEN 'DKK'\n        WHEN 'finland' THEN 'EUR'\n     END\nCROSS JOIN\
-  \ target_fx tf\nWHERE tf.rate_to_eur IS NOT NULL\n  AND p.penetration_ssvod >= 0\n\
-  ORDER BY s.period_date, s.country\n"
+sql: |-
+    WITH spend AS (
+        SELECT n.country, n.period_date,
+               n.value AS spend_ssvod, n.population_household
+        FROM macro.nordic n
+        WHERE n.category = 'online_video'
+          AND n.kpi_type = 'spend'
+          AND n.kpi_dimension = 'ssvod'
+          AND n.population_segment = 'subscribers'
+          AND n.age_group = '15-74'
+          AND n.value IS NOT NULL
+          AND n.canonical_name IS NULL
+          AND n.period_date >= '2022-01-01'
+          [[ AND {{country}} ]]
+          [[ AND {{year}} ]]
+          [[ AND {{quarter_label}} ]]
+    ),
+    penetration AS (
+        SELECT n.country, n.period_date, n.value AS penetration_ssvod
+        FROM macro.nordic n
+        WHERE n.category = 'online_video'
+          AND n.kpi_type = 'penetration'
+          AND n.kpi_dimension = 'ssvod'
+          AND n.age_group = '15-74'
+          AND n.value IS NOT NULL
+          AND n.canonical_name IS NULL
+    ),
+    target_fx AS (
+        SELECT rate_to_eur
+        FROM macro.fact_fx_rate_quarterly
+        WHERE period_key = '2025q4'
+          [[ AND {{currency_code}} ]]
+    )
+    SELECT
+        s.period_date,
+        INITCAP(s.country) AS country,
+        (s.spend_ssvod * fx.rate_to_eur / tf.rate_to_eur)
+          * p.penetration_ssvod
+          * s.population_household
+          * 3
+          / (1.0 + CASE s.country
+              WHEN 'sweden' THEN 0.25
+              WHEN 'norway' THEN 0.25
+              WHEN 'denmark' THEN 0.25
+              WHEN 'finland' THEN 0.255
+          END)
+          * 1000 AS revenue
+    FROM spend s
+    JOIN penetration p
+      ON s.country = p.country
+     AND s.period_date = p.period_date
+    JOIN macro.fact_fx_rate_quarterly fx
+      ON fx.period_key = '2025q4'
+     AND fx.currency_code = CASE s.country
+            WHEN 'sweden' THEN 'SEK'
+            WHEN 'norway' THEN 'NOK'
+            WHEN 'denmark' THEN 'DKK'
+            WHEN 'finland' THEN 'EUR'
+         END
+    CROSS JOIN target_fx tf
+    WHERE tf.rate_to_eur IS NOT NULL
+      AND p.penetration_ssvod >= 0
+    ORDER BY s.period_date, s.country
 plots:
 - id: ssvod_revenue_ex_vat_by_country
   title: Total S-SVOD subscription revenue ex VAT, by country

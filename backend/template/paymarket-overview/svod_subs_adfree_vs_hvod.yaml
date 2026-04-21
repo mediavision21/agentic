@@ -6,37 +6,80 @@ filters:
     - Q1
     default:
     - Q1
-sql: "WITH svod AS (\n    SELECT n.country, n.period_date,\n           n.value AS\
-  \ penetration_svod, n.population_household\n    FROM macro.nordic n\n    WHERE n.category\
-  \ = 'online_video'\n      AND n.kpi_type = 'penetration'\n      AND n.kpi_dimension\
-  \ = 'svod'\n      AND n.canonical_name IS NULL\n      AND n.age_group = '15-74'\n\
-  \      AND n.value IS NOT NULL\n      [[ AND {{country}} ]]\n      [[ AND {{year}}\
-  \ ]]\n      [[ AND {{quarter_label}} ]]\n),\nsvod_stacking AS (\n    SELECT n.country,\
-  \ n.period_date, n.value AS stacking_svod\n    FROM macro.nordic n\n    WHERE n.category\
-  \ = 'online_video'\n      AND n.kpi_type = 'stacking'\n      AND n.kpi_dimension\
-  \ = 'svod'\n      AND n.population_segment = 'subscribers'\n      AND n.canonical_name\
-  \ IS NULL\n      AND n.age_group = '15-74'\n      AND n.value IS NOT NULL\n),\n\
-  hvod AS (\n    SELECT n.country, n.period_date, n.value AS penetration_hvod\n  \
-  \  FROM macro.nordic n\n    WHERE n.category = 'online_video'\n      AND n.kpi_type\
-  \ = 'penetration'\n      AND n.kpi_dimension = 'hvod'\n      AND n.canonical_name\
-  \ IS NULL\n      AND n.age_group = '15-74'\n      AND n.value IS NOT NULL\n),\n\
-  hvod_stacking AS (\n    SELECT n.country, n.period_date, n.value AS stacking_hvod\n\
-  \    FROM macro.nordic n\n    WHERE n.category = 'online_video'\n      AND n.kpi_type\
-  \ = 'stacking'\n      AND n.kpi_dimension = 'hvod'\n      AND n.population_segment\
-  \ = 'subscribers'\n      AND n.canonical_name IS NULL\n      AND n.age_group = '15-74'\n\
-  \      AND n.value IS NOT NULL\n),\nbase AS (\n    SELECT\n        sv.period_date,\n\
-  \        sv.country,\n        sv.penetration_svod * svs.stacking_svod * sv.population_household\
-  \ AS svod_subs,\n        hv.penetration_hvod * hvs.stacking_hvod * sv.population_household\
-  \ AS hvod_subs\n    FROM svod sv\n    JOIN svod_stacking svs\n      ON sv.country\
-  \ = svs.country AND sv.period_date = svs.period_date\n    JOIN hvod hv\n      ON\
-  \ sv.country = hv.country AND sv.period_date = hv.period_date\n    JOIN hvod_stacking\
-  \ hvs\n      ON sv.country = hvs.country AND sv.period_date = hvs.period_date\n\
-  \    WHERE sv.period_date >= '2024-07-01'\n),\nagg AS (\n    SELECT\n        period_date,\n\
-  \        SUM(hvod_subs) AS hvod_total,\n        SUM(svod_subs - hvod_subs) AS adfree_total\n\
-  \    FROM base\n    GROUP BY period_date\n)\nSELECT period_date, 'Ad-free' AS subscription_type,\
-  \ adfree_total / 1000 AS subscriptions FROM agg\nUNION ALL\nSELECT period_date,\
-  \ 'HVOD' AS subscription_type, hvod_total / 1000 AS subscriptions FROM agg\nORDER\
-  \ BY period_date, subscription_type\n"
+sql: |-
+    WITH svod AS (
+        SELECT n.country, n.period_date,
+               n.value AS penetration_svod, n.population_household
+        FROM macro.nordic n
+        WHERE n.category = 'online_video'
+          AND n.kpi_type = 'penetration'
+          AND n.kpi_dimension = 'svod'
+          AND n.canonical_name IS NULL
+          AND n.age_group = '15-74'
+          AND n.value IS NOT NULL
+          [[ AND {{country}} ]]
+          [[ AND {{year}} ]]
+          [[ AND {{quarter_label}} ]]
+    ),
+    svod_stacking AS (
+        SELECT n.country, n.period_date, n.value AS stacking_svod
+        FROM macro.nordic n
+        WHERE n.category = 'online_video'
+          AND n.kpi_type = 'stacking'
+          AND n.kpi_dimension = 'svod'
+          AND n.population_segment = 'subscribers'
+          AND n.canonical_name IS NULL
+          AND n.age_group = '15-74'
+          AND n.value IS NOT NULL
+    ),
+    hvod AS (
+        SELECT n.country, n.period_date, n.value AS penetration_hvod
+        FROM macro.nordic n
+        WHERE n.category = 'online_video'
+          AND n.kpi_type = 'penetration'
+          AND n.kpi_dimension = 'hvod'
+          AND n.canonical_name IS NULL
+          AND n.age_group = '15-74'
+          AND n.value IS NOT NULL
+    ),
+    hvod_stacking AS (
+        SELECT n.country, n.period_date, n.value AS stacking_hvod
+        FROM macro.nordic n
+        WHERE n.category = 'online_video'
+          AND n.kpi_type = 'stacking'
+          AND n.kpi_dimension = 'hvod'
+          AND n.population_segment = 'subscribers'
+          AND n.canonical_name IS NULL
+          AND n.age_group = '15-74'
+          AND n.value IS NOT NULL
+    ),
+    base AS (
+        SELECT
+            sv.period_date,
+            sv.country,
+            sv.penetration_svod * svs.stacking_svod * sv.population_household AS svod_subs,
+            hv.penetration_hvod * hvs.stacking_hvod * sv.population_household AS hvod_subs
+        FROM svod sv
+        JOIN svod_stacking svs
+          ON sv.country = svs.country AND sv.period_date = svs.period_date
+        JOIN hvod hv
+          ON sv.country = hv.country AND sv.period_date = hv.period_date
+        JOIN hvod_stacking hvs
+          ON sv.country = hvs.country AND sv.period_date = hvs.period_date
+        WHERE sv.period_date >= '2024-07-01'
+    ),
+    agg AS (
+        SELECT
+            period_date,
+            SUM(hvod_subs) AS hvod_total,
+            SUM(svod_subs - hvod_subs) AS adfree_total
+        FROM base
+        GROUP BY period_date
+    )
+    SELECT period_date, 'Ad-free' AS subscription_type, adfree_total / 1000 AS subscriptions FROM agg
+    UNION ALL
+    SELECT period_date, 'HVOD' AS subscription_type, hvod_total / 1000 AS subscriptions FROM agg
+    ORDER BY period_date, subscription_type
 plots:
 - id: svod_subs_adfree_vs_hvod
   title: 'Number of SVOD subs (million): Ad-free vs HVOD'

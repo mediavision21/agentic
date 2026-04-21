@@ -1,18 +1,39 @@
 category: Viewing - overview
 description: Daily reach of social video per service — population-weighted Nordic
   average, all social video services, grouped by service with one bar per period
-sql: "WITH weighted AS (\n  SELECT\n    period_date,\n    canonical_name AS service,\n\
-  \    SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS reach_population\n\
-  \  FROM macro.nordic\n  WHERE category           = 'online_video'\n    AND kpi_type\
-  \           = 'reach'\n    AND canonical_name     IS NOT NULL\n    AND kpi_dimension\
-  \      IS NULL\n    AND age_group          = '15-74'\n    AND EXTRACT(MONTH FROM\
-  \ period_date) IN (1, 7)\n    AND period_date        >= '2020-01-01'\n    AND is_social_video\
-  \ = TRUE\n  GROUP BY period_date, canonical_name\n),\nlatest_period AS (\n  SELECT\
-  \ MAX(period_date) AS max_period_date FROM weighted\n),\nservice_rank AS (\n  SELECT\
-  \ service,\n         ROW_NUMBER() OVER (ORDER BY reach_population DESC) AS rnk\n\
-  \  FROM weighted\n  WHERE period_date = (SELECT max_period_date FROM latest_period)\n\
-  )\nSELECT\n  w.period_date,\n  w.service,\n  w.reach_population\nFROM weighted w\n\
-  JOIN service_rank sr ON w.service = sr.service\nORDER BY sr.rnk, w.period_date\n"
+sql: |-
+    WITH weighted AS (
+      SELECT
+        period_date,
+        canonical_name AS service,
+        SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS reach_population
+      FROM macro.nordic
+      WHERE category           = 'online_video'
+        AND kpi_type           = 'reach'
+        AND canonical_name     IS NOT NULL
+        AND kpi_dimension      IS NULL
+        AND age_group          = '15-74'
+        AND EXTRACT(MONTH FROM period_date) IN (1, 7)
+        AND period_date        >= '2020-01-01'
+        AND is_social_video = TRUE
+      GROUP BY period_date, canonical_name
+    ),
+    latest_period AS (
+      SELECT MAX(period_date) AS max_period_date FROM weighted
+    ),
+    service_rank AS (
+      SELECT service,
+             ROW_NUMBER() OVER (ORDER BY reach_population DESC) AS rnk
+      FROM weighted
+      WHERE period_date = (SELECT max_period_date FROM latest_period)
+    )
+    SELECT
+      w.period_date,
+      w.service,
+      w.reach_population
+    FROM weighted w
+    JOIN service_rank sr ON w.service = sr.service
+    ORDER BY sr.rnk, w.period_date
 plots:
 - id: daily_reach_social_video_per_service
   title: Daily reach of social video per service

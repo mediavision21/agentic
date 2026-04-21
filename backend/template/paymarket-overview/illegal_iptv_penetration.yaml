@@ -6,13 +6,25 @@ filters:
     - Q1
     default:
     - Q1
-sql: "SELECT\n    n.period_date,\n    'Illegal IPTV' AS business_model,\n    SUM(n.value\
-  \ * n.population_household)\n        / NULLIF(SUM(n.population_household), 0) *\
-  \ 100 AS penetration\nFROM macro.nordic n\nWHERE\n    n.category = 'tv'\n    AND\
-  \ n.kpi_type = 'penetration'\n    AND n.kpi_dimension = 'illegal_iptv'\n    AND\
-  \ n.canonical_name IS NULL\n    AND n.age_group = '15-74'\n    AND n.value IS NOT\
-  \ NULL\n    [[ AND {{country}} ]]\n    [[ AND {{year}} ]]\n    [[ AND {{quarter_label}}\
-  \ ]]\nGROUP BY n.period_date\nORDER BY n.period_date\n"
+sql: |-
+    SELECT
+        n.period_date,
+        'Illegal IPTV' AS business_model,
+        SUM(n.value * n.population_household)
+            / NULLIF(SUM(n.population_household), 0) * 100 AS penetration
+    FROM macro.nordic n
+    WHERE
+        n.category = 'tv'
+        AND n.kpi_type = 'penetration'
+        AND n.kpi_dimension = 'illegal_iptv'
+        AND n.canonical_name IS NULL
+        AND n.age_group = '15-74'
+        AND n.value IS NOT NULL
+        [[ AND {{country}} ]]
+        [[ AND {{year}} ]]
+        [[ AND {{quarter_label}} ]]
+    GROUP BY n.period_date
+    ORDER BY n.period_date
 plots:
 - id: illegal_iptv_penetration
   title: 'Household penetration: Illegal IPTV'

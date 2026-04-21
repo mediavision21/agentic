@@ -1,16 +1,29 @@
 description: Daily reach of online video (Social video, Other online, Total online)
   across Nordic countries
-sql: "SELECT\n  period_date,\n  CASE kpi_dimension\n    WHEN 'social'            \
-  \       THEN 'Social video'\n    WHEN 'online_excluding_social'  THEN 'Other online'\n\
-  \    WHEN 'online_total'             THEN 'Total online'\n  END AS reach_type,\n\
-  \  CASE kpi_dimension\n    WHEN 'social'                   THEN 1\n    WHEN 'online_excluding_social'\
-  \  THEN 2\n    WHEN 'online_total'             THEN 3\n  END AS reach_order,\n \
-  \ SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS value\nFROM macro.nordic\n\
-  WHERE category      = 'online_video'\n  AND kpi_type      = 'reach'\n  AND kpi_dimension\
-  \ IN ('social', 'online_excluding_social', 'online_total')\n  AND canonical_name\
-  \ IS NULL\n  AND age_group     = '15-74'\n  AND period_date   >= '2024-07-01'\n\
-  \  AND EXTRACT(MONTH FROM period_date) IN (1, 7)\nGROUP BY period_date, kpi_dimension\n\
-  ORDER BY period_date, reach_order\n"
+sql: |-
+    SELECT
+      period_date,
+      CASE kpi_dimension
+        WHEN 'social'                   THEN 'Social video'
+        WHEN 'online_excluding_social'  THEN 'Other online'
+        WHEN 'online_total'             THEN 'Total online'
+      END AS reach_type,
+      CASE kpi_dimension
+        WHEN 'social'                   THEN 1
+        WHEN 'online_excluding_social'  THEN 2
+        WHEN 'online_total'             THEN 3
+      END AS reach_order,
+      SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS value
+    FROM macro.nordic
+    WHERE category      = 'online_video'
+      AND kpi_type      = 'reach'
+      AND kpi_dimension IN ('social', 'online_excluding_social', 'online_total')
+      AND canonical_name IS NULL
+      AND age_group     = '15-74'
+      AND period_date   >= '2024-07-01'
+      AND EXTRACT(MONTH FROM period_date) IN (1, 7)
+    GROUP BY period_date, kpi_dimension
+    ORDER BY period_date, reach_order
 plots:
 - id: daily_reach_trend
   title: Daily reach of online video — trend

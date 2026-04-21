@@ -1,22 +1,54 @@
-description: Household penetration by video type (SVOD, SSVOD, BSVOD, HVOD, Pay TV
-  channel, TVE) across Nordic countries
-sql: "WITH base AS (\n    SELECT\n        n.period_date,\n        n.country,\n   \
-  \     n.kpi_dimension,\n        n.value AS penetration_country,\n        n.population_household\n\
-  \    FROM macro.nordic n\n    WHERE\n        n.category IN ('online_video', 'tv')\n\
-  \        AND n.kpi_type = 'penetration'\n        AND n.kpi_dimension IN (\n    \
-  \        'svod',\n            'ssvod',\n            'bsvod',\n            'hvod',\n\
-  \            'tve',\n            'pay_tv_channel'\n        )\n        AND n.age_group\
-  \ = '15-74'\n        AND (\n            (\n                n.kpi_dimension IN ('svod',\
-  \ 'ssvod', 'bsvod')\n                AND n.period_date >= '2016-01-01'\n       \
-  \     )\n            OR (\n                n.kpi_dimension = 'hvod'\n          \
-  \      AND n.period_date >= '2022-07-01'\n            )\n            OR n.kpi_dimension\
-  \ = 'tve'\n            OR n.kpi_dimension = 'pay_tv_channel'\n        )\n      \
-  \  AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)\n        [[ AND {{country}} ]]\n\
-  \        [[ AND {{year}} ]]\n        [[ AND {{quarter_label}} ]]\n)\nSELECT\n  \
-  \  period_date,\n    UPPER(kpi_dimension) AS business_model,\n    SUM(penetration_country\
-  \ * population_household)\n        / NULLIF(SUM(population_household), 0) * 100\
-  \ AS penetration\nFROM base\nGROUP BY\n    period_date,\n    kpi_dimension\nORDER\
-  \ BY\n    period_date,\n    business_model;\n"
+description: Household penetration by video type (SVOD, SSVOD, BSVOD, HVOD, Pay TV channel, TVE) across Nordic countries
+sql: |-
+    WITH base AS (
+        SELECT
+            n.period_date,
+            n.country,
+            n.kpi_dimension,
+            n.value AS penetration_country,
+            n.population_household
+        FROM macro.nordic n
+        WHERE
+            n.category IN ('online_video', 'tv')
+            AND n.kpi_type = 'penetration'
+            AND n.kpi_dimension IN (
+                'svod',
+                'ssvod',
+                'bsvod',
+                'hvod',
+                'tve',
+                'pay_tv_channel'
+            )
+            AND n.age_group = '15-74'
+            AND (
+                (
+                    n.kpi_dimension IN ('svod', 'ssvod', 'bsvod')
+                    AND n.period_date >= '2016-01-01'
+                )
+                OR (
+                    n.kpi_dimension = 'hvod'
+                    AND n.period_date >= '2022-07-01'
+                )
+                OR n.kpi_dimension = 'tve'
+                OR n.kpi_dimension = 'pay_tv_channel'
+            )
+            AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
+            [[ AND {{country}} ]]
+            [[ AND {{year}} ]]
+            [[ AND {{quarter_label}} ]]
+    )
+    SELECT
+        period_date,
+        UPPER(kpi_dimension) AS business_model,
+        SUM(penetration_country * population_household)
+            / NULLIF(SUM(population_household), 0) * 100 AS penetration
+    FROM base
+    GROUP BY
+        period_date,
+        kpi_dimension
+    ORDER BY
+        period_date,
+        business_model;
 plots:
 - id: household_penetration_trend
   title: Household penetration by video type — trend

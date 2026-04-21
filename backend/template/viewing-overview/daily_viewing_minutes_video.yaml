@@ -1,23 +1,41 @@
 description: Daily viewing minutes of video (Social video, Other online video, TV)
   — population-weighted Nordic average by age group
-sql: "SELECT\n    n.period_date,\n    CASE\n        WHEN n.category = 'tv'       \
-  \                   THEN 'TV'\n        WHEN n.kpi_dimension = 'social'         \
-  \        THEN 'Social video'\n        WHEN n.kpi_dimension = 'online_excluding_social'\
-  \ THEN 'Other online video'\n    END AS business_model,\n    CASE\n        WHEN\
-  \ n.kpi_dimension = 'social'                 THEN 1\n        WHEN n.kpi_dimension\
-  \ = 'online_excluding_social' THEN 2\n        WHEN n.category = 'tv'           \
-  \               THEN 3\n    END AS series_order,\n    SUM(n.value * r.value * n.population_1574)\n\
-  \        / NULLIF(SUM(n.population_1574), 0) AS viewing_time_population\nFROM macro.nordic\
-  \ n\nJOIN macro.nordic r\n  ON  n.country       = r.country\n AND n.period_date\
-  \    = r.period_date\n AND n.kpi_dimension IS NOT DISTINCT FROM r.kpi_dimension\n\
-  \ AND n.age_group      = r.age_group\nWHERE\n    n.category          IN ('online_video',\
-  \ 'tv')\n  AND n.kpi_type        = 'viewing_time'\n  AND (n.kpi_dimension IN ('social',\
-  \ 'online_excluding_social') OR n.category = 'tv')\n  AND n.age_group       = '15-74'\n\
-  \  AND r.kpi_type         = 'reach'\n  AND r.age_group        = '15-74'\n  AND n.period_date\
-  \    >= '2024-07-01'\n  AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)\n  AND n.category\
-  \        = r.category\n  [[ AND {{country}} ]]\n  [[ AND {{year}} ]]\n  [[ AND {{quarter_label}}\
-  \ ]]\nGROUP BY n.period_date, n.category, n.kpi_dimension\nORDER BY n.period_date,\
-  \ series_order\n"
+sql: |-
+    SELECT
+        n.period_date,
+        CASE
+            WHEN n.category = 'tv'                          THEN 'TV'
+            WHEN n.kpi_dimension = 'social'                 THEN 'Social video'
+            WHEN n.kpi_dimension = 'online_excluding_social' THEN 'Other online video'
+        END AS business_model,
+        CASE
+            WHEN n.kpi_dimension = 'social'                 THEN 1
+            WHEN n.kpi_dimension = 'online_excluding_social' THEN 2
+            WHEN n.category = 'tv'                          THEN 3
+        END AS series_order,
+        SUM(n.value * r.value * n.population_1574)
+            / NULLIF(SUM(n.population_1574), 0) AS viewing_time_population
+    FROM macro.nordic n
+    JOIN macro.nordic r
+      ON  n.country       = r.country
+     AND n.period_date    = r.period_date
+     AND n.kpi_dimension IS NOT DISTINCT FROM r.kpi_dimension
+     AND n.age_group      = r.age_group
+    WHERE
+        n.category          IN ('online_video', 'tv')
+      AND n.kpi_type        = 'viewing_time'
+      AND (n.kpi_dimension IN ('social', 'online_excluding_social') OR n.category = 'tv')
+      AND n.age_group       = '15-74'
+      AND r.kpi_type         = 'reach'
+      AND r.age_group        = '15-74'
+      AND n.period_date    >= '2024-07-01'
+      AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
+      AND n.category        = r.category
+      [[ AND {{country}} ]]
+      [[ AND {{year}} ]]
+      [[ AND {{quarter_label}} ]]
+    GROUP BY n.period_date, n.category, n.kpi_dimension
+    ORDER BY n.period_date, series_order
 plots:
 - id: daily_viewing_minutes_video
   title: Daily viewing minutes of video

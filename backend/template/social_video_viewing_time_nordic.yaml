@@ -1,12 +1,24 @@
 description: Daily viewing time of social video (minutes/day) across Nordic countries,
   population-weighted average
-sql: "SELECT\n    n.period_date,\n    SUM(n.value * n.population) / NULLIF(SUM(n.population),\
-  \ 0) AS viewing_time_minutes\nFROM macro.nordic n\nWHERE\n    n.category = 'online_video'\n\
-  \    AND n.kpi_type = 'viewing_time'\n    AND n.kpi_dimension = 'social'\n    --\
-  \ AND n.canonical_name IS NULL\n    AND n.age_group = '15-74'\n    AND EXTRACT(MONTH\
-  \ FROM n.period_date) IN (1, 7)\n    [[ AND {{country}} ]]\n    [[ AND {{year}}\
-  \ ]]\n    [[ AND {{quarter_label}} ]]\nGROUP BY\n    n.period_date\nORDER BY\n \
-  \   n.period_date;\n"
+sql: |-
+    SELECT
+        n.period_date,
+        SUM(n.value * n.population) / NULLIF(SUM(n.population), 0) AS viewing_time_minutes
+    FROM macro.nordic n
+    WHERE
+        n.category = 'online_video'
+        AND n.kpi_type = 'viewing_time'
+        AND n.kpi_dimension = 'social'
+        -- AND n.canonical_name IS NULL
+        AND n.age_group = '15-74'
+        AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
+        [[ AND {{country}} ]]
+        [[ AND {{year}} ]]
+        [[ AND {{quarter_label}} ]]
+    GROUP BY
+        n.period_date
+    ORDER BY
+        n.period_date;
 plots:
 - id: social_video_viewing_time_trend
   title: Daily viewing time of social video — trend

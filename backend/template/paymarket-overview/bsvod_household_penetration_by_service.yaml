@@ -6,30 +6,77 @@ filters:
     - Q1
     default:
     - Q1
-sql: "WITH base AS (\n    SELECT\n        n.period_date,\n        n.country,\n   \
-  \     n.canonical_name AS service,\n        n.value AS penetration_country,\n  \
-  \      n.population_household\n    FROM macro.nordic n\n    WHERE\n        n.category\
-  \ = 'online_video'\n        AND n.kpi_type = 'penetration'\n        AND n.kpi_dimension\
-  \ = 'bsvod'\n        AND n.canonical_name IS NOT NULL\n        AND n.age_group =\
-  \ '15-74'\n        AND n.value IS NOT NULL\n        AND n.value > 0\n        AND\
-  \ EXTRACT(MONTH FROM n.period_date) IN (1, 7)\n        [[ AND {{country}} ]]\n \
-  \       [[ AND {{year}} ]]\n        [[ AND {{quarter_label}} ]]\n),\npenetration_weighted\
-  \ AS (\n    SELECT\n        period_date,\n        service,\n        SUM(penetration_country\
-  \ * population_household)\n            / NULLIF(SUM(population_household), 0) AS\
-  \ penetration_household_weighted\n    FROM base\n    GROUP BY period_date, service\n\
-  ),\nlatest_period AS (\n    SELECT MAX(period_date) AS max_period_date\n    FROM\
-  \ penetration_weighted\n),\nservice_rank AS (\n    SELECT\n        service,\n  \
-  \      ROW_NUMBER() OVER (ORDER BY penetration_household_weighted DESC) AS service_rank\n\
-  \    FROM penetration_weighted\n    WHERE period_date = (SELECT max_period_date\
-  \ FROM latest_period)\n),\ntop_services AS (\n    SELECT service, service_rank\n\
-  \    FROM service_rank\n    WHERE service_rank <= 15\n),\nperiods AS (\n    SELECT\
-  \ DISTINCT period_date\n    FROM penetration_weighted\n),\nservice_period_grid AS\
-  \ (\n    SELECT\n        ts.service,\n        ts.service_rank,\n        p.period_date\n\
-  \    FROM top_services ts\n    CROSS JOIN periods p\n)\nSELECT\n    g.period_date,\n\
-  \    g.service,\n    g.service_rank,\n    pw.penetration_household_weighted * 100\
-  \ AS penetration\nFROM service_period_grid g\nLEFT JOIN penetration_weighted pw\n\
-  \  ON pw.service = g.service\n AND pw.period_date = g.period_date\nORDER BY\n  \
-  \  g.service_rank,\n    g.period_date;\n"
+sql: |-
+    WITH base AS (
+        SELECT
+            n.period_date,
+            n.country,
+            n.canonical_name AS service,
+            n.value AS penetration_country,
+            n.population_household
+        FROM macro.nordic n
+        WHERE
+            n.category = 'online_video'
+            AND n.kpi_type = 'penetration'
+            AND n.kpi_dimension = 'bsvod'
+            AND n.canonical_name IS NOT NULL
+            AND n.age_group = '15-74'
+            AND n.value IS NOT NULL
+            AND n.value > 0
+            AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
+            [[ AND {{country}} ]]
+            [[ AND {{year}} ]]
+            [[ AND {{quarter_label}} ]]
+    ),
+    penetration_weighted AS (
+        SELECT
+            period_date,
+            service,
+            SUM(penetration_country * population_household)
+                / NULLIF(SUM(population_household), 0) AS penetration_household_weighted
+        FROM base
+        GROUP BY period_date, service
+    ),
+    latest_period AS (
+        SELECT MAX(period_date) AS max_period_date
+        FROM penetration_weighted
+    ),
+    service_rank AS (
+        SELECT
+            service,
+            ROW_NUMBER() OVER (ORDER BY penetration_household_weighted DESC) AS service_rank
+        FROM penetration_weighted
+        WHERE period_date = (SELECT max_period_date FROM latest_period)
+    ),
+    top_services AS (
+        SELECT service, service_rank
+        FROM service_rank
+        WHERE service_rank <= 15
+    ),
+    periods AS (
+        SELECT DISTINCT period_date
+        FROM penetration_weighted
+    ),
+    service_period_grid AS (
+        SELECT
+            ts.service,
+            ts.service_rank,
+            p.period_date
+        FROM top_services ts
+        CROSS JOIN periods p
+    )
+    SELECT
+        g.period_date,
+        g.service,
+        g.service_rank,
+        pw.penetration_household_weighted * 100 AS penetration
+    FROM service_period_grid g
+    LEFT JOIN penetration_weighted pw
+      ON pw.service = g.service
+     AND pw.period_date = g.period_date
+    ORDER BY
+        g.service_rank,
+        g.period_date;
 plots:
 - id: bsvod_penetration_by_service
   title: 'Household penetration: B-SVOD per service'

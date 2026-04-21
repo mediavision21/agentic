@@ -6,37 +6,80 @@ filters:
     - Q1
     default:
     - Q1
-sql: "WITH svod AS (\n    SELECT n.country, n.period_date,\n           n.value AS\
-  \ penetration_svod, n.population_household\n    FROM macro.nordic n\n    WHERE n.category\
-  \ = 'online_video'\n      AND n.kpi_type = 'penetration'\n      AND n.kpi_dimension\
-  \ = 'svod'\n      AND n.canonical_name IS NULL\n      AND n.age_group = '15-74'\n\
-  \      AND n.value IS NOT NULL\n      [[ AND {{country}} ]]\n      [[ AND {{year}}\
-  \ ]]\n      [[ AND {{quarter_label}} ]]\n),\nsvod_stacking AS (\n    SELECT n.country,\
-  \ n.period_date, n.value AS stacking_svod\n    FROM macro.nordic n\n    WHERE n.category\
-  \ = 'online_video'\n      AND n.kpi_type = 'stacking'\n      AND n.kpi_dimension\
-  \ = 'svod'\n      AND n.population_segment = 'subscribers'\n      AND n.canonical_name\
-  \ IS NULL\n      AND n.age_group = '15-74'\n      AND n.value IS NOT NULL\n),\n\
-  ssvod AS (\n    SELECT n.country, n.period_date, n.value AS penetration_ssvod\n\
-  \    FROM macro.nordic n\n    WHERE n.category = 'online_video'\n      AND n.kpi_type\
-  \ = 'penetration'\n      AND n.kpi_dimension = 'ssvod'\n      AND n.canonical_name\
-  \ IS NULL\n      AND n.age_group = '15-74'\n      AND n.value IS NOT NULL\n),\n\
-  ssvod_stacking AS (\n    SELECT n.country, n.period_date, n.value AS stacking_ssvod\n\
-  \    FROM macro.nordic n\n    WHERE n.category = 'online_video'\n      AND n.kpi_type\
-  \ = 'stacking'\n      AND n.kpi_dimension = 'ssvod'\n      AND n.population_segment\
-  \ = 'subscribers'\n      AND n.canonical_name IS NULL\n      AND n.age_group = '15-74'\n\
-  \      AND n.value IS NOT NULL\n),\nbase AS (\n    SELECT\n        sv.period_date,\n\
-  \        sv.country,\n        sv.penetration_svod * svs.stacking_svod * sv.population_household\
-  \ AS svod_subs,\n        ssv.penetration_ssvod * ssvs.stacking_ssvod * sv.population_household\
-  \ AS ssvod_subs\n    FROM svod sv\n    JOIN svod_stacking svs\n      ON sv.country\
-  \ = svs.country AND sv.period_date = svs.period_date\n    JOIN ssvod ssv\n     \
-  \ ON sv.country = ssv.country AND sv.period_date = ssv.period_date\n    JOIN ssvod_stacking\
-  \ ssvs\n      ON sv.country = ssvs.country AND sv.period_date = ssvs.period_date\n\
-  \    WHERE sv.period_date >= '2020-07-01'\n),\nagg AS (\n    SELECT\n        period_date,\n\
-  \        SUM(ssvod_subs) AS ssvod_total,\n        SUM(svod_subs - ssvod_subs) AS\
-  \ bsvod_total\n    FROM base\n    GROUP BY period_date\n)\nSELECT period_date, 'SSVOD'\
-  \ AS subscription_type, ssvod_total / 1000 AS subscriptions FROM agg\nUNION ALL\n\
-  SELECT period_date, 'BSVOD' AS subscription_type, bsvod_total / 1000 AS subscriptions\
-  \ FROM agg\nORDER BY period_date, subscription_type\n"
+sql: |-
+    WITH svod AS (
+        SELECT n.country, n.period_date,
+               n.value AS penetration_svod, n.population_household
+        FROM macro.nordic n
+        WHERE n.category = 'online_video'
+          AND n.kpi_type = 'penetration'
+          AND n.kpi_dimension = 'svod'
+          AND n.canonical_name IS NULL
+          AND n.age_group = '15-74'
+          AND n.value IS NOT NULL
+          [[ AND {{country}} ]]
+          [[ AND {{year}} ]]
+          [[ AND {{quarter_label}} ]]
+    ),
+    svod_stacking AS (
+        SELECT n.country, n.period_date, n.value AS stacking_svod
+        FROM macro.nordic n
+        WHERE n.category = 'online_video'
+          AND n.kpi_type = 'stacking'
+          AND n.kpi_dimension = 'svod'
+          AND n.population_segment = 'subscribers'
+          AND n.canonical_name IS NULL
+          AND n.age_group = '15-74'
+          AND n.value IS NOT NULL
+    ),
+    ssvod AS (
+        SELECT n.country, n.period_date, n.value AS penetration_ssvod
+        FROM macro.nordic n
+        WHERE n.category = 'online_video'
+          AND n.kpi_type = 'penetration'
+          AND n.kpi_dimension = 'ssvod'
+          AND n.canonical_name IS NULL
+          AND n.age_group = '15-74'
+          AND n.value IS NOT NULL
+    ),
+    ssvod_stacking AS (
+        SELECT n.country, n.period_date, n.value AS stacking_ssvod
+        FROM macro.nordic n
+        WHERE n.category = 'online_video'
+          AND n.kpi_type = 'stacking'
+          AND n.kpi_dimension = 'ssvod'
+          AND n.population_segment = 'subscribers'
+          AND n.canonical_name IS NULL
+          AND n.age_group = '15-74'
+          AND n.value IS NOT NULL
+    ),
+    base AS (
+        SELECT
+            sv.period_date,
+            sv.country,
+            sv.penetration_svod * svs.stacking_svod * sv.population_household AS svod_subs,
+            ssv.penetration_ssvod * ssvs.stacking_ssvod * sv.population_household AS ssvod_subs
+        FROM svod sv
+        JOIN svod_stacking svs
+          ON sv.country = svs.country AND sv.period_date = svs.period_date
+        JOIN ssvod ssv
+          ON sv.country = ssv.country AND sv.period_date = ssv.period_date
+        JOIN ssvod_stacking ssvs
+          ON sv.country = ssvs.country AND sv.period_date = ssvs.period_date
+        WHERE sv.period_date >= '2020-07-01'
+    ),
+    agg AS (
+        SELECT
+            period_date,
+            SUM(ssvod_subs) AS ssvod_total,
+            SUM(svod_subs - ssvod_subs) AS bsvod_total
+        FROM base
+        GROUP BY period_date
+    )
+    SELECT period_date, 'SSVOD' AS subscription_type, ssvod_total / 1000 AS subscriptions FROM agg
+    UNION ALL
+    SELECT period_date, 'BSVOD' AS subscription_type, bsvod_total / 1000 AS subscriptions FROM agg
+    ORDER BY period_date, subscription_type
 plots:
 - id: svod_subs_ssvod_vs_bsvod
   title: 'Number of SVOD subs (million): S-SVOD vs B-SVOD'

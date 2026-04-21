@@ -1,17 +1,38 @@
 description: Daily reach of online video per service — population-weighted Nordic
   average, top 6 services, grouped by service with one bar per period
-sql: "WITH weighted AS (\n  SELECT\n    period_date,\n    canonical_name AS service,\n\
-  \    SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS reach_population\n\
-  \  FROM macro.nordic\n  WHERE category          = 'online_video'\n    AND kpi_type\
-  \          = 'reach'\n    AND canonical_name    IS NOT NULL\n    AND kpi_dimension\
-  \     IS NULL\n    AND age_group         = '15-74'\n    AND EXTRACT(MONTH FROM period_date)\
-  \ IN (1, 7)\n    AND period_date       >= '2013-07-01'\n  GROUP BY period_date,\
-  \ canonical_name\n),\nlatest_period AS (\n  SELECT MAX(period_date) AS max_period_date\
-  \ FROM weighted\n),\ntop6 AS (\n  SELECT service\n  FROM weighted\n  WHERE period_date\
-  \ = (SELECT max_period_date FROM latest_period)\n  ORDER BY reach_population DESC\n\
-  \  LIMIT 6\n)\nSELECT\n  w.period_date,\n  w.service,\n  w.reach_population\nFROM\
-  \ weighted w\nJOIN top6 ON w.service = top6.service\nORDER BY w.period_date, w.reach_population\
-  \ DESC\n"
+sql: |-
+    WITH weighted AS (
+      SELECT
+        period_date,
+        canonical_name AS service,
+        SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS reach_population
+      FROM macro.nordic
+      WHERE category          = 'online_video'
+        AND kpi_type          = 'reach'
+        AND canonical_name    IS NOT NULL
+        AND kpi_dimension     IS NULL
+        AND age_group         = '15-74'
+        AND EXTRACT(MONTH FROM period_date) IN (1, 7)
+        AND period_date       >= '2013-07-01'
+      GROUP BY period_date, canonical_name
+    ),
+    latest_period AS (
+      SELECT MAX(period_date) AS max_period_date FROM weighted
+    ),
+    top6 AS (
+      SELECT service
+      FROM weighted
+      WHERE period_date = (SELECT max_period_date FROM latest_period)
+      ORDER BY reach_population DESC
+      LIMIT 6
+    )
+    SELECT
+      w.period_date,
+      w.service,
+      w.reach_population
+    FROM weighted w
+    JOIN top6 ON w.service = top6.service
+    ORDER BY w.period_date, w.reach_population DESC
 plots:
 - id: daily_reach_per_service
   title: Daily reach of online video per service
