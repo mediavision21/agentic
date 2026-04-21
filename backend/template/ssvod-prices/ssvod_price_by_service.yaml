@@ -1,136 +1,83 @@
-description: S-SVOD list price by service (main movies & series, excl HVOD & sports), FX locked to 2025q4, averaged across countries
+description: S-SVOD list price by service (main movies & series, excl HVOD & sports),
+  FX locked to 2025q4, averaged across countries
 filters:
   quarter_label:
-    choices: [Q1]
-    default: [Q1]
+    choices:
+    - Q1
+    default:
+    - Q1
   currency_code:
     label: Currency
     multiple: false
-    choices: [EUR, SEK, NOK, DKK]
-    default: [EUR]
-sql: |
-  WITH periods AS (
-      SELECT
-          MAKE_DATE(n.year::int, CASE n.quarter_label WHEN 'Q1' THEN 1 WHEN 'Q2' THEN 4 WHEN 'Q3' THEN 7 WHEN 'Q4' THEN 10 END, 1) AS period_date,
-          n.year,
-          n.quarter_label
-      FROM macro.dim_period n
-      WHERE n.year::int >= 2022
-        [[ AND {{quarter_label}} ]]
-        [[ AND {{year}} ]]
-  ),
-  base AS (
-      SELECT
-          fp.country, fp.service_id,
-          COALESCE(s.canonical_name, fp.service_id) AS service,
-          fp.value, p.period_date,
-          fx.rate_to_eur AS rate_country,
-          CASE fp.service_id
-              WHEN 'apple_tv' THEN 1 WHEN 'discovery' THEN 2 WHEN 'hayu' THEN 3
-              WHEN 'hbo_max' THEN 4 WHEN 'prime' THEN 5 WHEN 'tv4_play' THEN 6
-              WHEN 'viaplay' THEN 7 WHEN 'youtube' THEN 8 WHEN 'disney' THEN 9
-              WHEN 'skyshowtime' THEN 10 ELSE 999
-          END AS service_sort
-      FROM macro.fact_prices fp
-      JOIN periods p ON fp.year = p.year::int AND UPPER(fp.quarter) = p.quarter_label
-      LEFT JOIN macro.dim_service s ON fp.service_id = s.service_id
-      JOIN macro.fact_fx_rate_quarterly fx
-        ON fx.period_key = '2025q4'
-       AND fx.currency_code = CASE fp.country
-              WHEN 'se' THEN 'SEK' WHEN 'no' THEN 'NOK'
-              WHEN 'dk' THEN 'DKK' WHEN 'fi' THEN 'EUR'
-           END
-      WHERE fp.service_id IN (
-              'apple_tv','discovery','hayu','hbo_max','prime',
-              'tv4_play','viaplay','youtube','disney','skyshowtime')
-        AND fp.analysis = 'streaming'
-        AND fp.kpi_type = 'list_price'
-        AND fp.kpi_id = 'ssvod_price'
-        AND fp.period_type = 'month'
-        AND fp.is_main_movies = TRUE
-        AND fp.hvod = FALSE
-        AND fp.sports = FALSE
-  ),
-  target_fx AS (
-      SELECT rate_to_eur
-      FROM macro.fact_fx_rate_quarterly
-      WHERE period_key = '2025q4'
-        [[ AND {{currency_code}} ]]
-  ),
-  per_country AS (
-      SELECT country, service, service_sort, period_date,
-             MAX(value * rate_country / tf.rate_to_eur) AS value_country
-      FROM base
-      CROSS JOIN target_fx tf
-      WHERE tf.rate_to_eur IS NOT NULL
-      GROUP BY country, service, service_sort, period_date, tf.rate_to_eur
-  )
-  SELECT
-      service,
-      period_date,
-      service_sort,
-      AVG(value_country) AS value
-  FROM per_country
-  GROUP BY service, period_date, service_sort
-  ORDER BY service_sort, period_date
-
+    choices:
+    - EUR
+    - SEK
+    - NOK
+    - DKK
+    default:
+    - EUR
+sql: "WITH periods AS (\n    SELECT\n        MAKE_DATE(n.year::int, CASE n.quarter_label\
+  \ WHEN 'Q1' THEN 1 WHEN 'Q2' THEN 4 WHEN 'Q3' THEN 7 WHEN 'Q4' THEN 10 END, 1) AS\
+  \ period_date,\n        n.year,\n        n.quarter_label\n    FROM macro.dim_period\
+  \ n\n    WHERE n.year::int >= 2022\n      [[ AND {{quarter_label}} ]]\n      [[\
+  \ AND {{year}} ]]\n),\nbase AS (\n    SELECT\n        fp.country, fp.service_id,\n\
+  \        COALESCE(s.canonical_name, fp.service_id) AS service,\n        fp.value,\
+  \ p.period_date,\n        fx.rate_to_eur AS rate_country,\n        CASE fp.service_id\n\
+  \            WHEN 'apple_tv' THEN 1 WHEN 'discovery' THEN 2 WHEN 'hayu' THEN 3\n\
+  \            WHEN 'hbo_max' THEN 4 WHEN 'prime' THEN 5 WHEN 'tv4_play' THEN 6\n\
+  \            WHEN 'viaplay' THEN 7 WHEN 'youtube' THEN 8 WHEN 'disney' THEN 9\n\
+  \            WHEN 'skyshowtime' THEN 10 ELSE 999\n        END AS service_sort\n\
+  \    FROM macro.fact_prices fp\n    JOIN periods p ON fp.year = p.year::int AND\
+  \ UPPER(fp.quarter) = p.quarter_label\n    LEFT JOIN macro.dim_service s ON fp.service_id\
+  \ = s.service_id\n    JOIN macro.fact_fx_rate_quarterly fx\n      ON fx.period_key\
+  \ = '2025q4'\n     AND fx.currency_code = CASE fp.country\n            WHEN 'se'\
+  \ THEN 'SEK' WHEN 'no' THEN 'NOK'\n            WHEN 'dk' THEN 'DKK' WHEN 'fi' THEN\
+  \ 'EUR'\n         END\n    WHERE fp.service_id IN (\n            'apple_tv','discovery','hayu','hbo_max','prime',\n\
+  \            'tv4_play','viaplay','youtube','disney','skyshowtime')\n      AND fp.analysis\
+  \ = 'streaming'\n      AND fp.kpi_type = 'list_price'\n      AND fp.kpi_id = 'ssvod_price'\n\
+  \      AND fp.period_type = 'month'\n      AND fp.is_main_movies = TRUE\n      AND\
+  \ fp.hvod = FALSE\n      AND fp.sports = FALSE\n),\ntarget_fx AS (\n    SELECT rate_to_eur\n\
+  \    FROM macro.fact_fx_rate_quarterly\n    WHERE period_key = '2025q4'\n      [[\
+  \ AND {{currency_code}} ]]\n),\nper_country AS (\n    SELECT country, service, service_sort,\
+  \ period_date,\n           MAX(value * rate_country / tf.rate_to_eur) AS value_country\n\
+  \    FROM base\n    CROSS JOIN target_fx tf\n    WHERE tf.rate_to_eur IS NOT NULL\n\
+  \    GROUP BY country, service, service_sort, period_date, tf.rate_to_eur\n)\nSELECT\n\
+  \    service,\n    period_date,\n    service_sort,\n    AVG(value_country) AS value\n\
+  FROM per_country\nGROUP BY service, period_date, service_sort\nORDER BY service_sort,\
+  \ period_date\n"
 plots:
-  - id: ssvod_price_by_service
-    title: "S-SVOD list price by service"
-    code: |
-      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
-      var rows = data.map(function(d) {
-        return Object.assign({}, d, {
-          value: +d.value,
-          service_sort: +d.service_sort,
-          period_label: fmtPeriod(d.period_date)
-        });
-      });
-
-      var periods = Array.from(new Set(
-        rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).map(function(d) { return d.period_label; })
-      ));
-
-      var services = Array.from(new Set(
-        rows.slice().sort(function(a, b) { return a.service_sort - b.service_sort; }).map(function(d) { return d.service; })
-      ));
-
-      var greens = ["#c7e8c7", "#8dc88d", "#52a852", "#1a6640"];
-      var colorRange = periods.map(function(_, i) {
-        return greens[Math.round(i * (greens.length - 1) / Math.max(periods.length - 1, 1))];
-      });
-
-      return Plot.plot({
-        width: Math.max(900, services.length * 100),
-        height: 420,
-        fx: { label: null, domain: services, padding: 0.15 },
-        x: { label: null, domain: periods, axis: null },
-        y: { label: null, grid: true },
-        color: {
-          legend: true,
-          domain: periods,
-          range: colorRange
-        },
-        marks: [
-          Plot.barY(rows, {
-            fx: "service",
-            x: "period_label",
-            y: "value",
-            fill: "period_label"
-          }),
-          Plot.text(rows, {
-            fx: "service",
-            x: "period_label",
-            y: "value",
-            text: function(d) { return Math.round(d.value); },
-            fontSize: 11,
-            fontWeight: "bold",
-            dy: -8
-          }),
-          Plot.ruleY([0])
+- id: ssvod_price_by_service
+  title: S-SVOD list price by service
+  config: |-
+    {
+        "marks": [
+            {
+                "type": "barY",
+                "x": "period_label",
+                "y": "value",
+                "fill": "period_label",
+                "fx": "service"
+            }
         ],
-        marginTop: 30,
-        marginBottom: 80,
-        marginLeft: 40,
-        marginRight: 30
-      });
+        "x": {
+            "label": null,
+            "axis": null
+        },
+        "fx": {
+            "label": null,
+            "padding": 0.15
+        },
+        "y": {
+            "label": null,
+            "grid": true
+        },
+        "color": {
+            "legend": true,
+            "range": [
+                "#c7e8c7",
+                "#8dc88d",
+                "#52a852",
+                "#1a6640"
+            ]
+        }
+    }

@@ -1,237 +1,83 @@
-description: Daily viewing minutes of video by age group (Social video, Other online video, TV) — population-weighted Nordic average
-sql: |
-  WITH reach AS (
-    SELECT
-      country,
-      period_date,
-      age_group,
-      population_1574,
-      CASE
-        WHEN category = 'online_video' AND kpi_dimension = 'social' THEN 'Social video'
-        WHEN category = 'online_video' AND kpi_dimension = 'online_excluding_social' THEN 'Other online video'
-        WHEN category = 'tv' THEN 'TV'
-      END AS business_model,
-      value AS reach
-    FROM macro.nordic
-    WHERE canonical_name IS NULL
-      AND age_group IN ('15-24', '25-34', '35-44', '45-54', '55-64', '65-74')
-      AND (
-        (
-          category = 'online_video'
-          AND kpi_type = 'reach'
-          AND kpi_dimension IN ('social', 'online_excluding_social')
-        )
-        OR (
-          category = 'tv'
-          AND kpi_type = 'reach'
-        )
-      )
-  ),
-  viewing_time AS (
-    SELECT
-      country,
-      period_date,
-      age_group,
-      CASE
-        WHEN category = 'online_video' AND kpi_dimension = 'social' THEN 'Social video'
-        WHEN category = 'online_video' AND kpi_dimension = 'online_excluding_social' THEN 'Other online video'
-        WHEN category = 'tv' THEN 'TV'
-      END AS business_model,
-      value AS viewing_time_viewers
-    FROM macro.nordic
-    WHERE canonical_name IS NULL
-      AND age_group IN ('15-24', '25-34', '35-44', '45-54', '55-64', '65-74')
-      AND (
-        (
-          category = 'online_video'
-          AND kpi_type = 'viewing_time'
-          AND kpi_dimension IN ('social', 'online_excluding_social')
-        )
-        OR (
-          category = 'tv'
-          AND kpi_type = 'viewing_time'
-        )
-      )
-  ),
-  agg AS (
-    SELECT
-      r.period_date,
-      r.age_group,
-      r.business_model,
-      SUM(r.reach * vt.viewing_time_viewers * r.population_1574)
-        / NULLIF(SUM(r.population_1574), 0) AS viewing_time_population
-    FROM reach r
-    JOIN viewing_time vt
-      ON r.country = vt.country
-     AND r.period_date = vt.period_date
-     AND r.age_group = vt.age_group
-     AND r.business_model = vt.business_model
-    -- population_1574 is always 15-74 individuals regardless of age_group row
-    WHERE r.period_date >= '2024-07-01'
-      AND EXTRACT(MONTH FROM r.period_date) IN (1, 7)
-    GROUP BY
-      r.period_date,
-      r.age_group,
-      r.business_model
-  )
-  SELECT
-    period_date,
-    age_group,
-    CASE age_group
-      WHEN '15-24' THEN 1
-      WHEN '25-34' THEN 2
-      WHEN '35-44' THEN 3
-      WHEN '45-54' THEN 4
-      WHEN '55-64' THEN 5
-      WHEN '65-74' THEN 6
-      ELSE 99
-    END AS age_sort,
-    business_model,
-    CASE business_model
-      WHEN 'Social video' THEN 1
-      WHEN 'Other online video' THEN 2
-      WHEN 'TV' THEN 3
-      ELSE 99
-    END AS series_order,
-    viewing_time_population
-  FROM agg
-  ORDER BY period_date, age_sort, series_order
-
+description: Daily viewing minutes of video by age group (Social video, Other online
+  video, TV) — population-weighted Nordic average
+sql: "WITH reach AS (\n  SELECT\n    country,\n    period_date,\n    age_group,\n\
+  \    population_1574,\n    CASE\n      WHEN category = 'online_video' AND kpi_dimension\
+  \ = 'social' THEN 'Social video'\n      WHEN category = 'online_video' AND kpi_dimension\
+  \ = 'online_excluding_social' THEN 'Other online video'\n      WHEN category = 'tv'\
+  \ THEN 'TV'\n    END AS business_model,\n    value AS reach\n  FROM macro.nordic\n\
+  \  WHERE canonical_name IS NULL\n    AND age_group IN ('15-24', '25-34', '35-44',\
+  \ '45-54', '55-64', '65-74')\n    AND (\n      (\n        category = 'online_video'\n\
+  \        AND kpi_type = 'reach'\n        AND kpi_dimension IN ('social', 'online_excluding_social')\n\
+  \      )\n      OR (\n        category = 'tv'\n        AND kpi_type = 'reach'\n\
+  \      )\n    )\n),\nviewing_time AS (\n  SELECT\n    country,\n    period_date,\n\
+  \    age_group,\n    CASE\n      WHEN category = 'online_video' AND kpi_dimension\
+  \ = 'social' THEN 'Social video'\n      WHEN category = 'online_video' AND kpi_dimension\
+  \ = 'online_excluding_social' THEN 'Other online video'\n      WHEN category = 'tv'\
+  \ THEN 'TV'\n    END AS business_model,\n    value AS viewing_time_viewers\n  FROM\
+  \ macro.nordic\n  WHERE canonical_name IS NULL\n    AND age_group IN ('15-24', '25-34',\
+  \ '35-44', '45-54', '55-64', '65-74')\n    AND (\n      (\n        category = 'online_video'\n\
+  \        AND kpi_type = 'viewing_time'\n        AND kpi_dimension IN ('social',\
+  \ 'online_excluding_social')\n      )\n      OR (\n        category = 'tv'\n   \
+  \     AND kpi_type = 'viewing_time'\n      )\n    )\n),\nagg AS (\n  SELECT\n  \
+  \  r.period_date,\n    r.age_group,\n    r.business_model,\n    SUM(r.reach * vt.viewing_time_viewers\
+  \ * r.population_1574)\n      / NULLIF(SUM(r.population_1574), 0) AS viewing_time_population\n\
+  \  FROM reach r\n  JOIN viewing_time vt\n    ON r.country = vt.country\n   AND r.period_date\
+  \ = vt.period_date\n   AND r.age_group = vt.age_group\n   AND r.business_model =\
+  \ vt.business_model\n  -- population_1574 is always 15-74 individuals regardless\
+  \ of age_group row\n  WHERE r.period_date >= '2024-07-01'\n    AND EXTRACT(MONTH\
+  \ FROM r.period_date) IN (1, 7)\n  GROUP BY\n    r.period_date,\n    r.age_group,\n\
+  \    r.business_model\n)\nSELECT\n  period_date,\n  age_group,\n  CASE age_group\n\
+  \    WHEN '15-24' THEN 1\n    WHEN '25-34' THEN 2\n    WHEN '35-44' THEN 3\n   \
+  \ WHEN '45-54' THEN 4\n    WHEN '55-64' THEN 5\n    WHEN '65-74' THEN 6\n    ELSE\
+  \ 99\n  END AS age_sort,\n  business_model,\n  CASE business_model\n    WHEN 'Social\
+  \ video' THEN 1\n    WHEN 'Other online video' THEN 2\n    WHEN 'TV' THEN 3\n  \
+  \  ELSE 99\n  END AS series_order,\n  viewing_time_population\nFROM agg\nORDER BY\
+  \ period_date, age_sort, series_order\n"
 plots:
-  - id: daily_viewing_minutes_by_age
-    title: "Daily viewing minutes of video"
-    code: |
-      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
-      var rows = data.map(function(d) {
-        return Object.assign({}, d, {
-          age_sort: +d.age_sort,
-          series_order: +d.series_order,
-          value: +d.viewing_time_population,
-          period_label: fmtPeriod(d.period_date)
-        });
-      });
-
-      if (!rows.length) {
-        return Plot.plot({
-          width: 1200,
-          height: 220,
-          marks: [Plot.text(["No data"], {x: [0], y: [0], text: function(d) { return d; }, fontSize: 18})],
-          x: { axis: null },
-          y: { axis: null }
-        });
-      }
-
-      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_date; }))).sort();
-      var latest = sortedPeriods[sortedPeriods.length - 1];
-      var latestD = new Date(latest); var yearAgoD = new Date(latestD); yearAgoD.setUTCFullYear(yearAgoD.getUTCFullYear() - 1);
-      var yearAgo = yearAgoD.toISOString().slice(0, 10);
-
-      var subset = rows.filter(function(d) {
-        return d.period_date === latest || d.period_date === yearAgo;
-      });
-
-      var latestLabel = fmtPeriod(latest);
-      var yearAgoLabel = fmtPeriod(yearAgo);
-      var periodOrder = Array.from(new Set([yearAgoLabel, latestLabel].filter(Boolean)));
-      var ageOrder = ["15-24", "25-34", "35-44", "45-54", "55-64", "65-74"];
-      var stackOrder = ["TV", "Other online video", "Social video"];
-
-      var xOrder = [];
-      periodOrder.forEach(function(period) {
-        ageOrder.forEach(function(age) {
-          xOrder.push(period + "\n" + age);
-        });
-      });
-
-      var stackedRows = [];
-      var totals = [];
-      periodOrder.forEach(function(period) {
-        ageOrder.forEach(function(age) {
-          var xLabel = period + "\n" + age;
-          var cum = 0;
-          stackOrder.forEach(function(model) {
-            var row = subset.find(function(d) {
-              return d.period_label === period && d.age_group === age && d.business_model === model;
-            });
-            var v = row ? row.value : 0;
-            stackedRows.push({
-              x: xLabel,
-              period_label: period,
-              age_group: age,
-              business_model: model,
-              y1: cum,
-              y2: cum + v,
-              mid: cum + v / 2,
-              value: v
-            });
-            cum += v;
-          });
-          totals.push({ x: xLabel, total: cum });
-        });
-      });
-
-      var maxTotal = totals.length
-        ? Math.max.apply(null, totals.map(function(d) { return d.total; }))
-        : 0;
-      var maxY = Math.max(10, Math.ceil(maxTotal * 1.15 / 10) * 10);
-      var colorMap = {
-        "Social video": "#d8f3dc",
-        "Other online video": "#95d5b2",
-        "TV": "#083d2b"
-      };
-
-      return Plot.plot({
-        width: 1200,
-        height: 520,
-        x: { label: null, domain: xOrder, tickRotate: -45 },
-        y: { label: null, grid: true, domain: [0, maxY] },
-        color: {
-          legend: true,
-          domain: ["Social video", "Other online video", "TV"],
-          range: ["#d8f3dc", "#95d5b2", "#083d2b"]
-        },
-        marks: [
-          Plot.barY(stackedRows, {
-            x: "x",
-            y1: "y1",
-            y2: "y2",
-            fill: "business_model",
-            insetLeft: 18,
-            insetRight: 18,
-            tip: true,
-            title: function(d) { return d.business_model + ": " + Math.round(d.value) + " min"; }
-          }),
-          Plot.text(stackedRows.filter(function(d) { return d.business_model === "TV" && d.value > 0; }), {
-            x: "x",
-            y: "mid",
-            text: function(d) { return Math.round(d.value) + " min"; },
-            rotate: -90,
-            fontSize: 14,
-            fontWeight: "bold",
-            fill: "white"
-          }),
-          Plot.text(stackedRows.filter(function(d) { return d.business_model !== "TV" && d.value > 0; }), {
-            x: "x",
-            y: "mid",
-            text: function(d) { return Math.round(d.value) + " min"; },
-            rotate: -90,
-            fontSize: 14,
-            fontWeight: "bold",
-            fill: "#21423a"
-          }),
-          Plot.text(totals, {
-            x: "x",
-            y: "total",
-            text: function(d) { return Math.round(d.total) + " min"; },
-            fontSize: 14,
-            fontWeight: "bold",
-            fill: "#3d4952",
-            dy: -10
-          }),
-          Plot.ruleY([0])
+- id: daily_viewing_minutes_by_age
+  title: Daily viewing minutes of video
+  config: |-
+    {
+        "marks": [
+            {
+                "type": "barY",
+                "x": "period_label",
+                "y": "viewing_time_population",
+                "fill": "business_model",
+                "fx": "age_group",
+                "stack": true
+            }
         ],
-        marginTop: 40,
-        marginBottom: 110,
-        marginLeft: 50,
-        marginRight: 30
-      });
+        "fx": {
+            "label": null,
+            "domain": [
+                "15-24",
+                "25-34",
+                "35-44",
+                "45-54",
+                "55-64",
+                "65-74"
+            ],
+            "padding": 0.2
+        },
+        "x": {
+            "label": null
+        },
+        "y": {
+            "label": null,
+            "grid": true
+        },
+        "color": {
+            "legend": true,
+            "domain": [
+                "Social video",
+                "Other online video",
+                "TV"
+            ],
+            "range": [
+                "#d8f3dc",
+                "#95d5b2",
+                "#083d2b"
+            ]
+        }
+    }

@@ -1,161 +1,69 @@
-description: Number of SVOD subscriptions (millions) split into S-SVOD and B-SVOD — household-weighted Nordic total
+description: Number of SVOD subscriptions (millions) split into S-SVOD and B-SVOD
+  — household-weighted Nordic total
 filters:
   quarter_label:
-    choices: [Q1]
-    default: [Q1]
-sql: |
-  WITH svod AS (
-      SELECT n.country, n.period_date,
-             n.value AS penetration_svod, n.population_household
-      FROM macro.nordic n
-      WHERE n.category = 'online_video'
-        AND n.kpi_type = 'penetration'
-        AND n.kpi_dimension = 'svod'
-        AND n.canonical_name IS NULL
-        AND n.age_group = '15-74'
-        AND n.value IS NOT NULL
-        [[ AND {{country}} ]]
-        [[ AND {{year}} ]]
-        [[ AND {{quarter_label}} ]]
-  ),
-  svod_stacking AS (
-      SELECT n.country, n.period_date, n.value AS stacking_svod
-      FROM macro.nordic n
-      WHERE n.category = 'online_video'
-        AND n.kpi_type = 'stacking'
-        AND n.kpi_dimension = 'svod'
-        AND n.population_segment = 'subscribers'
-        AND n.canonical_name IS NULL
-        AND n.age_group = '15-74'
-        AND n.value IS NOT NULL
-  ),
-  ssvod AS (
-      SELECT n.country, n.period_date, n.value AS penetration_ssvod
-      FROM macro.nordic n
-      WHERE n.category = 'online_video'
-        AND n.kpi_type = 'penetration'
-        AND n.kpi_dimension = 'ssvod'
-        AND n.canonical_name IS NULL
-        AND n.age_group = '15-74'
-        AND n.value IS NOT NULL
-  ),
-  ssvod_stacking AS (
-      SELECT n.country, n.period_date, n.value AS stacking_ssvod
-      FROM macro.nordic n
-      WHERE n.category = 'online_video'
-        AND n.kpi_type = 'stacking'
-        AND n.kpi_dimension = 'ssvod'
-        AND n.population_segment = 'subscribers'
-        AND n.canonical_name IS NULL
-        AND n.age_group = '15-74'
-        AND n.value IS NOT NULL
-  ),
-  base AS (
-      SELECT
-          sv.period_date,
-          sv.country,
-          sv.penetration_svod * svs.stacking_svod * sv.population_household AS svod_subs,
-          ssv.penetration_ssvod * ssvs.stacking_ssvod * sv.population_household AS ssvod_subs
-      FROM svod sv
-      JOIN svod_stacking svs
-        ON sv.country = svs.country AND sv.period_date = svs.period_date
-      JOIN ssvod ssv
-        ON sv.country = ssv.country AND sv.period_date = ssv.period_date
-      JOIN ssvod_stacking ssvs
-        ON sv.country = ssvs.country AND sv.period_date = ssvs.period_date
-      WHERE sv.period_date >= '2020-07-01'
-  ),
-  agg AS (
-      SELECT
-          period_date,
-          SUM(ssvod_subs) AS ssvod_total,
-          SUM(svod_subs - ssvod_subs) AS bsvod_total
-      FROM base
-      GROUP BY period_date
-  )
-  SELECT period_date, 'SSVOD' AS subscription_type, ssvod_total AS subscriptions FROM agg
-  UNION ALL
-  SELECT period_date, 'BSVOD' AS subscription_type, bsvod_total AS subscriptions FROM agg
-  ORDER BY period_date, subscription_type
-
+    choices:
+    - Q1
+    default:
+    - Q1
+sql: "WITH svod AS (\n    SELECT n.country, n.period_date,\n           n.value AS\
+  \ penetration_svod, n.population_household\n    FROM macro.nordic n\n    WHERE n.category\
+  \ = 'online_video'\n      AND n.kpi_type = 'penetration'\n      AND n.kpi_dimension\
+  \ = 'svod'\n      AND n.canonical_name IS NULL\n      AND n.age_group = '15-74'\n\
+  \      AND n.value IS NOT NULL\n      [[ AND {{country}} ]]\n      [[ AND {{year}}\
+  \ ]]\n      [[ AND {{quarter_label}} ]]\n),\nsvod_stacking AS (\n    SELECT n.country,\
+  \ n.period_date, n.value AS stacking_svod\n    FROM macro.nordic n\n    WHERE n.category\
+  \ = 'online_video'\n      AND n.kpi_type = 'stacking'\n      AND n.kpi_dimension\
+  \ = 'svod'\n      AND n.population_segment = 'subscribers'\n      AND n.canonical_name\
+  \ IS NULL\n      AND n.age_group = '15-74'\n      AND n.value IS NOT NULL\n),\n\
+  ssvod AS (\n    SELECT n.country, n.period_date, n.value AS penetration_ssvod\n\
+  \    FROM macro.nordic n\n    WHERE n.category = 'online_video'\n      AND n.kpi_type\
+  \ = 'penetration'\n      AND n.kpi_dimension = 'ssvod'\n      AND n.canonical_name\
+  \ IS NULL\n      AND n.age_group = '15-74'\n      AND n.value IS NOT NULL\n),\n\
+  ssvod_stacking AS (\n    SELECT n.country, n.period_date, n.value AS stacking_ssvod\n\
+  \    FROM macro.nordic n\n    WHERE n.category = 'online_video'\n      AND n.kpi_type\
+  \ = 'stacking'\n      AND n.kpi_dimension = 'ssvod'\n      AND n.population_segment\
+  \ = 'subscribers'\n      AND n.canonical_name IS NULL\n      AND n.age_group = '15-74'\n\
+  \      AND n.value IS NOT NULL\n),\nbase AS (\n    SELECT\n        sv.period_date,\n\
+  \        sv.country,\n        sv.penetration_svod * svs.stacking_svod * sv.population_household\
+  \ AS svod_subs,\n        ssv.penetration_ssvod * ssvs.stacking_ssvod * sv.population_household\
+  \ AS ssvod_subs\n    FROM svod sv\n    JOIN svod_stacking svs\n      ON sv.country\
+  \ = svs.country AND sv.period_date = svs.period_date\n    JOIN ssvod ssv\n     \
+  \ ON sv.country = ssv.country AND sv.period_date = ssv.period_date\n    JOIN ssvod_stacking\
+  \ ssvs\n      ON sv.country = ssvs.country AND sv.period_date = ssvs.period_date\n\
+  \    WHERE sv.period_date >= '2020-07-01'\n),\nagg AS (\n    SELECT\n        period_date,\n\
+  \        SUM(ssvod_subs) AS ssvod_total,\n        SUM(svod_subs - ssvod_subs) AS\
+  \ bsvod_total\n    FROM base\n    GROUP BY period_date\n)\nSELECT period_date, 'SSVOD'\
+  \ AS subscription_type, ssvod_total / 1000 AS subscriptions FROM agg\nUNION ALL\n\
+  SELECT period_date, 'BSVOD' AS subscription_type, bsvod_total / 1000 AS subscriptions\
+  \ FROM agg\nORDER BY period_date, subscription_type\n"
 plots:
-  - id: svod_subs_ssvod_vs_bsvod
-    title: "Number of SVOD subs (million): S-SVOD vs B-SVOD"
-    code: |
-      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
-      var rows = data.map(function(d) {
-        return Object.assign({}, d, {
-          value: +d.subscriptions / 1000,
-          period_label: fmtPeriod(d.period_date)
-        });
-      });
-
-      var periods = Array.from(new Set(
-        rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).map(function(d) { return d.period_label; })
-      ));
-
-      // Stack order: SSVOD bottom, BSVOD top
-      var stackOrder = ["SSVOD", "BSVOD"];
-
-      var stackedRows = [];
-      var totals = {};
-      periods.forEach(function(period) {
-        var cum = 0;
-        stackOrder.forEach(function(type) {
-          var row = rows.find(function(d) { return d.period_label === period && d.subscription_type === type; });
-          var v = row ? row.value : 0;
-          stackedRows.push({
-            period_label: period,
-            subscription_type: type,
-            y1: cum,
-            y2: cum + v,
-            mid: cum + v / 2,
-            value: v
-          });
-          cum += v;
-        });
-        totals[period] = cum;
-      });
-
-      var maxY = Math.ceil(Math.max.apply(null, Object.values(totals)) * 1.15);
-
-      return Plot.plot({
-        width: Math.max(500, periods.length * 100),
-        height: 420,
-        x: { label: null, domain: periods },
-        y: { label: "Million subscriptions", grid: true, domain: [0, maxY] },
-        color: {
-          legend: true,
-          domain: ["BSVOD", "SSVOD"],
-          range: ["#e8a838", "#b83c26"]
-        },
-        marks: [
-          Plot.barY(stackedRows, {
-            x: "period_label",
-            y1: "y1",
-            y2: "y2",
-            fill: "subscription_type",
-            insetLeft: 20,
-            insetRight: 20,
-            tip: true,
-            title: function(d) { return d.subscription_type + ": " + d.value.toFixed(1) + " M"; }
-          }),
-          Plot.text(
-            periods.map(function(p) { return { period_label: p, total: totals[p] }; }),
+- id: svod_subs_ssvod_vs_bsvod
+  title: 'Number of SVOD subs (million): S-SVOD vs B-SVOD'
+  config: |-
+    {
+        "marks": [
             {
-              x: "period_label",
-              y: "total",
-              text: function(d) { return d.total.toFixed(1) + " M"; },
-              fontSize: 13,
-              fontWeight: "bold",
-              fill: "#111",
-              dy: -12
+                "type": "barY",
+                "x": "period_label",
+                "y": "subscriptions",
+                "fill": "subscription_type",
+                "stack": true
             }
-          ),
-          Plot.ruleY([0])
         ],
-        marginTop: 40,
-        marginBottom: 50,
-        marginLeft: 55,
-        marginRight: 20
-      });
+        "y": {
+            "label": "Million subscriptions",
+            "grid": true
+        },
+        "color": {
+            "legend": true,
+            "domain": [
+                "BSVOD",
+                "SSVOD"
+            ],
+            "range": [
+                "#e8a838",
+                "#b83c26"
+            ]
+        }
+    }

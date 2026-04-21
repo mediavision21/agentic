@@ -1,30 +1,26 @@
 import { useState, useRef, useEffect } from "react"
-import * as Plot from "@observablehq/plot"
 import { highlightMarkdown, highlightJSON } from "../highlight.js"
 import SqlDisplay from "./SqlDisplay.jsx"
 import ResultTable from "./ResultTable.jsx"
 import ResultChart from "./ResultChart.jsx"
 import Markdown from "./Markdown.jsx"
+import { buildFromConfig, appendResponsiveSVG } from "../plotUtils.js"
 
-// render a template plot by evaluating its Observable Plot code with data
 function TemplatePlotView(options) {
-	const { plot, rows } = options
+	const { plot, rows, columns } = options
 	const $container = useRef(null)
 
 	useEffect(function () {
 		if (!$container.current || !rows || rows.length === 0) return
 		$container.current.innerHTML = ""
 		try {
-			const code = "var data = __rows__;\n" + plot.code
-			console.log(code)
-			const fn = new Function("Plot", "__rows__", code)
-			const chart = fn(Plot, rows)
-			if (chart) $container.current.appendChild(chart)
+			const chart = buildFromConfig({ config: plot.config, rows, columns, width: 700 })
+			if (chart) appendResponsiveSVG($container.current, chart)
 		} catch (e) {
 			console.error("[TemplatePlot] render error:", e)
 			$container.current.textContent = "Plot render error: " + e.message
 		}
-	}, [plot, rows])
+	}, [plot, rows, columns])
 
 	return (
 		<div className="template-plot">
@@ -35,7 +31,7 @@ function TemplatePlotView(options) {
 }
 
 function TemplatePlots(options) {
-	const { plots, rows } = options
+	const { plots, rows, columns } = options
 	const [activeId, setActiveId] = useState(plots[0] ? plots[0].id : null)
 	const active = plots.find(function (p) { return p.id === activeId })
 
@@ -54,7 +50,7 @@ function TemplatePlots(options) {
 					)
 				})}
 			</div>
-			{active && <TemplatePlotView plot={active} rows={rows} />}
+			{active && <TemplatePlotView plot={active} rows={rows} columns={columns} />}
 		</div>
 	)
 }
@@ -262,7 +258,7 @@ function ChatMessage(options) {
 				)}
 
 				{template_plots && template_plots.length > 0 && rows && rows.length > 0 && (
-					<TemplatePlots plots={template_plots} rows={rows} />
+					<TemplatePlots plots={template_plots} rows={rows} columns={displayColumns} />
 				)}
 
 				{!evalMode && suggestions && suggestions.length > 0 && (

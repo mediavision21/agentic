@@ -1,122 +1,63 @@
-description: HVOD household penetration by service across Nordic countries, top 15 services ranked by latest period
-sql: |
-  WITH base AS (
-      SELECT
-          n.period_date,
-          n.country,
-          n.canonical_name AS service,
-          n.value AS penetration_country,
-          n.population_household
-      FROM macro.nordic n
-      WHERE
-          n.category = 'online_video'
-          AND n.kpi_type = 'penetration'
-          AND n.kpi_dimension = 'hvod'
-          AND n.canonical_name IS NOT NULL
-          AND n.age_group = '15-74'
-          AND n.value IS NOT NULL
-          AND n.value > 0
-          AND n.period_date >= '2024-01-01'
-          [[ AND {{country}} ]]
-          [[ AND {{year}} ]]
-          [[ AND {{quarter_label}} ]]
-  ),
-  penetration_weighted AS (
-      SELECT
-          period_date,
-          service,
-          SUM(penetration_country * population_household)
-              / NULLIF(SUM(population_household), 0) AS penetration_household_weighted
-      FROM base
-      GROUP BY period_date, service
-  ),
-  latest_period AS (
-      SELECT MAX(period_date) AS max_period_date
-      FROM penetration_weighted
-  ),
-  service_rank AS (
-      SELECT
-          service,
-          ROW_NUMBER() OVER (ORDER BY penetration_household_weighted DESC) AS service_rank
-      FROM penetration_weighted
-      WHERE period_date = (SELECT max_period_date FROM latest_period)
-  ),
-  top_services AS (
-      SELECT service, service_rank
-      FROM service_rank
-      WHERE service_rank <= 15
-  ),
-  periods AS (
-      SELECT DISTINCT period_date
-      FROM penetration_weighted
-  ),
-  service_period_grid AS (
-      SELECT
-          ts.service,
-          ts.service_rank,
-          p.period_date
-      FROM top_services ts
-      CROSS JOIN periods p
-  )
-  SELECT
-      g.period_date,
-      g.service,
-      g.service_rank,
-      pw.penetration_household_weighted AS penetration
-  FROM service_period_grid g
-  LEFT JOIN penetration_weighted pw
-    ON pw.service = g.service
-   AND pw.period_date = g.period_date
-  ORDER BY
-      g.service_rank,
-      g.period_date;
-
+description: HVOD household penetration by service across Nordic countries, top 15
+  services ranked by latest period
+sql: "WITH base AS (\n    SELECT\n        n.period_date,\n        n.country,\n   \
+  \     n.canonical_name AS service,\n        n.value AS penetration_country,\n  \
+  \      n.population_household\n    FROM macro.nordic n\n    WHERE\n        n.category\
+  \ = 'online_video'\n        AND n.kpi_type = 'penetration'\n        AND n.kpi_dimension\
+  \ = 'hvod'\n        AND n.canonical_name IS NOT NULL\n        AND n.age_group =\
+  \ '15-74'\n        AND n.value IS NOT NULL\n        AND n.value > 0\n        AND\
+  \ n.period_date >= '2024-01-01'\n        [[ AND {{country}} ]]\n        [[ AND {{year}}\
+  \ ]]\n        [[ AND {{quarter_label}} ]]\n),\npenetration_weighted AS (\n    SELECT\n\
+  \        period_date,\n        service,\n        SUM(penetration_country * population_household)\n\
+  \            / NULLIF(SUM(population_household), 0) AS penetration_household_weighted\n\
+  \    FROM base\n    GROUP BY period_date, service\n),\nlatest_period AS (\n    SELECT\
+  \ MAX(period_date) AS max_period_date\n    FROM penetration_weighted\n),\nservice_rank\
+  \ AS (\n    SELECT\n        service,\n        ROW_NUMBER() OVER (ORDER BY penetration_household_weighted\
+  \ DESC) AS service_rank\n    FROM penetration_weighted\n    WHERE period_date =\
+  \ (SELECT max_period_date FROM latest_period)\n),\ntop_services AS (\n    SELECT\
+  \ service, service_rank\n    FROM service_rank\n    WHERE service_rank <= 15\n),\n\
+  periods AS (\n    SELECT DISTINCT period_date\n    FROM penetration_weighted\n),\n\
+  service_period_grid AS (\n    SELECT\n        ts.service,\n        ts.service_rank,\n\
+  \        p.period_date\n    FROM top_services ts\n    CROSS JOIN periods p\n)\n\
+  SELECT\n    g.period_date,\n    g.service,\n    g.service_rank,\n    pw.penetration_household_weighted\
+  \ * 100 AS penetration\nFROM service_period_grid g\nLEFT JOIN penetration_weighted\
+  \ pw\n  ON pw.service = g.service\n AND pw.period_date = g.period_date\nORDER BY\n\
+  \    g.service_rank,\n    g.period_date;\n"
 plots:
-  - id: hvod_penetration_by_service
-    title: "HVOD household penetration by service"
-    code: |
-      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
-      var rows = data.map(function(d) {
-        return Object.assign({}, d, {
-          penetration: +d.penetration * 100,
-          service_rank: +d.service_rank,
-          period_label: fmtPeriod(d.period_date)
-        });
-      });
-      var periods = Array.from(new Set(
-        rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).map(function(d) { return d.period_label; })
-      ));
-      var services = Array.from(
-        new Map(rows.map(function(d) { return [d.service, d.service_rank]; })).entries()
-      ).sort(function(a, b) { return a[1] - b[1]; }).map(function(e) { return e[0]; });
-      var greens = ["#c7e8c7", "#8dc88d", "#52a852", "#2d8653", "#1a6640", "#0f3d26"];
-      var colorRange = periods.map(function(_, i) {
-        return greens[Math.round(i * (greens.length - 1) / Math.max(periods.length - 1, 1))];
-      });
-      return Plot.plot({
-        width: Math.max(1000, services.length * 65),
-        height: 420,
-        fx: { label: null, domain: services, padding: 0.15 },
-        x:  { label: null, domain: periods, axis: null },
-        y:  { label: "Household penetration %", grid: true, domain: [0, 30] },
-        color: {
-          legend: true,
-          domain: periods,
-          range: colorRange
-        },
-        marks: [
-          Plot.barY(rows, {
-            fx: "service",
-            x: "period_label",
-            y: "penetration",
-            fill: "period_label",
-            tip: true,
-            insetLeft: 1,
-            insetRight: 1
-          }),
-          Plot.ruleY([0])
+- id: hvod_penetration_by_service
+  title: HVOD household penetration by service
+  config: |-
+    {
+        "marks": [
+            {
+                "type": "barY",
+                "x": "period_label",
+                "y": "penetration",
+                "fill": "period_label",
+                "fx": "service"
+            }
         ],
-        marginBottom: 60,
-        marginTop: 40,
-        marginLeft: 50
-      });
+        "x": {
+            "label": null,
+            "axis": null
+        },
+        "fx": {
+            "label": null,
+            "padding": 0.15
+        },
+        "y": {
+            "label": "Household penetration %",
+            "grid": true
+        },
+        "color": {
+            "legend": true,
+            "range": [
+                "#c7e8c7",
+                "#8dc88d",
+                "#52a852",
+                "#2d8653",
+                "#1a6640",
+                "#0f3d26"
+            ]
+        }
+    }

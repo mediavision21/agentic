@@ -1,150 +1,113 @@
-description: Household penetration by video type (SVOD, SSVOD, BSVOD, HVOD, Pay TV channel, TVE) across Nordic countries
-sql: |
-  WITH base AS (
-      SELECT
-          n.period_date,
-          n.country,
-          n.kpi_dimension,
-          n.value AS penetration_country,
-          n.population_household
-      FROM macro.nordic n
-      WHERE
-          n.category IN ('online_video', 'tv')
-          AND n.kpi_type = 'penetration'
-          AND n.kpi_dimension IN (
-              'svod',
-              'ssvod',
-              'bsvod',
-              'hvod',
-              'tve',
-              'pay_tv_channel'
-          )
-          AND n.age_group = '15-74'
-          AND (
-              (
-                  n.kpi_dimension IN ('svod', 'ssvod', 'bsvod')
-                  AND n.period_date >= '2016-01-01'
-              )
-              OR (
-                  n.kpi_dimension = 'hvod'
-                  AND n.period_date >= '2022-07-01'
-              )
-              OR n.kpi_dimension = 'tve'
-              OR n.kpi_dimension = 'pay_tv_channel'
-          )
-          AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
-          [[ AND {{country}} ]]
-          [[ AND {{year}} ]]
-          [[ AND {{quarter_label}} ]]
-  )
-  SELECT
-      period_date,
-      UPPER(kpi_dimension) AS business_model,
-      SUM(penetration_country * population_household)
-          / NULLIF(SUM(population_household), 0) AS penetration
-  FROM base
-  GROUP BY
-      period_date,
-      kpi_dimension
-  ORDER BY
-      period_date,
-      business_model;
-
+description: Household penetration by video type (SVOD, SSVOD, BSVOD, HVOD, Pay TV
+  channel, TVE) across Nordic countries
+sql: "WITH base AS (\n    SELECT\n        n.period_date,\n        n.country,\n   \
+  \     n.kpi_dimension,\n        n.value AS penetration_country,\n        n.population_household\n\
+  \    FROM macro.nordic n\n    WHERE\n        n.category IN ('online_video', 'tv')\n\
+  \        AND n.kpi_type = 'penetration'\n        AND n.kpi_dimension IN (\n    \
+  \        'svod',\n            'ssvod',\n            'bsvod',\n            'hvod',\n\
+  \            'tve',\n            'pay_tv_channel'\n        )\n        AND n.age_group\
+  \ = '15-74'\n        AND (\n            (\n                n.kpi_dimension IN ('svod',\
+  \ 'ssvod', 'bsvod')\n                AND n.period_date >= '2016-01-01'\n       \
+  \     )\n            OR (\n                n.kpi_dimension = 'hvod'\n          \
+  \      AND n.period_date >= '2022-07-01'\n            )\n            OR n.kpi_dimension\
+  \ = 'tve'\n            OR n.kpi_dimension = 'pay_tv_channel'\n        )\n      \
+  \  AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)\n        [[ AND {{country}} ]]\n\
+  \        [[ AND {{year}} ]]\n        [[ AND {{quarter_label}} ]]\n)\nSELECT\n  \
+  \  period_date,\n    UPPER(kpi_dimension) AS business_model,\n    SUM(penetration_country\
+  \ * population_household)\n        / NULLIF(SUM(population_household), 0) * 100\
+  \ AS penetration\nFROM base\nGROUP BY\n    period_date,\n    kpi_dimension\nORDER\
+  \ BY\n    period_date,\n    business_model;\n"
 plots:
-  - id: household_penetration_trend
-    title: "Household penetration by video type — trend"
-    code: |
-      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
-      var rows = data.map(function(d) {
-        return Object.assign({}, d, {
-          penetration: +d.penetration * 100,
-          period_label: fmtPeriod(d.period_date)
-        });
-      });
-      var periods = [];
-      var seen = {};
-      rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).forEach(function(d) {
-        if (!seen[d.period_label]) { seen[d.period_label] = true; periods.push(d.period_label); }
-      });
-      var colorMap = {
-        "SVOD":           "#1a5c38",
-        "SSVOD":          "#b83c26",
-        "BSVOD":          "#d4a017",
-        "HVOD":           "#c9a0dc",
-        "PAY_TV_CHANNEL": "#111111",
-        "TVE":            "#cccccc"
-      };
-      var modelOrder = ["SVOD", "SSVOD", "BSVOD", "HVOD", "PAY_TV_CHANNEL", "TVE"];
-      return Plot.plot({
-        width: Math.max(900, periods.length * 80),
-        marks: [
-          Plot.line(rows, {
-            x: "period_label",
-            y: "penetration",
-            stroke: "business_model",
-            curve: "catmull-rom",
-            strokeWidth: 2,
-            tip: true
-          }),
-          Plot.dot(rows, {
-            x: "period_label",
-            y: "penetration",
-            fill: "business_model",
-            r: 4
-          })
+- id: household_penetration_trend
+  title: Household penetration by video type — trend
+  config: |-
+    {
+        "marks": [
+            {
+                "type": "lineY",
+                "x": "period_label",
+                "y": "penetration",
+                "stroke": "business_model",
+                "curve": "catmull-rom"
+            },
+            {
+                "type": "dot",
+                "x": "period_label",
+                "y": "penetration",
+                "fill": "white",
+                "stroke": "business_model"
+            }
         ],
-        x: { label: null, domain: periods, tickRotate: -45 },
-        y: { label: "Household penetration %", grid: true, domain: [0, 100] },
-        color: {
-          legend: true,
-          domain: modelOrder,
-          range: modelOrder.map(function(m) { return colorMap[m]; })
+        "x": {
+            "label": null
         },
-        marginRight: 160,
-        marginBottom: 80
-      });
-
-  - id: household_penetration_compare
-    title: "Household penetration by video type — latest vs year-ago"
-    code: |
-      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
-      var rows = data.map(function(d) {
-        return Object.assign({}, d, {
-          penetration: +d.penetration * 100,
-          period_label: fmtPeriod(d.period_date)
-        });
-      });
-      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_date; }))).sort();
-      var latest = sortedPeriods[sortedPeriods.length - 1];
-      var latestD = new Date(latest); var yearAgoD = new Date(latestD); yearAgoD.setUTCFullYear(yearAgoD.getUTCFullYear() - 1);
-      var yearAgo = yearAgoD.toISOString().slice(0, 10);
-      var subset = rows.filter(function(d) { return d.period_date === latest || d.period_date === yearAgo; });
-      var latestLabel = fmtPeriod(latest);
-      var yearAgoLabel = fmtPeriod(yearAgo);
-      var modelOrder = ["SVOD", "SSVOD", "BSVOD", "HVOD", "PAY_TV_CHANNEL", "TVE"];
-      return Plot.plot({
-        width: 900,
-        height: 360,
-        fx: { label: null, domain: modelOrder, padding: 0.2 },
-        x:  { label: null, domain: [yearAgoLabel, latestLabel], axis: null },
-        y:  { label: "Household penetration %", grid: true, domain: [0, 100] },
-        color: {
-          legend: true,
-          domain: [yearAgoLabel, latestLabel],
-          range: ["#2d8653", "#1a5c38"]
+        "y": {
+            "label": "Household penetration %",
+            "grid": true,
+            "domain": [
+                0,
+                100
+            ]
         },
-        marks: [
-          Plot.barY(subset, {
-            fx: "business_model",
-            x: "period_label",
-            y: "penetration",
-            fill: "period_label",
-            tip: true,
-            insetLeft: 2,
-            insetRight: 2
-          }),
-          Plot.ruleY([0])
+        "color": {
+            "legend": true,
+            "domain": [
+                "SVOD",
+                "SSVOD",
+                "BSVOD",
+                "HVOD",
+                "PAY_TV_CHANNEL",
+                "TVE"
+            ],
+            "range": [
+                "#1a5c38",
+                "#b83c26",
+                "#d4a017",
+                "#c9a0dc",
+                "#111111",
+                "#cccccc"
+            ]
+        }
+    }
+- id: household_penetration_compare
+  title: Household penetration by video type — latest vs year-ago
+  config: |-
+    {
+        "marks": [
+            {
+                "type": "barY",
+                "x": "period_label",
+                "y": "penetration",
+                "fill": "period_label",
+                "fx": "business_model"
+            }
         ],
-        marginBottom: 40,
-        marginTop: 30
-      });
+        "fx": {
+            "label": null,
+            "domain": [
+                "SVOD",
+                "SSVOD",
+                "BSVOD",
+                "HVOD",
+                "PAY_TV_CHANNEL",
+                "TVE"
+            ],
+            "padding": 0.2
+        },
+        "x": {
+            "label": null,
+            "axis": null
+        },
+        "y": {
+            "label": "Household penetration %",
+            "grid": true,
+            "domain": [
+                0,
+                100
+            ]
+        },
+        "color": {
+            "legend": true,
+            "scheme": "greens"
+        }
+    }

@@ -313,10 +313,12 @@ async def evaluate(req: EvalRequest, request: Request):
 			template_plots = rd.get("template_plots")
 			plot_config    = rd.get("plot_config")
 			if template_plots:
-				tpl["plots"] = [
-					{**p, "code": _literal_str(p["code"])} if "code" in p else p
-					for p in template_plots
-				]
+				def _wrap_plot(p):
+					out = {**p}
+					if "config" in out and isinstance(out["config"], str):
+						out["config"] = _literal_str(out["config"])
+					return out
+				tpl["plots"] = [_wrap_plot(p) for p in template_plots]
 			else:
 				js = _plot_config_to_js(plot_config)
 				if js:

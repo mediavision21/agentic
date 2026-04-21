@@ -1,25 +1,22 @@
 import { useRef, useEffect } from "react"
-import * as _Plot from "@observablehq/plot"
 import ResultChart from "./ResultChart.jsx"
-
-const Plot = { ..._Plot, plot: opts => _Plot.plot({ className: "plot", ...opts }) }
+import { buildFromConfig, appendResponsiveSVG } from "../plotUtils.js"
 
 function TemplatePlotView(options) {
-    const { plot, rows } = options
+    const { plot, rows, columns } = options
     const $container = useRef(null)
 
     useEffect(function () {
         if (!$container.current || !rows || rows.length === 0) return
         $container.current.innerHTML = ""
         try {
-            const fn = new Function("Plot", "__rows__", "var data = __rows__;\n" + plot.code)
-            const chart = fn(Plot, rows)
-            if (chart) $container.current.appendChild(chart)
+            const chart = buildFromConfig({ config: plot.config, rows, columns, width: 700 })
+            if (chart) appendResponsiveSVG($container.current, chart)
         } catch (e) {
             console.error("[TemplatePlot] render error:", e)
             $container.current.textContent = "Plot render error: " + e.message
         }
-    }, [plot, rows])
+    }, [plot, rows, columns])
 
     return <div className="chart-container" ref={$container}></div>
 }
@@ -51,7 +48,7 @@ function PlotPanel(options) {
                                             <div className="template-plot-title">{p.title}</div>
                                             {p.plot_config
                                                 ? <ResultChart columns={columns} rows={rows} plot_config={p.plot_config} />
-                                                : <TemplatePlotView plot={p} rows={rows} />
+                                                : <TemplatePlotView plot={p} rows={rows} columns={columns} />
                                             }
                                         </div>
                                     )

@@ -1,156 +1,103 @@
 description: Total cinema ticket revenue ex VAT by country, FX locked to 2025q4
 filters:
   quarter_label:
-    choices: [Q1]
-    default: [Q1]
+    choices:
+    - Q1
+    default:
+    - Q1
   currency_code:
     label: Currency
     multiple: false
-    choices: [EUR, SEK, NOK, DKK]
-    default: [EUR]
-sql: |
-  WITH spend AS (
-      SELECT n.country, n.period_date,
-             n.value AS spend_users, n.population_household
-      FROM macro.nordic n
-      WHERE n.category = 'cinema'
-        AND n.kpi_type = 'spend'
-        AND n.population_segment = 'users'
-        AND n.age_group = '15-74'
-        AND n.value IS NOT NULL
-        AND n.canonical_name IS NULL
-        AND n.period_date >= '2022-01-01'
-        [[ AND {{country}} ]]
-        [[ AND {{year}} ]]
-        [[ AND {{quarter_label}} ]]
-  ),
-  reach AS (
-      SELECT n.country, n.period_date, n.value AS reach_monthly
-      FROM macro.nordic n
-      WHERE n.category = 'cinema'
-        AND n.kpi_type = 'reach_monthly'
-        AND n.age_group = '15-74'
-        AND n.value IS NOT NULL
-        AND n.canonical_name IS NULL
-  ),
-  target_fx AS (
-      SELECT rate_to_eur
-      FROM macro.fact_fx_rate_quarterly
-      WHERE period_key = '2025q4'
-        [[ AND {{currency_code}} ]]
-  )
-  SELECT
-      s.period_date,
-      INITCAP(s.country) AS country,
-      (s.spend_users * r.reach_monthly * s.population_household * 3
-        * fx.rate_to_eur / tf.rate_to_eur
-        / (1.0 + CASE s.country
-            WHEN 'sweden' THEN 0.25
-            WHEN 'norway' THEN 0.25
-            WHEN 'denmark' THEN 0.25
-            WHEN 'finland' THEN 0.255
-        END)
-        * 1000) AS revenue
-  FROM spend s
-  JOIN reach r
-    ON s.country = r.country
-   AND s.period_date = r.period_date
-  JOIN macro.fact_fx_rate_quarterly fx
-    ON fx.period_key = '2025q4'
-   AND fx.currency_code = CASE s.country
-          WHEN 'sweden' THEN 'SEK'
-          WHEN 'norway' THEN 'NOK'
-          WHEN 'denmark' THEN 'DKK'
-          WHEN 'finland' THEN 'EUR'
-       END
-  CROSS JOIN target_fx tf
-  WHERE tf.rate_to_eur IS NOT NULL
-    AND r.reach_monthly >= 0
-  ORDER BY s.period_date, s.country
-
+    choices:
+    - EUR
+    - SEK
+    - NOK
+    - DKK
+    default:
+    - EUR
+sql: "WITH spend AS (\n    SELECT n.country, n.period_date,\n           n.value AS\
+  \ spend_users, n.population_household\n    FROM macro.nordic n\n    WHERE n.category\
+  \ = 'cinema'\n      AND n.kpi_type = 'spend'\n      AND n.population_segment = 'users'\n\
+  \      AND n.age_group = '15-74'\n      AND n.value IS NOT NULL\n      AND n.canonical_name\
+  \ IS NULL\n      AND n.period_date >= '2022-01-01'\n      [[ AND {{country}} ]]\n\
+  \      [[ AND {{year}} ]]\n      [[ AND {{quarter_label}} ]]\n),\nreach AS (\n \
+  \   SELECT n.country, n.period_date, n.value AS reach_monthly\n    FROM macro.nordic\
+  \ n\n    WHERE n.category = 'cinema'\n      AND n.kpi_type = 'reach_monthly'\n \
+  \     AND n.age_group = '15-74'\n      AND n.value IS NOT NULL\n      AND n.canonical_name\
+  \ IS NULL\n),\ntarget_fx AS (\n    SELECT rate_to_eur\n    FROM macro.fact_fx_rate_quarterly\n\
+  \    WHERE period_key = '2025q4'\n      [[ AND {{currency_code}} ]]\n)\nSELECT\n\
+  \    s.period_date,\n    INITCAP(s.country) AS country,\n    (s.spend_users * r.reach_monthly\
+  \ * s.population_household * 3\n      * fx.rate_to_eur / tf.rate_to_eur\n      /\
+  \ (1.0 + CASE s.country\n          WHEN 'sweden' THEN 0.25\n          WHEN 'norway'\
+  \ THEN 0.25\n          WHEN 'denmark' THEN 0.25\n          WHEN 'finland' THEN 0.255\n\
+  \      END)\n      * 1000) AS revenue\nFROM spend s\nJOIN reach r\n  ON s.country\
+  \ = r.country\n AND s.period_date = r.period_date\nJOIN macro.fact_fx_rate_quarterly\
+  \ fx\n  ON fx.period_key = '2025q4'\n AND fx.currency_code = CASE s.country\n  \
+  \      WHEN 'sweden' THEN 'SEK'\n        WHEN 'norway' THEN 'NOK'\n        WHEN\
+  \ 'denmark' THEN 'DKK'\n        WHEN 'finland' THEN 'EUR'\n     END\nCROSS JOIN\
+  \ target_fx tf\nWHERE tf.rate_to_eur IS NOT NULL\n  AND r.reach_monthly >= 0\nORDER\
+  \ BY s.period_date, s.country\n"
 plots:
-  - id: cinema_revenue_ex_vat_by_country
-    title: "Total cinema ticket revenue ex VAT, by country"
-    code: |
-      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
-      var rows = data.map(function(d) {
-        return Object.assign({}, d, {
-          value: +d.revenue,
-          period_label: fmtPeriod(d.period_date)
-        });
-      });
-
-      var periods = Array.from(new Set(
-        rows.slice().sort(function(a, b) { return a.period_date < b.period_date ? -1 : 1; }).map(function(d) { return d.period_label; })
-      ));
-
-      var countryOrder = ["Sweden", "Norway", "Finland", "Denmark"];
-      var countryColors = ["#e8a838", "#7aafc4", "#52b788", "#e07a5f"];
-
-      var totals = {};
-      rows.forEach(function(d) {
-        if (totals[d.period_label] == undefined) {
-          totals[d.period_label] = 0;
-        }
-        totals[d.period_label] += d.value;
-      });
-      var totalRows = periods.map(function(p) {
-        return { period_label: p, total: totals[p] };
-      });
-
-      return Plot.plot({
-        width: Math.max(700, periods.length * 120),
-        height: 420,
-        x: { label: null, domain: periods, tickRotate: -45 },
-        y: { label: null, grid: true },
-        color: {
-          legend: true,
-          domain: countryOrder,
-          range: countryColors
-        },
-        marks: [
-          Plot.areaY(rows, Plot.stackY({
-            x: "period_label",
-            y: "value",
-            z: "country",
-            fill: "country",
-            order: countryOrder,
-            curve: "catmull-rom"
-          })),
-          Plot.lineY(rows, Plot.stackY({
-            x: "period_label",
-            y: "value",
-            z: "country",
-            stroke: "country",
-            order: countryOrder,
-            curve: "catmull-rom",
-            strokeWidth: 1.5
-          })),
-          Plot.dot(rows, Plot.stackY({
-            x: "period_label",
-            y: "value",
-            z: "country",
-            fill: "white",
-            stroke: "country",
-            order: countryOrder,
-            r: 4,
-            strokeWidth: 2
-          })),
-          Plot.text(totalRows, {
-            x: "period_label",
-            y: "total",
-            text: function(d) {
-              return (d.total / 1e6).toFixed(1) + "M";
+- id: cinema_revenue_ex_vat_by_country
+  title: Total cinema ticket revenue ex VAT, by country
+  config: |-
+    {
+        "marks": [
+            {
+                "type": "areaY",
+                "x": "period_label",
+                "y": "revenue",
+                "fill": "country",
+                "z": "country",
+                "stack": true,
+                "curve": "catmull-rom",
+                "order": [
+                    "Sweden",
+                    "Norway",
+                    "Finland",
+                    "Denmark"
+                ]
             },
-            fontSize: 12,
-            fontWeight: "bold",
-            fill: "#e07a5f",
-            dy: -14
-          }),
-          Plot.ruleY([0])
+            {
+                "type": "lineY",
+                "x": "period_label",
+                "y": "revenue",
+                "stroke": "country",
+                "z": "country",
+                "stack": true,
+                "curve": "catmull-rom"
+            },
+            {
+                "type": "dot",
+                "x": "period_label",
+                "y": "revenue",
+                "stroke": "country",
+                "fill": "white",
+                "z": "country",
+                "stack": true
+            }
         ],
-        marginTop: 40,
-        marginBottom: 80,
-        marginLeft: 60,
-        marginRight: 30
-      });
+        "x": {
+            "label": null,
+            "tickRotate": -45
+        },
+        "y": {
+            "label": null,
+            "grid": true
+        },
+        "color": {
+            "legend": true,
+            "domain": [
+                "Sweden",
+                "Norway",
+                "Finland",
+                "Denmark"
+            ],
+            "range": [
+                "#e8a838",
+                "#7aafc4",
+                "#52b788",
+                "#e07a5f"
+            ]
+        }
+    }

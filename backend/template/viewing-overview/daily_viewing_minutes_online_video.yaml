@@ -1,122 +1,49 @@
-description: Daily viewing minutes of online video (Social video + Other online video) — population-weighted Nordic average
-sql: |
-  SELECT
-    n.period_date,
-    CASE n.kpi_dimension
-      WHEN 'social'                  THEN 'Social video'
-      WHEN 'online_excluding_social' THEN 'Other online video'
-    END AS business_model,
-    CASE n.kpi_dimension
-      WHEN 'social'                  THEN 1
-      WHEN 'online_excluding_social' THEN 2
-    END AS series_order,
-    SUM(n.value * r.value * n.population_1574)
-        / NULLIF(SUM(n.population_1574), 0) AS viewing_time_population
-  FROM macro.nordic n
-  JOIN macro.nordic r
-    ON  n.country       = r.country
-    AND n.period_date   = r.period_date
-    AND n.kpi_dimension = r.kpi_dimension
-  WHERE
-    n.category           = 'online_video'
-    AND n.kpi_type       = 'viewing_time'
-    AND n.kpi_dimension  IN ('social', 'online_excluding_social')
-    AND n.canonical_name IS NULL
-    AND n.age_group      = '15-74'
-    AND r.category        = 'online_video'
-    AND r.kpi_type        = 'reach'
-    AND r.age_group       = '15-74'
-    AND n.period_date   >= '2024-07-01'
-    AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
-  GROUP BY n.period_date, n.kpi_dimension
-  ORDER BY n.period_date, series_order
-
+description: Daily viewing minutes of online video (Social video + Other online video)
+  — population-weighted Nordic average
+sql: "SELECT\n  n.period_date,\n  CASE n.kpi_dimension\n    WHEN 'social'        \
+  \          THEN 'Social video'\n    WHEN 'online_excluding_social' THEN 'Other online\
+  \ video'\n  END AS business_model,\n  CASE n.kpi_dimension\n    WHEN 'social'  \
+  \                THEN 1\n    WHEN 'online_excluding_social' THEN 2\n  END AS series_order,\n\
+  \  SUM(n.value * r.value * n.population_1574)\n      / NULLIF(SUM(n.population_1574),\
+  \ 0) AS viewing_time_population\nFROM macro.nordic n\nJOIN macro.nordic r\n  ON\
+  \  n.country       = r.country\n  AND n.period_date   = r.period_date\n  AND n.kpi_dimension\
+  \ = r.kpi_dimension\nWHERE\n  n.category           = 'online_video'\n  AND n.kpi_type\
+  \       = 'viewing_time'\n  AND n.kpi_dimension  IN ('social', 'online_excluding_social')\n\
+  \  AND n.canonical_name IS NULL\n  AND n.age_group      = '15-74'\n  AND r.category\
+  \        = 'online_video'\n  AND r.kpi_type        = 'reach'\n  AND r.age_group\
+  \       = '15-74'\n  AND n.period_date   >= '2024-07-01'\n  AND EXTRACT(MONTH FROM\
+  \ n.period_date) IN (1, 7)\nGROUP BY n.period_date, n.kpi_dimension\nORDER BY n.period_date,\
+  \ series_order\n"
 plots:
-  - id: daily_viewing_minutes_stacked
-    title: "Daily viewing minutes of online video"
-    code: |
-      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
-      var rows = data.map(function(d) {
-        return Object.assign({}, d, {
-          value: +d.viewing_time_population,
-          period_label: fmtPeriod(d.period_date)
-        });
-      });
-
-      // Identify the two most recent periods (same quarter, one year apart)
-      var sortedPeriods = Array.from(new Set(rows.map(function(d) { return d.period_date; }))).sort();
-      var latest = sortedPeriods[sortedPeriods.length - 1];
-      var latestD = new Date(latest); var yearAgoD = new Date(latestD); yearAgoD.setUTCFullYear(yearAgoD.getUTCFullYear() - 1);
-      var yearAgo = yearAgoD.toISOString().slice(0, 10);
-      var latestLabel = fmtPeriod(latest);
-      var yearAgoLabel = fmtPeriod(yearAgo);
-      var periodOrder  = [yearAgoLabel, latestLabel];
-
-      var subset = rows.filter(function(d) { return d.period_date === latest || d.period_date === yearAgo; });
-
-      // Stack order: Other online video bottom (darker #3ecfac), Social video top (lighter #b2f0e0)
-      var stackOrder = ["Other online video", "Social video"];
-
-      // Build stacked rows with y1 (base) and y2 (top) for each segment
-      var stackedRows = [];
-      var totals = {};
-      periodOrder.forEach(function(period) {
-        var cum = 0;
-        stackOrder.forEach(function(bm) {
-          var row = subset.find(function(d) { return d.period_label === period && d.business_model === bm; });
-          var v = row ? row.value : 0;
-          stackedRows.push({ period_label: period, business_model: bm, y1: cum, y2: cum + v, mid: cum + v / 2, value: v });
-          cum += v;
-        });
-        totals[period] = cum;
-      });
-
-      var maxY = Math.ceil(Math.max.apply(null, Object.values(totals)) * 1.2 / 10) * 10;
-
-      return Plot.plot({
-        width: 500,
-        height: 380,
-        x: { label: null, domain: periodOrder },
-        y: { label: "Minutes per day", grid: true, domain: [0, maxY] },
-        color: {
-          legend: true,
-          domain: ["Social video", "Other online video"],
-          range: ["#b2f0e0", "#3ecfac"]
-        },
-        marks: [
-          Plot.barY(stackedRows, {
-            x: "period_label",
-            y1: "y1",
-            y2: "y2",
-            fill: "business_model",
-            insetLeft: 40,
-            insetRight: 40,
-            tip: false
-          }),
-          Plot.text(stackedRows, {
-            x: "period_label",
-            y: "mid",
-            text: function(d) { return Math.round(d.value) + " min"; },
-            fontSize: 13,
-            fontWeight: "bold",
-            fill: "#1a5c38"
-          }),
-          Plot.text(
-            periodOrder.map(function(p) { return { period_label: p, total: totals[p] }; }),
+- id: daily_viewing_minutes_stacked
+  title: Daily viewing minutes of online video
+  config: |-
+    {
+        "marks": [
             {
-              x: "period_label",
-              y: "total",
-              text: function(d) { return Math.round(d.total) + " min"; },
-              fontSize: 14,
-              fontWeight: "bold",
-              fill: "#111",
-              dy: -12
+                "type": "barY",
+                "x": "period_label",
+                "y": "viewing_time_population",
+                "fill": "business_model",
+                "stack": true
             }
-          ),
-          Plot.ruleY([0])
         ],
-        marginTop: 40,
-        marginBottom: 50,
-        marginLeft: 55,
-        marginRight: 20
-      });
+        "x": {
+            "label": null
+        },
+        "y": {
+            "label": "Minutes per day",
+            "grid": true
+        },
+        "color": {
+            "legend": true,
+            "domain": [
+                "Other online video",
+                "Social video"
+            ],
+            "range": [
+                "#3ecfac",
+                "#b2f0e0"
+            ]
+        }
+    }

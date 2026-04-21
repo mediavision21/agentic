@@ -1,107 +1,52 @@
-description: Daily reach of online video per service — population-weighted Nordic average, top 6 services, grouped by service with one bar per period
-sql: |
-  WITH weighted AS (
-    SELECT
-      period_date,
-      canonical_name AS service,
-      SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS reach_population
-    FROM macro.nordic
-    WHERE category          = 'online_video'
-      AND kpi_type          = 'reach'
-      AND canonical_name    IS NOT NULL
-      AND kpi_dimension     IS NULL
-      AND age_group         = '15-74'
-      AND EXTRACT(MONTH FROM period_date) IN (1, 7)
-      AND period_date       >= '2013-07-01'
-    GROUP BY period_date, canonical_name
-  ),
-  latest_period AS (
-    SELECT MAX(period_date) AS max_period_date FROM weighted
-  ),
-  top6 AS (
-    SELECT service
-    FROM weighted
-    WHERE period_date = (SELECT max_period_date FROM latest_period)
-    ORDER BY reach_population DESC
-    LIMIT 6
-  )
-  SELECT
-    w.period_date,
-    w.service,
-    w.reach_population
-  FROM weighted w
-  JOIN top6 ON w.service = top6.service
-  ORDER BY w.period_date, w.reach_population DESC
-
+description: Daily reach of online video per service — population-weighted Nordic
+  average, top 6 services, grouped by service with one bar per period
+sql: "WITH weighted AS (\n  SELECT\n    period_date,\n    canonical_name AS service,\n\
+  \    SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS reach_population\n\
+  \  FROM macro.nordic\n  WHERE category          = 'online_video'\n    AND kpi_type\
+  \          = 'reach'\n    AND canonical_name    IS NOT NULL\n    AND kpi_dimension\
+  \     IS NULL\n    AND age_group         = '15-74'\n    AND EXTRACT(MONTH FROM period_date)\
+  \ IN (1, 7)\n    AND period_date       >= '2013-07-01'\n  GROUP BY period_date,\
+  \ canonical_name\n),\nlatest_period AS (\n  SELECT MAX(period_date) AS max_period_date\
+  \ FROM weighted\n),\ntop6 AS (\n  SELECT service\n  FROM weighted\n  WHERE period_date\
+  \ = (SELECT max_period_date FROM latest_period)\n  ORDER BY reach_population DESC\n\
+  \  LIMIT 6\n)\nSELECT\n  w.period_date,\n  w.service,\n  w.reach_population\nFROM\
+  \ weighted w\nJOIN top6 ON w.service = top6.service\nORDER BY w.period_date, w.reach_population\
+  \ DESC\n"
 plots:
-  - id: daily_reach_per_service
-    title: "Daily reach of online video per service"
-    code: |
-      function fmtPeriod(s) { var d=new Date(s); return 'Q'+Math.ceil((d.getUTCMonth()+1)/3)+' '+d.getUTCFullYear(); }
-      var rows = data.map(function(d) {
-        return Object.assign({}, d, {
-          reach_population: +d.reach_population,
-          period_label: fmtPeriod(d.period_date)
-        });
-      });
-
-      var allPeriods = Array.from(new Set(rows.map(function(d) { return d.period_date; }))).sort();
-      var shownPeriods = allPeriods.slice(-6);
-      var shownPeriodLabels = shownPeriods.map(function(pd) { return fmtPeriod(pd); });
-
-      var subset = rows.filter(function(d) { return shownPeriods.indexOf(d.period_date) !== -1; });
-
-      var latestPs = shownPeriods[shownPeriods.length - 1];
-      var services = subset
-        .filter(function(d) { return d.period_date === latestPs; })
-        .slice().sort(function(a, b) { return b.reach_population - a.reach_population; })
-        .map(function(d) { return d.service; });
-
-      var greens = ["#1a5c38", "#1e6b42", "#237a4c", "#2d8f5a", "#38a86b", "#52c985"];
-      var colorRange = greens.slice(0, shownPeriods.length);
-
-      var maxY = Math.ceil(
-        Math.max.apply(null, subset.map(function(d) { return d.reach_population; })) * 1.12 / 5
-      ) * 5;
-
-      return Plot.plot({
-        width: Math.max(700, services.length * 130),
-        height: 420,
-        marginBottom: 50,
-        marginLeft: 55,
-        marginRight: 20,
-        marginTop: 30,
-        x: {
-          label: null,
-          domain: shownPeriodLabels,
-          axis: null
+- id: daily_reach_per_service
+  title: Daily reach of online video per service
+  config: |-
+    {
+        "marks": [
+            {
+                "type": "barY",
+                "x": "period_label",
+                "y": "reach_population",
+                "fill": "period_label",
+                "fx": "service"
+            }
+        ],
+        "x": {
+            "label": null,
+            "axis": null
         },
-        fx: {
-          label: null,
-          domain: services,
-          padding: 0.15
+        "fx": {
+            "label": null,
+            "padding": 0.15
         },
-        y: {
-          label: null,
-          grid: true,
-          domain: [0, maxY],
-          tickFormat: function(v) { return v + "%"; }
+        "y": {
+            "label": null,
+            "grid": true
         },
-        color: {
-          legend: true,
-          domain: shownPeriodLabels,
-          range: colorRange
-        },
-        marks: [
-          Plot.barY(subset, {
-            fx: "service",
-            x: "period_label",
-            y: "reach_population",
-            fill: "period_label",
-            tip: true,
-            insetLeft: 1,
-            insetRight: 1
-          }),
-          Plot.ruleY([0])
-        ]
-      });
+        "color": {
+            "legend": true,
+            "range": [
+                "#1a5c38",
+                "#1e6b42",
+                "#237a4c",
+                "#2d8f5a",
+                "#38a86b",
+                "#52c985"
+            ]
+        }
+    }
