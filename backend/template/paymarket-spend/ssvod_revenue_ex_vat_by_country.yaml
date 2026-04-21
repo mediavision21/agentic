@@ -61,7 +61,7 @@ sql: |-
               WHEN 'denmark' THEN 0.25
               WHEN 'finland' THEN 0.255
           END)
-          * 1000 AS revenue
+          * 1000 AS value
     FROM spend s
     JOIN penetration p
       ON s.country = p.country
@@ -87,7 +87,7 @@ plots:
             {
                 "type": "areaY",
                 "x": "period_label",
-                "y": "revenue",
+                "y": "value",
                 "fill": "country",
                 "z": "country",
                 "stack": true,
@@ -102,7 +102,7 @@ plots:
             {
                 "type": "lineY",
                 "x": "period_label",
-                "y": "revenue",
+                "y": "value",
                 "stroke": "country",
                 "z": "country",
                 "stack": true,
@@ -111,7 +111,7 @@ plots:
             {
                 "type": "dot",
                 "x": "period_label",
-                "y": "revenue",
+                "y": "value",
                 "stroke": "country",
                 "fill": "white",
                 "z": "country",

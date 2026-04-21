@@ -25,7 +25,7 @@ function prepareData(options) {
 		for (const col of columns) {
 			d[col] = row[col]
 		}
-		if (isDateLike(d[mark.x])) {
+		if (mark.type !== "barY" && isDateLike(d[mark.x])) {
 			d[mark.x] = new Date(d[mark.x])
 		}
 		if (isNumeric(d[mark.y])) {

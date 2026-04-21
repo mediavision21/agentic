@@ -67,7 +67,7 @@ sql: |-
       WHERE period_date = (SELECT max_period_date FROM latest_quarter)
     )
     SELECT
-      f.period_date, f.service, f.share_of_total,
+      f.period_date, f.service, f.share_of_total AS value,
       sr.rnk
     FROM final f
     JOIN service_rank sr ON f.service = sr.service
@@ -81,7 +81,7 @@ plots:
             {
                 "type": "areaY",
                 "x": "period_label",
-                "y": "share_of_total",
+                "y": "value",
                 "fill": "service",
                 "z": "service",
                 "stack": true

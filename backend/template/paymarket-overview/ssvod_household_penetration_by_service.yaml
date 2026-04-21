@@ -64,7 +64,7 @@ sql: |-
         g.period_date,
         g.service,
         g.service_rank,
-        pw.penetration_household * 100 AS penetration
+        pw.penetration_household * 100 AS value
     FROM service_period_grid g
     LEFT JOIN penetration_weighted pw
       ON pw.service = g.service
@@ -81,7 +81,7 @@ plots:
             {
                 "type": "barY",
                 "x": "period_label",
-                "y": "penetration",
+                "y": "value",
                 "fill": "period_label",
                 "fx": "service"
             }

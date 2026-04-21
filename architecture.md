@@ -20,7 +20,7 @@ mediavision/
 │   ├── agent.py                   # pipeline orchestrator: intent → routing → template exec / tool-loop
 │   ├── generate.py                # Sonnet tool loop — single `query` tool against macro.nordic (long/tidy form)
 │   ├── plot.py                    # plot+summary JSON generator — loads prompt from plot-vN.yaml
-│   ├── plot-v1.yaml               # versioned prompt (header + examples); copy to plot-v2.yaml to iterate
+│   ├── plot-vx.yaml               # versioned prompt (header + examples); copy to new version to iterate
 │   ├── plot-eval.py               # prompt evaluation: runs templates → LLM → SVG, saves YAML to eval-output/
 │   ├── eval_router.py             # FastAPI router /eval/*: list files, render SVG, score with vision LLM
 │   ├── llm.py                     # UNIFIED Claude entrypoint — one async gen for stream / tools / haiku
@@ -35,7 +35,7 @@ mediavision/
 │   ├── sql/
 │   │   └── nordic.sql             # materialized view definition (single source of data)
 │   └── template/                  # YAML templates (sql + plots + optional filter overrides)
-│       └── evaluations/           # auto-saved from positive ("good") evaluations
+│       └── evaluations/           # auto-saved from positive ("thumb up") evaluations
 ├── eval/
 │   ├── package.json               # jsdom + @observablehq/plot for server-side SVG rendering
 │   └── render_plot.mjs            # Node.js: reads {config, rows} from stdin, outputs SVG to stdout
@@ -50,12 +50,11 @@ mediavision/
 │       └── components/
 │           ├── ChatMessage.jsx    # iMessage-style bubble, flat round debug expandables
 │           ├── EvalPanel.jsx      # conversation view with eval ratings (read-only)
-│           ├── PlotEvalPanel.jsx  # Plot Eval tab: N-version side-by-side editor + chart + Claude score
+│           ├── PlotEvalPanel.jsx  # Plot Eval tab: 2-versions side-by-side editor + chart + Claude score
 │           ├── PlotPanel.jsx      # template result view: renders plots via ResultChart.jsx (plot_config)
 │           ├── LoginDialog.jsx    # auth modal (SHA-256 hashed password)
 │           ├── PromptInput.jsx    # text input (bottom bar)
 │           ├── EvalSidebar.jsx    # right sidebar (Eval / Template / Plot Eval tabs)
-│           ├── SkillEditor.jsx    # markdown skill template editor (unused with backend2)
 │           ├── SqlDisplay.jsx     # collapsible <details> for SQL
 │           ├── ResultTable.jsx    # tabular results, capped at top 20 rows
 │           └── ResultChart.jsx    # Observable Plot inline; hard limit 30 categories; edit stays client-side
@@ -127,7 +126,7 @@ After the loop: `meta` with aggregated usage.
 
 ```
 agent:
-    templates = match_template(prompt)            # Haiku
+    templates = match_template(prompt)            # Haiku - look up if we already have template able to answer the user question
     match_sql = apply_filters(top.sql) if top.score >= 0.95 else None
     loop(templates, match_sql)
 
@@ -135,7 +134,7 @@ loop(templates, match_sql):
     sql = match_sql or generate_sql(template_hints=templates[:3])
     inner loop (max 5 iterations):
         rows = run_query(sql)
-        verify(rows, user_prompt)                 # Haiku — NEW
+        verify(rows, user_prompt)                 # Haiku — criticise if the rows are able to answer the user question
         if ok:
             plot, summary, key_takeaways = generate_plot_and_summary(rows)
             yield and return
@@ -177,7 +176,7 @@ After each query with non-empty rows, `verify.py` checks semantic correctness. F
 1. **Routing** (Haiku) — always surfaced when templates loaded, even on `NONE`/errors. Skipped on continuations.
 2. **Filter Resolution** (Haiku) — when a matched template has placeholders.
 3. **generate iter=0 / iter=1 / …** (Sonnet tool loop) — one round per LLM iteration, each with its own `prompt` / `messages` / tokens + `tool_call` + `tool_result` / `response`.
-4. **Plot & Summary** (Sonnet, non-streaming) — `prompt` / `messages` / `response` / `plot_config` / `summary`. Skipped (emits `no_plot`) when result has ≤1 row.
+4. **Plot & Summary** (Sonnet, non-streaming) — `prompt` / `messages` / `response` / `plot_config` / `summary`. Emits `no_plot` when: result has ≤1 row, user explicitly requested no chart/plot, or the model returns `"plot": null` (data doesn't benefit from visualization).
 
 All calls route through `_log_call` / `_log_response` in `llm.py`, which print ANSI-colored dividers tagged with model family (`[llm:haiku]` blue, `[llm:sonnet]` cyan).
 
@@ -186,7 +185,7 @@ All calls route through `_log_call` / `_log_response` in `llm.py`, which print A
 - `True` when the prior assistant turn had stored `sql` + `intent`, AND either `is_data_query(partial)` is False (pure modifier), OR True but **none** of the strong signals fired (`kpi_type`, `service_ids`, `top_n`, `countries`, `category`, `service_filter`).
 - `False` when the new prompt has a strong signal and reads self-contained.
 
-On continuation: prior intent merged with current partial, template routing **skipped**, prior SQL injected under `## Prior Turn Context (modify, do not replace)`, prior `plot_config` forwarded to the plot step so the chart is extended rather than rebuilt.
+On continuation: prior **resolved** intent is carried directly (no re-merge or re-resolve); only explicit new signals extracted from the current prompt are applied as overrides. Template routing **skipped**, prior SQL injected under `## Prior Turn Context (modify, do not replace)`, prior `plot_config` forwarded to the plot step so the chart is extended rather than rebuilt.
 
 Frontend `buildHistory` (App.jsx) carries `{role, text, sql, intent, plot_config, columns}` for assistant turns.
 
@@ -249,7 +248,7 @@ User prompt
 ## Persistence
 - **SQLite** (`mediavision.db`): `llm_logs`, `conversations`, `users`, `evaluations`.
 - `conversations` table: id, user, title, created_at — groups messages by session.
-- `llm_logs`: each row has conversation_id + user for filtering.
+- `llm_logs`: each row has conversation_id + user for filtering. `GET /api/conversations/{conv_id}` filters by both conversation_id and authenticated user to prevent cross-user access.
 - ID format: `conversation_id` and `msg_id` use server-generated timestamps `yyyy-mm-dd HH:mm:ss.nnnnnnnnn`.
 - `result_data` on each llm_logs row stores the full assistant content dict (same shape the frontend assembles live from SSE events). `agent._collect()` taps every event and persists once at stream end so chat history renders identically via `ChatMessage` with zero re-derivation.
 
@@ -265,7 +264,7 @@ cd frontend && npm run dev
 cd eval-ui && npm run dev
 
 # generate eval YAML files
-cd backend && uv run python plot-eval.py --versions v1,v2 --limit 1
+uv run python backend/plot-eval.py --versions v1,v2 --limit 1
 ```
 
 ## Safety

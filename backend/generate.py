@@ -131,7 +131,18 @@ def _format_tool_result(columns, rows):
 	}, default=str)
 
 
-def needs_plot(columns, rows):
+_NO_PLOT_KEYWORDS = ["no chart", "no plot", "no graph", "without chart", "without plot",
+                     "no visualization", "just numbers", "just the data", "text only"]
+
+
+def user_wants_no_plot(prompt):
+    p = prompt.lower()
+    return any(k in p for k in _NO_PLOT_KEYWORDS)
+
+
+def needs_plot(prompt, columns, rows):
+	if user_wants_no_plot(prompt):
+		return False
 	if not rows or len(rows) <= 1:
 		return False
 	return True
@@ -260,7 +271,7 @@ async def run(options):
 
 	plot_config = None
 	summary = None
-	want_plot = needs_plot(last_success["columns"], last_success["rows"])
+	want_plot = needs_plot(prompt, last_success["columns"], last_success["rows"])
 	round_label = "Plot & Summary" if want_plot else "Summary"
 	yield {"type": "round", "label": round_label}
 	if not want_plot:
@@ -282,6 +293,8 @@ async def run(options):
 			yield {"type": "response", "text": plot_debug["response"]}
 			if plot_config:
 				yield {"type": "plot_config", "plot_config": plot_config}
+			else:
+				yield {"type": "no_plot"}
 			if key_takeaways and not key_takeaways_from_agent:
 				yield {"type": "key_takeaways", "items": key_takeaways}
 		else:

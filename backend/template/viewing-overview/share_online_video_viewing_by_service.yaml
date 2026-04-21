@@ -78,7 +78,7 @@ sql: |-
     SELECT
       period_date, service,
       stack_order,
-      SUM(share_of_total) * 100 AS share_of_total
+      SUM(share_of_total) * 100 AS value
     FROM labeled
     GROUP BY period_date, service, stack_order
     ORDER BY period_date, stack_order
@@ -91,7 +91,7 @@ plots:
             {
                 "type": "areaY",
                 "x": "period_label",
-                "y": "share_of_total",
+                "y": "value",
                 "fill": "service",
                 "z": "service",
                 "stack": true

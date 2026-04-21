@@ -92,7 +92,7 @@ sql: |-
         WHEN 'TV' THEN 3
         ELSE 99
       END AS series_order,
-      (viewing_time_population / NULLIF(total_per_period_age, 0)) * 100.0 AS viewing_time_population_share_pct
+      (viewing_time_population / NULLIF(total_per_period_age, 0)) * 100.0 AS value
     FROM normalized
     ORDER BY period_date, age_sort, series_order
 plots:
@@ -104,7 +104,7 @@ plots:
             {
                 "type": "barY",
                 "x": "period_label",
-                "y": "viewing_time_population_share_pct",
+                "y": "value",
                 "fill": "business_model",
                 "fx": "age_group",
                 "stack": true

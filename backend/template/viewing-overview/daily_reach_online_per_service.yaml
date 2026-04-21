@@ -29,7 +29,7 @@ sql: |-
     SELECT
       w.period_date,
       w.service,
-      w.reach_population
+      w.reach_population AS value
     FROM weighted w
     JOIN top6 ON w.service = top6.service
     ORDER BY w.period_date, w.reach_population DESC
@@ -42,7 +42,7 @@ plots:
             {
                 "type": "barY",
                 "x": "period_label",
-                "y": "reach_population",
+                "y": "value",
                 "fill": "period_label",
                 "fx": "service"
             }

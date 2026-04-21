@@ -9,7 +9,7 @@ import LoginDialog from "./components/LoginDialog.jsx"
 import parseRawResponse from "./parseResponse.js"
 
 const DEFAULT_LEFT = 240
-const DEFAULT_RIGHT = 240
+const DEFAULT_RIGHT = 300
 
 function App() {
 	function makeSessionId() {

@@ -94,7 +94,7 @@ sql: |-
         WHEN 'TV' THEN 3
         ELSE 99
       END AS series_order,
-      viewing_time_population
+      viewing_time_population AS value
     FROM agg
     ORDER BY period_date, age_sort, series_order
 plots:
@@ -106,7 +106,7 @@ plots:
             {
                 "type": "barY",
                 "x": "period_label",
-                "y": "viewing_time_population",
+                "y": "value",
                 "fill": "business_model",
                 "fx": "age_group",
                 "stack": true

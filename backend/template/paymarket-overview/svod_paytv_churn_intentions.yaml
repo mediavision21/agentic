@@ -14,7 +14,7 @@ sql: |-
             WHEN n.category = 'tv' THEN 'Pay TV'
         END AS business_model,
         SUM(n.value * n.population_household)
-            / NULLIF(SUM(n.population_household), 0) * 100 AS churn_intention
+            / NULLIF(SUM(n.population_household), 0) * 100 AS value
     FROM macro.nordic n
     WHERE
         n.kpi_type = 'churn_intention'
@@ -40,14 +40,14 @@ plots:
             {
                 "type": "lineY",
                 "x": "period_label",
-                "y": "churn_intention",
+                "y": "value",
                 "stroke": "business_model",
                 "curve": "catmull-rom"
             },
             {
                 "type": "dot",
                 "x": "period_label",
-                "y": "churn_intention",
+                "y": "value",
                 "fill": "white",
                 "stroke": "business_model"
             }

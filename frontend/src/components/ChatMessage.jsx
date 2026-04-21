@@ -253,7 +253,7 @@ function ChatMessage(options) {
 
 				{summary && <Markdown text={summary} />}
 
-				{displayRows && displayRows.length > 0 && !template_plots && !no_plot && (
+				{plot_config && !template_plots && (
 					<ResultChart columns={displayColumns} rows={displayRows} plot_config={plot_config} msg_id={msg_id} />
 				)}
 

@@ -3,7 +3,7 @@ description: Daily viewing time of social video (minutes/day) across Nordic coun
 sql: |-
     SELECT
         n.period_date,
-        SUM(n.value * n.population) / NULLIF(SUM(n.population), 0) AS viewing_time_minutes
+        SUM(n.value * n.population) / NULLIF(SUM(n.population), 0) AS value
     FROM macro.nordic n
     WHERE
         n.category = 'online_video'
@@ -28,14 +28,14 @@ plots:
             {
                 "type": "lineY",
                 "x": "period_label",
-                "y": "viewing_time_minutes",
+                "y": "value",
                 "stroke": "#1a5c38",
                 "curve": "catmull-rom"
             },
             {
                 "type": "dot",
                 "x": "period_label",
-                "y": "viewing_time_minutes",
+                "y": "value",
                 "fill": "#1a5c38"
             }
         ],
@@ -59,7 +59,7 @@ plots:
             {
                 "type": "barY",
                 "x": "period_label",
-                "y": "viewing_time_minutes",
+                "y": "value",
                 "fill": "period_label"
             }
         ],

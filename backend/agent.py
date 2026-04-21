@@ -111,18 +111,6 @@ def is_continuation(partial, prior_ctx):
 	return True
 
 
-def _merge_partial_over_intent(prior_intent, partial):
-	merged = {}
-	for k in ("kpi_type", "kpi_dimension", "kpi_detail", "category", "countries",
-			  "service_ids", "service_filter", "top_n", "year", "quarter",
-			  "trend_mode", "age_group", "population_segment", "service_level",
-			  "video_type_comparison"):
-		if prior_intent.get(k) is not None:
-			merged[k] = prior_intent[k]
-	for k, v in partial.items():
-		merged[k] = v
-	return merged
-
 
 async def generate_agent_stream(prompt, history=None, user="", conversation_id=""):
 	content = {"loading": False, "rounds": []}
@@ -159,16 +147,25 @@ async def _generate_agent_stream_inner(prompt, history=None, user="", conversati
 	continuation = is_continuation(partial, prior_ctx)
 	prior_sql = None
 	prior_plot_config = None
+	intent = None
+	intent_block = ""
 	if continuation:
 		prior_sql = prior_ctx.get("sql")
 		prior_plot_config = prior_ctx.get("plot_config")
 		prior_intent = prior_ctx.get("intent") or {}
-		partial = _merge_partial_over_intent(prior_intent, partial)
-		print(f"[agent] continuation detected — merged partial: {partial}")
-
-	intent = None
-	intent_block = ""
-	if is_data_query(partial):
+		if prior_intent:
+			# carry the already-resolved prior intent; apply only explicit new signals
+			intent = dict(prior_intent)
+			for k, v in partial.items():
+				intent[k] = v
+			preamble = build_preamble(intent)
+			intent_block = build_intent_prompt_block(intent)
+			print(f"[agent] continuation — carried intent, new signals: {partial}")
+			yield {"type": "preamble", "text": preamble}
+			yield {"type": "intent", "intent": intent}
+		else:
+			print(f"[agent] continuation detected (no prior intent)")
+	elif is_data_query(partial):
 		intent = resolve_defaults(partial)
 		preamble = build_preamble(intent)
 		intent_block = build_intent_prompt_block(intent)

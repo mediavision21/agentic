@@ -155,7 +155,7 @@ sql: |-
     SELECT
       s.period_date,
       s.genre,
-      s.share * 100 AS viewing_time_population_share
+      s.share * 100 AS value
     FROM shares s
     JOIN genre_rank r
       ON s.genre_code = r.genre_code
@@ -169,7 +169,7 @@ plots:
             {
                 "type": "barY",
                 "x": "period_label",
-                "y": "viewing_time_population_share",
+                "y": "value",
                 "fill": "genre",
                 "stack": true
             }

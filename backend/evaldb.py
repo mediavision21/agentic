@@ -170,12 +170,18 @@ def get_all_conversations_by_user():
 	return [{"user": u, "conversations": convs} for u, convs in groups.items()]
 
 
-def get_conversation_messages(conversation_id):
+def get_conversation_messages(conversation_id, user=None):
 	conn = _conn()
-	rows = conn.execute(
-		"SELECT id, prompt, response, result_data, timestamp FROM llm_logs WHERE conversation_id=? ORDER BY timestamp ASC",
-		(conversation_id,)
-	).fetchall()
+	if user:
+		rows = conn.execute(
+			"SELECT id, prompt, response, result_data, timestamp FROM llm_logs WHERE conversation_id=? AND user=? ORDER BY timestamp ASC",
+			(conversation_id, user)
+		).fetchall()
+	else:
+		rows = conn.execute(
+			"SELECT id, prompt, response, result_data, timestamp FROM llm_logs WHERE conversation_id=? ORDER BY timestamp ASC",
+			(conversation_id,)
+		).fetchall()
 	conn.close()
 	return [dict(r) for r in rows]
 

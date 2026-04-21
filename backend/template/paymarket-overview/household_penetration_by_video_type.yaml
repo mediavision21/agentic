@@ -41,7 +41,7 @@ sql: |-
         period_date,
         UPPER(kpi_dimension) AS business_model,
         SUM(penetration_country * population_household)
-            / NULLIF(SUM(population_household), 0) * 100 AS penetration
+            / NULLIF(SUM(population_household), 0) * 100 AS value
     FROM base
     GROUP BY
         period_date,
@@ -58,14 +58,14 @@ plots:
             {
                 "type": "lineY",
                 "x": "period_label",
-                "y": "penetration",
+                "y": "value",
                 "stroke": "business_model",
                 "curve": "catmull-rom"
             },
             {
                 "type": "dot",
                 "x": "period_label",
-                "y": "penetration",
+                "y": "value",
                 "fill": "white",
                 "stroke": "business_model"
             }
@@ -109,7 +109,7 @@ plots:
             {
                 "type": "barY",
                 "x": "period_label",
-                "y": "penetration",
+                "y": "value",
                 "fill": "period_label",
                 "fx": "business_model"
             }

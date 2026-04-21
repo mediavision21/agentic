@@ -1,16 +1,12 @@
 import { useRef, useEffect, useState } from "react"
 import { highlightJSON } from "../highlight.js"
-import { buildFromConfig, buildFallback, appendResponsiveSVG } from "../plotUtils.js"
-
-// how long to wait for plot_config before showing fallback (ms)
-const FALLBACK_DELAY = 5000
+import { buildFromConfig, appendResponsiveSVG } from "../plotUtils.js"
 
 function ResultChart(options) {
     const { columns, rows, plot_config, msg_id } = options
     const $container = useRef(null)
     const [activeConfig, setActiveConfig] = useState(plot_config)
     const [editing, setEditing] = useState(false)
-    const [fallbackReady, setFallbackReady] = useState(!!plot_config)
     const [draft, setDraft] = useState(() => plot_config ? JSON.stringify(plot_config, null, 2) : "")
     const [configError, setConfigError] = useState("")
     const [renderError, setRenderError] = useState("")
@@ -21,40 +17,25 @@ function ResultChart(options) {
         setDraft(plot_config ? JSON.stringify(plot_config, null, 2) : "")
         setConfigError("")
         setEditing(false)
-        if (plot_config) setFallbackReady(true)
     }, [plot_config])
 
     useEffect(function () {
-        if (activeConfig) return
-        const timer = setTimeout(function () { setFallbackReady(true) }, FALLBACK_DELAY)
-        return function () { clearTimeout(timer) }
-    }, [activeConfig])
-
-    useEffect(function () {
-        if (!$container.current) return
+        if (!$container.current || !activeConfig) return
         $container.current.innerHTML = ""
         setRenderError("")
 
-        const hasConfig = activeConfig && activeConfig.marks && activeConfig.marks.length > 0
-
-        if (!hasConfig && !fallbackReady) return
+        const hasConfig = activeConfig.marks && activeConfig.marks.length > 0
+        if (!hasConfig) return
 
         const w = 700
-        let chart = null
-        if (hasConfig) {
-            try {
-                chart = buildFromConfig({ config: activeConfig, rows, columns, width: w })
-            } catch (e) {
-                console.error("[ResultChart] plot_config render failed, falling back", e)
-                setRenderError(e.message)
-                chart = buildFallback({ columns, rows, width: w })
-            }
-        } else {
-            chart = buildFallback({ columns, rows, width: w })
+        try {
+            const chart = buildFromConfig({ config: activeConfig, rows, columns, width: w })
+            if (chart) appendResponsiveSVG($container.current, chart)
+        } catch (e) {
+            console.error("[ResultChart] plot_config render failed", e)
+            setRenderError(e.message)
         }
-
-        if (chart) appendResponsiveSVG($container.current, chart)
-    }, [columns, rows, activeConfig, fallbackReady])
+    }, [columns, rows, activeConfig])
 
     function handleReplot() {
         try {

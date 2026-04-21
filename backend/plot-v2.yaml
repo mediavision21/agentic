@@ -12,7 +12,7 @@ header: |
       "summary": "<2-4 sentence summary — always state the time period covered; if there is a trend describe direction and magnitude; if there is a comparison highlight the top/bottom and the gap>"
     }
 
-    Data is always in long/tidy form: one row per observation, a single `value` column, with categorical keys (service, country, period_date, …) as separate columns. Map those keys to `stroke`, `fill`, or `fx` facets — not to separate y columns.
+    Data is always in long/tidy form: one row per observation, a single numeric column (may be named `value`, `viewing_time_minutes`, `reach`, or any metric name — use the exact column name from the data), with categorical keys (service, country, period_date, …) as separate columns. Map those keys to `stroke`, `fill`, or `fx` facets — not to separate y columns.
 
     - Using label "Reach (thousands)" instead of "Reach (000s)"
     - Never output stroke: null.
@@ -29,6 +29,8 @@ header: |
     - when the number of point more than 30, do not use bar mark
     - the plot header shall say daily reach unless it's explictly weekly reach
     - the x-axis shall using year quarter insert of just quarter if to avoid line cross over stacked togetherß
+    - if the data does not benefit from visualization (single observation, lookup answer, non-comparative scalar), return "plot": null and provide only "summary"
+    - all the observable plot channel shall be some existing field in the rows. 
 examples: |
     ## Examples
 
@@ -43,8 +45,8 @@ examples: |
     {"plot":{"marks":[{"type":"lineY","x":"period_date","y":"value","stroke":"country","curve":"catmull-rom"}],"x":{"label":null},"y":{"label":"Reach %","grid":true},"color":{"legend":true}},"summary":"Reach varies by country over time. Finland consistently shows higher reach than Denmark across all measured quarters."}
     ```
 
-    Input columns: period_date, service, value
     Sample rows:
+    period_date, service, value
     2025-01-01, netflix, 0.42
     2025-01-01, disney, 0.18
     2026-01-01, netflix, 0.45
@@ -54,8 +56,8 @@ examples: |
     {"plot":{"marks":[{"type":"barY","fx":"service","x":"period_date","y":"value","fill":"period_date"}],"fx":{"label":null},"x":{"axis":null},"y":{"label":"Penetration %","grid":true,"tickFormat":".0%"},"color":{"legend":true}},"summary":"Netflix grew from 42% to 45% between Q1 2025 and Q1 2026. Disney+ also climbed from 18% to 21%."}
     ```
 
-    Input columns: period_date, service, value
     Sample rows:
+    period_date, service, value
     2025-01-01, Netflix, 0.35
     2025-01-01, YouTube, 0.25
     2025-01-01, Disney+, 0.15
@@ -69,4 +71,6 @@ examples: |
     {"plot":{"marks":[{"type":"barY","x":"period_date","y":"value","fill":"service"}],"x":{"label":null},"y":{"label":"Share of viewing","grid":true,"tickFormat":".0%"},"color":{"legend":true}},"summary":"YouTube gained share from 25% to 28%, while Netflix dropped from 35% to 32%. Disney+ remained stable."}
     ```
 
+    the previous sample rows, does not have a field kpi_type, then "stroke": "kpi_service" is INVALID
+    
     Respond with ONLY the ```json ... ``` block. No other text.

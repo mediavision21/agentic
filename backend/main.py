@@ -193,8 +193,9 @@ async def list_conversations(request: Request):
 
 
 @app.get("/api/conversations/{conv_id}")
-async def get_conversation(conv_id: str):
-	messages = evaldb.get_conversation_messages(conv_id)
+async def get_conversation(conv_id: str, request: Request):
+	username = get_current_user(request)
+	messages = evaldb.get_conversation_messages(conv_id, user=username)
 	return {"messages": messages}
 
 

@@ -14,7 +14,7 @@ sql: |-
             WHEN n.category = 'tv'                          THEN 3
         END AS series_order,
         SUM(n.value * r.value * n.population_1574)
-            / NULLIF(SUM(n.population_1574), 0) AS viewing_time_population
+            / NULLIF(SUM(n.population_1574), 0) AS value
     FROM macro.nordic n
     JOIN macro.nordic r
       ON  n.country       = r.country
@@ -45,7 +45,7 @@ plots:
             {
                 "type": "barY",
                 "x": "period_label",
-                "y": "viewing_time_population",
+                "y": "value",
                 "fill": "period_label",
                 "fx": "business_model"
             }
@@ -80,14 +80,14 @@ plots:
             {
                 "type": "lineY",
                 "x": "period_label",
-                "y": "viewing_time_population",
+                "y": "value",
                 "stroke": "business_model",
                 "curve": "catmull-rom"
             },
             {
                 "type": "dot",
                 "x": "period_label",
-                "y": "viewing_time_population",
+                "y": "value",
                 "fill": "white",
                 "stroke": "business_model"
             }

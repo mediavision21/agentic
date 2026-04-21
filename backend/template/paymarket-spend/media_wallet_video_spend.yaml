@@ -94,7 +94,7 @@ sql: |-
             (c.spend * c.rate_country / tf.rate_to_eur)
             * c.penetration
             * c.population_household
-        ) / NULLIF(SUM(c.population_household), 0) AS spend_population
+        ) / NULLIF(SUM(c.population_household), 0) AS value
     FROM combined c
     CROSS JOIN target_fx tf
     WHERE tf.rate_to_eur IS NOT NULL
@@ -117,14 +117,14 @@ plots:
             {
                 "type": "lineY",
                 "x": "period_label",
-                "y": "spend_population",
+                "y": "value",
                 "stroke": "business_model",
                 "curve": "catmull-rom"
             },
             {
                 "type": "dot",
                 "x": "period_label",
-                "y": "spend_population",
+                "y": "value",
                 "fill": "white",
                 "stroke": "business_model"
             }

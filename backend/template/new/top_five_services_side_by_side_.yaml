@@ -47,7 +47,7 @@ sql: |-
     SELECT
       w.period_date,
       w.service,
-      ROUND((w.penetration_pct)::numeric, 1) AS penetration_pct
+      ROUND((w.penetration_pct)::numeric, 1) AS value
     FROM weighted w
     JOIN top5 ON w.service = top5.service
     JOIN recent_periods rp ON w.period_date = rp.period_date
@@ -61,7 +61,7 @@ plots:
             {
                 "type": "barY",
                 "x": "period_label",
-                "y": "penetration_pct",
+                "y": "value",
                 "fill": "period_label",
                 "fx": "service"
             }

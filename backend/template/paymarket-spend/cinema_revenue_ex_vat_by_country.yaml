@@ -57,7 +57,7 @@ sql: |-
               WHEN 'denmark' THEN 0.25
               WHEN 'finland' THEN 0.255
           END)
-          * 1000) AS revenue
+          * 1000) AS value
     FROM spend s
     JOIN reach r
       ON s.country = r.country
@@ -83,7 +83,7 @@ plots:
             {
                 "type": "areaY",
                 "x": "period_label",
-                "y": "revenue",
+                "y": "value",
                 "fill": "country",
                 "z": "country",
                 "stack": true,
@@ -98,7 +98,7 @@ plots:
             {
                 "type": "lineY",
                 "x": "period_label",
-                "y": "revenue",
+                "y": "value",
                 "stroke": "country",
                 "z": "country",
                 "stack": true,
@@ -107,7 +107,7 @@ plots:
             {
                 "type": "dot",
                 "x": "period_label",
-                "y": "revenue",
+                "y": "value",
                 "stroke": "country",
                 "fill": "white",
                 "z": "country",

@@ -10,7 +10,7 @@ sql: |-
         n.period_date,
         'TVOD' AS business_model,
         SUM(n.value * n.population_household)
-            / NULLIF(SUM(n.population_household), 0) * 100 AS tvod
+            / NULLIF(SUM(n.population_household), 0) * 100 AS value
     FROM macro.nordic n
     WHERE
         n.category = 'tvod'
@@ -32,14 +32,14 @@ plots:
             {
                 "type": "lineY",
                 "x": "period_label",
-                "y": "tvod",
+                "y": "value",
                 "stroke": "#1a5c38",
                 "curve": "catmull-rom"
             },
             {
                 "type": "dot",
                 "x": "period_label",
-                "y": "tvod",
+                "y": "value",
                 "fill": "white",
                 "stroke": "#1a5c38"
             }

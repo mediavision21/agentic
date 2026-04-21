@@ -76,9 +76,9 @@ sql: |-
         FROM base
         GROUP BY period_date
     )
-    SELECT period_date, 'SSVOD' AS subscription_type, ssvod_total / 1000 AS subscriptions FROM agg
+    SELECT period_date, 'SSVOD' AS subscription_type, ssvod_total / 1000 AS value FROM agg
     UNION ALL
-    SELECT period_date, 'BSVOD' AS subscription_type, bsvod_total / 1000 AS subscriptions FROM agg
+    SELECT period_date, 'BSVOD' AS subscription_type, bsvod_total / 1000 AS value FROM agg
     ORDER BY period_date, subscription_type
 plots:
 - id: svod_subs_ssvod_vs_bsvod
@@ -89,7 +89,7 @@ plots:
             {
                 "type": "barY",
                 "x": "period_label",
-                "y": "subscriptions",
+                "y": "value",
                 "fill": "subscription_type",
                 "stack": true
             }

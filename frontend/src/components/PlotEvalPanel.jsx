@@ -1,29 +1,8 @@
 import { useState, useEffect, useRef } from "react"
-import * as Plot from "@observablehq/plot"
-
-const MARK_FN = {
-	lineY: Plot.lineY,
-	barY: Plot.barY,
-	dot: Plot.dot,
-	areaY: Plot.areaY,
-}
-
-function renderPlot(options) {
-	const { $el, config, rows } = options
-	$el.innerHTML = ""
-	const marks = (config.marks || []).map(function(m) {
-		const { type, ...opts } = m
-		const fn = MARK_FN[type]
-		if (fn) return fn(rows, opts)
-		return null
-	}).filter(Boolean)
-	const { marks: _, ...rest } = config
-	const chart = Plot.plot({ marks, ...rest })
-	$el.appendChild(chart)
-}
+import { buildFromConfig, appendResponsiveSVG } from "../plotUtils.js"
 
 function VersionPanel(options) {
-	const { label, configStr, rows, description } = options
+	const { label, configStr, rows, columns, description } = options
 	const $chart = useRef(null)
 	const [draft, setDraft] = useState(configStr || "")
 	const [renderErr, setRenderErr] = useState("")
@@ -35,7 +14,9 @@ function VersionPanel(options) {
 		if (!$chart.current || !configStr) return
 		try {
 			const config = JSON.parse(configStr)
-			renderPlot({ $el: $chart.current, config, rows })
+			$chart.current.innerHTML = ""
+			const chart = buildFromConfig({ config, rows, columns, width: 700 })
+			if (chart) appendResponsiveSVG($chart.current, chart)
 			setRenderErr("")
 		} catch(e) {
 			setRenderErr(e.message)
@@ -46,7 +27,9 @@ function VersionPanel(options) {
 		if (!$chart.current) return
 		try {
 			const config = JSON.parse(draft)
-			renderPlot({ $el: $chart.current, config, rows })
+			$chart.current.innerHTML = ""
+			const chart = buildFromConfig({ config, rows, columns, width: 700 })
+			if (chart) appendResponsiveSVG($chart.current, chart)
 			setRenderErr("")
 		} catch(e) {
 			setRenderErr(e.message)
@@ -170,6 +153,7 @@ function PlotEvalPanel(options) {
 									label={vk}
 									configStr={data[vk]}
 									rows={rows || []}
+									columns={columns || []}
 									description={description || ""}
 								/>
 							)

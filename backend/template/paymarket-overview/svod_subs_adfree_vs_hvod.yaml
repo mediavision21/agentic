@@ -76,9 +76,9 @@ sql: |-
         FROM base
         GROUP BY period_date
     )
-    SELECT period_date, 'Ad-free' AS subscription_type, adfree_total / 1000 AS subscriptions FROM agg
+    SELECT period_date, 'Ad-free' AS subscription_type, adfree_total / 1000 AS value FROM agg
     UNION ALL
-    SELECT period_date, 'HVOD' AS subscription_type, hvod_total / 1000 AS subscriptions FROM agg
+    SELECT period_date, 'HVOD' AS subscription_type, hvod_total / 1000 AS value FROM agg
     ORDER BY period_date, subscription_type
 plots:
 - id: svod_subs_adfree_vs_hvod
@@ -89,7 +89,7 @@ plots:
             {
                 "type": "barY",
                 "x": "period_label",
-                "y": "subscriptions",
+                "y": "value",
                 "fill": "subscription_type",
                 "stack": true
             }
