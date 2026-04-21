@@ -235,6 +235,9 @@ export function buildFromConfig(options) {
 		applyTickDensity(xOpts, xDomain)
 	}
 	const isCategorical = xCol && filteredRows.length > 0 && !isDateLike(filteredRows[0][xCol]) && !isNumeric(filteredRows[0][xCol])
+	if (xCol === "period_date" && !xOpts.tickFormat) {
+		xOpts.tickFormat = fmtPeriod
+	}
 	if (isCategorical && !xOpts.tickFormat && !isPeriodLabelX) {
 		xOpts.tickFormat = truncLabel
 	}
@@ -383,6 +386,9 @@ export function buildFallback(options) {
 	if (xDomain) {
 		xOpts.domain = xDomain
 		applyTickDensity(xOpts, xDomain)
+	}
+	if (chartInfo.x === "period_date" && !xOpts.tickFormat) {
+		xOpts.tickFormat = fmtPeriod
 	}
 	const isCategorical = chartInfo.x && filteredRows.length > 0 && !isDateLike(filteredRows[0][chartInfo.x]) && !isNumeric(filteredRows[0][chartInfo.x])
 	if (isCategorical && !xOpts.tickFormat) {

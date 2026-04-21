@@ -265,6 +265,7 @@ cd eval-ui && npm run dev
 
 # generate eval YAML files
 uv run python backend/plot-eval.py --versions v1,v2 --limit 1
+uv run python backend/plot-eval.py --versions v1,v2 --template 1
 ```
 
 ## Safety

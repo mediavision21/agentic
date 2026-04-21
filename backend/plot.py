@@ -5,7 +5,7 @@ import yaml
 import llm
 
 
-def _load_prompt(version="v2"):
+def _load_prompt(version="v3"):
     path = os.path.join(os.path.dirname(__file__), f"plot-{version}.yaml")
     with open(path) as f:
         return yaml.safe_load(f)

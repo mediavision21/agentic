@@ -77,14 +77,28 @@ def write_yaml_results(results, versions, out_dir):
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--versions", default="v1")
+    parser.add_argument("--versions", default="v3")
     parser.add_argument("--limit", type=int, default=5)
+    parser.add_argument("--template", default=None)
     args = parser.parse_args()
     versions = [v.strip() for v in args.versions.split(",")]
 
     await db.create_pool()
     templates = load_templates()
-    template_list = list(templates.items())[:args.limit]
+
+    if args.template is not None:
+        keys = list(templates.keys())
+        if args.template.isdigit():
+            idx = int(args.template)
+            template_list = [(keys[idx], templates[keys[idx]])] if idx < len(keys) else []
+        elif "-" in args.template and args.template.replace("-", "").isdigit():
+            start, end = args.template.split("-", 1)
+            template_list = [(keys[i], templates[keys[i]]) for i in range(int(start), min(int(end) + 1, len(keys)))]
+        else:
+            matched = [(k, v) for k, v in templates.items() if args.template in k]
+            template_list = matched
+    else:
+        template_list = list(templates.items())[:args.limit]
 
     prompt_by_version = {}
     for version in versions:

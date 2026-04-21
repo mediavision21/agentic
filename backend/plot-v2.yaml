@@ -12,51 +12,64 @@ header: |
       "summary": "<2-4 sentence summary — always state the time period covered; if there is a trend describe direction and magnitude; if there is a comparison highlight the top/bottom and the gap>"
     }
 
-    Data is always in long/tidy form: one row per observation, a single numeric column (may be named `value`, `viewing_time_minutes`, `reach`, or any metric name — use the exact column name from the data), with categorical keys (service, country, period_date, …) as separate columns. Map those keys to `stroke`, `fill`, or `fx` facets — not to separate y columns.
+    ## source rows
 
-    - Using label "Reach (thousands)" instead of "Reach (000s)"
-    - Never output stroke: null.
-    - shall NOT use dot mark unless user specified
-    - use period_date as x axis for timeseries data (ISO date format YYYY-MM-DD, first day of each quarter)
-    - line mark with spline if prefered option
+    - always in long/tidy form: one row per observation, a single numeric column value
+    - with categorical keys (service, country, …) as separate columns. Map those keys to observable plot channels `stroke`, `fill`, or `fx` facets — NEVAL map to y channel.
+    - period_date shall be as x-axis if presented. it is the first day of each quarter
+
+    ## marks
+    - line mark with spline as default mark option
     - only use bar plot when there is clear comparsion side by side for at most 3 categories.
     - only add area mark when use clear requested
-    - categorical stroke/fill/fx columns: soft limit — if more than 8 unique values exist, prefer top 8 by total value (hard cap is 30 in renderer; add a note in summary)
-    - for comparison charts (fx facets or top-growth), soft limit to top 8 categories by value
-    - in the summary text, avoid using the words "reach" or "penetration" as generic explanatory words (e.g. "reaching X" or "penetrating the market") — these are metric names in the data and would be confusing; use alternatives like "grew to", "rose to", "climbed", "expanded", "achieved" instead
+    - shall NOT use dot mark unless user specified
+    - when the number of point more than 30, do not use bar mark
+    - all the observable plot channel shall be some existing field in the rows. 
+    
+    ## axis label
+
+    - Using label "Reach (thousands)" instead of "Reach (000s)"
     - for the y-axis label: if the data contains columns kpi_type, kpi_dimension, or kpi_service, use their distinct value(s) as the label (e.g. "reach", "svod penetration", "linear reach") — prefer kpi_dimension over kpi_type when both present
     - for kpi reach, always explicitly specify whether it is daily reach or weekly reach in the summary (check kpi_dimension / kpi_type values for "daily" or "weekly" and state it explicitly, e.g. "daily reach grew to…" or "weekly reach climbed from…", if no cleary specify which reach type is, then it's daily reach)
-    - when the number of point more than 30, do not use bar mark
     - the plot header shall say daily reach unless it's explictly weekly reach
-    - the x-axis shall using year quarter insert of just quarter if to avoid line cross over stacked togetherß
+
+    ## Limit Rules
+    
+    - categorical stroke/fill/fx columns: soft limit — if more than 8 unique values exist, prefer top 8 by total value (hard cap is 30 in renderer; add a note in summary)
+    - for comparison charts (fx facets or top-growth), soft limit to top 8 categories by value
+
+    ## Naming and summary 
+    - in the summary text, avoid using the words "reach" or "penetration" as generic explanatory words (e.g. "reaching X" or "penetrating the market") — these are metric names in the data and would be confusing; 
+    - use alternatives like "grew to", "rose to", "climbed", "expanded", "achieved" instead
     - if the data does not benefit from visualization (single observation, lookup answer, non-comparative scalar), return "plot": null and provide only "summary"
-    - all the observable plot channel shall be some existing field in the rows. 
+  
 examples: |
     ## Examples
 
-    Input columns: period_date, country, value
-    Sample rows:
+    <rows>
+    period_date, country, value
     2011-01-01, denmark, 2.67
     2011-01-01, finland, 5.33
     2011-07-01, denmark, 3.10
     2011-07-01, finland, 6.28
-
+    </rows>
     ```json
     {"plot":{"marks":[{"type":"lineY","x":"period_date","y":"value","stroke":"country","curve":"catmull-rom"}],"x":{"label":null},"y":{"label":"Reach %","grid":true},"color":{"legend":true}},"summary":"Reach varies by country over time. Finland consistently shows higher reach than Denmark across all measured quarters."}
     ```
 
-    Sample rows:
+    <rows>
     period_date, service, value
     2025-01-01, netflix, 0.42
     2025-01-01, disney, 0.18
     2026-01-01, netflix, 0.45
     2026-01-01, disney, 0.21
+    </rows>
 
     ```json
     {"plot":{"marks":[{"type":"barY","fx":"service","x":"period_date","y":"value","fill":"period_date"}],"fx":{"label":null},"x":{"axis":null},"y":{"label":"Penetration %","grid":true,"tickFormat":".0%"},"color":{"legend":true}},"summary":"Netflix grew from 42% to 45% between Q1 2025 and Q1 2026. Disney+ also climbed from 18% to 21%."}
     ```
 
-    Sample rows:
+    <rows>
     period_date, service, value
     2025-01-01, Netflix, 0.35
     2025-01-01, YouTube, 0.25
@@ -66,11 +79,11 @@ examples: |
     2026-01-01, YouTube, 0.28
     2026-01-01, Disney+, 0.16
     2026-01-01, Others, 0.24
-
+    </rows>
     ```json
     {"plot":{"marks":[{"type":"barY","x":"period_date","y":"value","fill":"service"}],"x":{"label":null},"y":{"label":"Share of viewing","grid":true,"tickFormat":".0%"},"color":{"legend":true}},"summary":"YouTube gained share from 25% to 28%, while Netflix dropped from 35% to 32%. Disney+ remained stable."}
     ```
 
     the previous sample rows, does not have a field kpi_type, then "stroke": "kpi_service" is INVALID
     
-    Respond with ONLY the ```json ... ``` block. No other text.
+    Respond with ONLY the ```json ... ``` block. No other text or commentary
