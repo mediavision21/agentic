@@ -63,6 +63,31 @@ async def generate_plot_and_summary(options):
 	return plot, summary, key_takeaways, debug
 
 
+async def generate_simple_summary(options):
+	user_prompt     = options["user_prompt"]
+	columns         = options["columns"]
+	rows            = options["rows"]
+	log_id          = options.get("log_id")
+	user            = options.get("user", "")
+	conversation_id = options.get("conversation_id", "")
+
+	header = ", ".join(columns)
+	lines = [header] + [", ".join(str(v) for v in row.values()) for row in rows]
+	data_text = "\n".join(lines)
+	messages = [{"role": "user", "content": f"Answer this question in 1-2 sentences based on the data.\n\nQuestion: {user_prompt}\n\nData:\n{data_text}"}]
+	text = await llm.complete_text({
+		"system": "You are a helpful data analyst. Answer the user's question in 1-2 sentences based on the data provided.",
+		"messages": messages,
+		"model": "haiku",
+		"label": "simple-summary",
+		"log_id": log_id,
+		"user": user,
+		"conversation_id": conversation_id,
+	})
+	debug = {"prompt": "", "messages": messages, "response": text}
+	return text.strip(), debug
+
+
 async def generate_summary(prompt, columns, rows):
 	# summary-only call (templates path) — no plot needed
 	_plot, summary, _key_takeaways, _debug = await generate_plot_and_summary({

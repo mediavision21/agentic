@@ -4,7 +4,7 @@ import llm
 import evaldb
 from db import execute_query, fetch_schema_text
 from data_examples import load_data_examples, load_kpi_combinations
-from plot import generate_plot_and_summary
+from plot import generate_plot_and_summary, generate_simple_summary
 from sql_utils import postprocess_sql, build_messages
 from verify import verify_rows
 
@@ -131,6 +131,12 @@ def _format_tool_result(columns, rows):
 	}, default=str)
 
 
+def needs_plot(columns, rows):
+	if not rows or len(rows) <= 1:
+		return False
+	return True
+
+
 async def run(options):
 	prompt          = options["prompt"]
 	matches         = options.get("matches") or []
@@ -252,29 +258,45 @@ async def run(options):
 	if key_takeaways_from_agent:
 		yield {"type": "key_takeaways", "items": key_takeaways_from_agent}
 
-	yield {"type": "round", "label": "Plot & Summary"}
 	plot_config = None
 	summary = None
+	want_plot = needs_plot(last_success["columns"], last_success["rows"])
+	round_label = "Plot & Summary" if want_plot else "Summary"
+	yield {"type": "round", "label": round_label}
+	if not want_plot:
+		yield {"type": "no_plot"}
 	try:
-		plot_config, summary, key_takeaways, plot_debug = await generate_plot_and_summary({
-			"user_prompt": prompt,
-			"columns": last_success["columns"],
-			"rows": last_success["rows"],
-			"label": "generate-plot",
-			"log_id": msg_id,
-			"user": user,
-			"conversation_id": conversation_id,
-			"prior_plot_config": prior_plot_config,
-		})
-		yield {"type": "prompt",   "text": plot_debug["prompt"]}
-		yield {"type": "messages", "messages": plot_debug["messages"]}
-		yield {"type": "response", "text": plot_debug["response"]}
-		if plot_config:
-			yield {"type": "plot_config", "plot_config": plot_config}
+		if want_plot:
+			plot_config, summary, key_takeaways, plot_debug = await generate_plot_and_summary({
+				"user_prompt": prompt,
+				"columns": last_success["columns"],
+				"rows": last_success["rows"],
+				"label": "generate-plot",
+				"log_id": msg_id,
+				"user": user,
+				"conversation_id": conversation_id,
+				"prior_plot_config": prior_plot_config,
+			})
+			yield {"type": "prompt",   "text": plot_debug["prompt"]}
+			yield {"type": "messages", "messages": plot_debug["messages"]}
+			yield {"type": "response", "text": plot_debug["response"]}
+			if plot_config:
+				yield {"type": "plot_config", "plot_config": plot_config}
+			if key_takeaways and not key_takeaways_from_agent:
+				yield {"type": "key_takeaways", "items": key_takeaways}
+		else:
+			summary, simple_debug = await generate_simple_summary({
+				"user_prompt": prompt,
+				"columns": last_success["columns"],
+				"rows": last_success["rows"],
+				"log_id": msg_id,
+				"user": user,
+				"conversation_id": conversation_id,
+			})
+			yield {"type": "messages", "messages": simple_debug["messages"]}
+			yield {"type": "response", "text": simple_debug["response"]}
 		if summary:
 			yield {"type": "summary", "text": summary}
-		if key_takeaways and not key_takeaways_from_agent:
-			yield {"type": "key_takeaways", "items": key_takeaways}
 	except Exception as e:
 		import traceback
 		print(f"[generate] plot+summary error: {e}\n{traceback.format_exc()}")

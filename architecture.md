@@ -177,7 +177,7 @@ After each query with non-empty rows, `verify.py` checks semantic correctness. F
 1. **Routing** (Haiku) — always surfaced when templates loaded, even on `NONE`/errors. Skipped on continuations.
 2. **Filter Resolution** (Haiku) — when a matched template has placeholders.
 3. **generate iter=0 / iter=1 / …** (Sonnet tool loop) — one round per LLM iteration, each with its own `prompt` / `messages` / tokens + `tool_call` + `tool_result` / `response`.
-4. **Plot & Summary** (Sonnet, non-streaming) — `prompt` / `messages` / `response` / `plot_config` / `summary`.
+4. **Plot & Summary** (Sonnet, non-streaming) — `prompt` / `messages` / `response` / `plot_config` / `summary`. Skipped (emits `no_plot`) when result has ≤1 row.
 
 All calls route through `_log_call` / `_log_response` in `llm.py`, which print ANSI-colored dividers tagged with model family (`[llm:haiku]` blue, `[llm:sonnet]` cyan).
 
@@ -237,7 +237,7 @@ User prompt
     → SSE events:
        conversation_id, msg_id, user_prompt, preamble, intent,
        round, prompt, messages, token, tool_call, tool_result, response,
-       sql, rows, plot_config, template_plots, summary, key_takeaways,
+       sql, rows, plot_config, no_plot, template_plots, summary, key_takeaways,
        suggestions, distilled_summary, error
 
     → llm_logs saved per iteration with user + conversation_id

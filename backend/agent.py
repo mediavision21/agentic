@@ -53,6 +53,8 @@ def _collect(event, content):
 		content["key_takeaways"] = event["items"]
 	elif t == "plot_config":
 		content["plot_config"] = event["plot_config"]
+	elif t == "no_plot":
+		content["no_plot"] = True
 	elif t == "template_plots":
 		content["template_plots"] = event["plots"]
 	elif t == "distilled_summary":
@@ -129,10 +131,10 @@ async def generate_agent_stream(prompt, history=None, user="", conversation_id="
 			_collect(event, content)
 			yield event
 	finally:
-		mid = content.get("msg_id")
-		if mid:
+		msg_id = content.get("msg_id")
+		if msg_id:
 			try:
-				evaldb.update_result_data(mid, content)
+				evaldb.update_result_data(msg_id, content)
 			except Exception as e:
 				print(f"[agent] persist content failed: {e}")
 

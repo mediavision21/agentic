@@ -164,7 +164,7 @@ function ChatMessage(options) {
 	}
 
 	// assistant
-	const { loading, error, sql, explanation, text, columns, rows, summary, key_takeaways, plot_config, streaming_text, suggestions, msg_id, template_plots, rounds } = message.content
+	const { loading, error, sql, explanation, text, columns, rows, summary, key_takeaways, plot_config, no_plot, streaming_text, suggestions, msg_id, template_plots, rounds } = message.content
 	const displayColumns = localColumns || columns
 	const displayRows = localRows || rows
 	// const showDebug = location.hostname === "localhost" || localStorage.getItem("debug") === "1"
@@ -253,7 +253,7 @@ function ChatMessage(options) {
 
 				{summary && <Markdown text={summary} />}
 
-				{displayRows && displayRows.length > 0 && !template_plots && (
+				{displayRows && displayRows.length > 0 && !template_plots && !no_plot && (
 					<ResultChart columns={displayColumns} rows={displayRows} plot_config={plot_config} msg_id={msg_id} />
 				)}
 
