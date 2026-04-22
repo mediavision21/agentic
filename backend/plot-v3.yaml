@@ -31,8 +31,9 @@ header: |
   - when the number of points is more than 30, do not use bar mark
   - all observable plot channels shall reference existing fields in the rows
 
-  ## axis labels
+  ## axis
 
+  - y axis channel shall ALWAYS using value
   - Using label "Reach (thousands)" instead of "Reach (000s)"
   - for the y-axis label: if the data contains columns kpi_type, kpi_dimension, or kpi_service, use their distinct value(s) as the label (e.g. "Reach", "SVOD Penetration", "Linear Reach") — prefer kpi_dimension over kpi_type when both present
   - percentage y-axes must always include a "%" suffix in the axis label (e.g. "SVOD Penetration (%)") and use tickFormat ".0%"

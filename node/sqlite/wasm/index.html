@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SQLite WASM Example</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+        button { background: #0e639c; color: #fff; border: none; padding: 6px 14px; cursor: pointer; margin: 4px; }
+        button:hover { background: #1177bb; }
+        pre { background: #252526; padding: 12px; white-space: pre-wrap; min-height: 40px; }
+        h2 { color: #9cdcfe; margin-top: 24px; }
+        input, textarea { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 4px 8px; width: 100%; box-sizing: border-box; }
+        label { display: block; margin: 6px 0 2px; color: #9cdcfe; }
+    </style>
+</head>
+<body>
+    <h1>SQLite WASM + OPFS Example</h1>
+    <p>Database persists in OPFS — data survives page reload.</p>
+
+    <h2>1. Open database</h2>
+    <label>Path</label>
+    <input id="dbPath" value="/demo.db">
+    <button id="btnOpen">Open</button>
+    <pre id="outOpen">—</pre>
+
+    <h2>2. Execute SQL</h2>
+    <label>SQL</label>
+    <textarea id="sqlExec" rows="3">CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, text TEXT, ts INTEGER)</textarea>
+    <button id="btnExec">exec()</button>
+    <pre id="outExec">—</pre>
+
+    <h2>3. Insert row</h2>
+    <label>Text</label>
+    <input id="noteText" value="hello from OPFS">
+    <button id="btnRun">run() INSERT</button>
+    <pre id="outRun">—</pre>
+
+    <h2>4. Query rows</h2>
+    <label>SQL</label>
+    <input id="sqlQuery" value="SELECT * FROM notes ORDER BY id DESC LIMIT 10">
+    <button id="btnQuery">query()</button>
+    <pre id="outQuery">—</pre>
+
+    <h2>5. Close</h2>
+    <button id="btnClose">close()</button>
+    <pre id="outClose">—</pre>
+
+    <script type="module">
+        import { init, open, close, exec, query, run } from './index.js'
+
+        let db = null
+
+        document.getElementById('btnOpen').onclick = async () => {
+            const $out = document.getElementById('outOpen')
+            try {
+                const path = document.getElementById('dbPath').value
+                $out.textContent = 'initializing…'
+                await init()
+                $out.textContent = 'opening…'
+                db = await open(path)
+                $out.textContent = 'opened db handle: ' + db
+            }
+            catch (err) {
+                $out.textContent = 'ERROR: ' + err.message
+            }
+        }
+
+        document.getElementById('btnExec').onclick = async () => {
+            const $out = document.getElementById('outExec')
+            if (!db) { $out.textContent = 'open a db first'; return }
+            try {
+                const sql = document.getElementById('sqlExec').value
+                await exec(db, sql)
+                $out.textContent = 'ok'
+            }
+            catch (err) {
+                $out.textContent = 'ERROR: ' + err.message
+            }
+        }
+
+        document.getElementById('btnRun').onclick = async () => {
+            const $out = document.getElementById('outRun')
+            if (!db) { $out.textContent = 'open a db first'; return }
+            try {
+                const text = document.getElementById('noteText').value
+                const result = await run(db, 'INSERT INTO notes (text, ts) VALUES (?, ?)', [text, Date.now()])
+                $out.textContent = JSON.stringify(result, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2)
+            }
+            catch (err) {
+                $out.textContent = 'ERROR: ' + err.message
+            }
+        }
+
+        document.getElementById('btnQuery').onclick = async () => {
+            const $out = document.getElementById('outQuery')
+            if (!db) { $out.textContent = 'open a db first'; return }
+            try {
+                const sql = document.getElementById('sqlQuery').value
+                const rows = await query(db, sql)
+                $out.textContent = JSON.stringify(rows, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2)
+            }
+            catch (err) {
+                $out.textContent = 'ERROR: ' + err.message
+            }
+        }
+
+        document.getElementById('btnClose').onclick = async () => {
+            const $out = document.getElementById('outClose')
+            if (!db) { $out.textContent = 'no db open'; return }
+            try {
+                await close(db)
+                db = null
+                $out.textContent = 'closed'
+            }
+            catch (err) {
+                $out.textContent = 'ERROR: ' + err.message
+            }
+        }
+    </script>
+</body>
+</html>
