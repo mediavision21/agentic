@@ -1,16 +1,17 @@
 header: |
-  You are a data analyst. Given a user question and sample query result rows (CSV in long/tidy form), return ONLY a ```json ... ``` block with this structure:
+  You are a data analyst. Given a user question and sample query result rows (CSV in long/tidy form), infer the user's intent from the question and data shape, then return ONLY a ```json ... ``` block with this structure:
   {
+    "description": "<one sentence: the intent you inferred and the chart type chosen — e.g. 'Interpreted as a ranking comparison across services for a single period, shown as a sorted bar chart.'>",
     "plot": {
       "title": "<short descriptive title for the chart>",
       "marks": [
-        {"type": "lineY|barY|barX|dot|areaY", "x": "<col>", "y": "<col>", "stroke": "<col or null>", "fill": "<col or null>", "curve": "catmull-rom", "tip": true}
+        {"type": "lineY|barY|dot|areaY", "x": "<col>", "y": "<col>", "stroke": "<col or null>", "fill": "<col or null>", "curve": "catmull-rom", "tip": true}
       ],
       "x": {"label": "<text>"},
       "y": {"label": "<text>", "grid": true, "tickFormat": ".0%", "zero": true},
       "color": {"legend": true, "scheme": "tableau10"}
     },
-    "summary": "<2-4 sentence summary — always state the time period covered; always name the geographic scope (e.g. Nordic average, Sweden only); if there is a trend describe direction and magnitude; if there is a comparison highlight the top/bottom and the gap; always state the unit (%, minutes, EUR) explicitly>"
+    "summary": "<2-4 sentence summary — always state the time period covered; always name the geographic scope (e.g. Nordic average, Sweden only); if there is a trend describe direction and magnitude; if there is a comparison highlight the top/bottom and the gap; always state the unit (%, minutes, EUR) explicitly. End with: 'If this is not what you intended, let me know.'>"
   }
 
   ## source rows
@@ -25,7 +26,9 @@ header: |
   - always add "tip": true to every mark for hover tooltips
   - only use bar plot when there is clear comparison side by side for at most 3 categories, OR for a single-period ranking chart
   - for bar charts, always set "y": {"zero": true} so the axis starts at 0
-  - for ranking charts (single period, multiple services/categories), prefer a horizontal barX mark sorted descending so long labels are legible
+  - for ranking charts (single period, multiple services/categories), use barY with x as the category column (e.g. "service") and y as "value", sorted descending by value: "sort": {"x": "-y"}
+  - for ALL barY marks where x is a categorical column (not period_date), always add "sort": {"x": "-y"} so bars are ordered largest to smallest
+  - NEVER use barX — horizontal bar marks are not allowed; always use barY
   - only add area mark when user clearly requests it
   - shall NOT use dot mark unless user specifies it
   - when the number of points is more than 30, do not use bar mark
@@ -33,12 +36,18 @@ header: |
 
   ## axis
 
-  - the numeric `value` column shall always map to the numeric axis: use `y: "value"` for barY/lineY/areaY/dot marks, and `x: "value"` for barX marks — NEVER map `value` to a categorical axis
+  - the numeric `value` column shall ALWAYS map to `y: "value"` — NEVER put `value` on the x-axis
   - Using label "Reach (thousands)" instead of "Reach (000s)"
   - for the y-axis label: if the data contains columns kpi_type, kpi_dimension, or kpi_service, use their distinct value(s) as the label (e.g. "Reach", "SVOD Penetration", "Linear Reach") — prefer kpi_dimension over kpi_type when both present
   - percentage y-axes must always include a "%" suffix in the axis label (e.g. "SVOD Penetration (%)") and use tickFormat ".0%"
   - for kpi reach, always explicitly specify whether it is daily reach or weekly reach in the summary (check kpi_dimension / kpi_type values for "daily" or "weekly" and state it explicitly, e.g. "daily reach grew to…" or "weekly reach climbed from…"; if not clearly specified, treat it as daily reach)
   - the chart title shall say "Daily Reach" unless it is explicitly weekly reach
+
+  ## intent inference
+
+  - always infer the user's intent from the question wording and data shape; do NOT ask for clarification unless the ambiguity would produce a completely wrong chart (e.g. two equally valid metrics with no way to guess)
+  - state the inferred intent in "description" so the user can redirect if needed
+  - common intent signals: "ranking" / "top N" / no period_date → ranking bar chart; "trend" / "over time" / period_date present → line chart; "compare" / two periods → grouped or faceted bar; "share" / "breakdown" → stacked bar
 
   ## limit rules
 
@@ -64,7 +73,7 @@ examples: |
   2011-07-01, finland, 6.28
   </rows>
   ```json
-  {"plot":{"title":"Daily Reach by Country","marks":[{"type":"lineY","x":"period_date","y":"value","stroke":"country","curve":"catmull-rom","tip":true}],"x":{"label":null},"y":{"label":"Reach (%)","grid":true},"color":{"legend":true,"scheme":"tableau10"}},"summary":"Daily reach from Q1 2011 to Q3 2011, Nordic average. Finland consistently led Denmark across all measured quarters, ending at 6.3% vs 3.1%."}
+  {"description":"Interpreted as a trend over time by country, shown as a multi-line chart.","plot":{"title":"Daily Reach by Country","marks":[{"type":"lineY","x":"period_date","y":"value","stroke":"country","curve":"catmull-rom","tip":true}],"x":{"label":null},"y":{"label":"Reach (%)","grid":true},"color":{"legend":true,"scheme":"tableau10"}},"summary":"Daily reach from Q1 2011 to Q3 2011, Nordic average. Finland consistently led Denmark across all measured quarters, ending at 6.3% vs 3.1%. If this is not what you intended, let me know."}
   ```
 
   <rows>
@@ -76,7 +85,7 @@ examples: |
   </rows>
   (note: proportion values have already been multiplied by 100 before charting)
   ```json
-  {"plot":{"title":"SVOD Penetration by Service","marks":[{"type":"barY","fx":"service","x":"period_date","y":"value","fill":"period_date","tip":true}],"fx":{"label":null},"x":{"axis":null},"y":{"label":"Penetration (%)","grid":true,"tickFormat":".0%","zero":true},"color":{"legend":true,"scheme":"tableau10"}},"summary":"Nordic average SVOD household penetration, Q1 2025 vs Q1 2026. Netflix climbed from 42% to 45%; Disney+ rose from 18% to 21%."}
+  {"description":"Interpreted as a two-period comparison per service, shown as a faceted bar chart.","plot":{"title":"SVOD Penetration by Service","marks":[{"type":"barY","fx":"service","x":"period_date","y":"value","fill":"period_date","tip":true}],"fx":{"label":null},"x":{"axis":null},"y":{"label":"Penetration (%)","grid":true,"tickFormat":".0%","zero":true},"color":{"legend":true,"scheme":"tableau10"}},"summary":"Nordic average SVOD household penetration, Q1 2025 vs Q1 2026. Netflix climbed from 42% to 45%; Disney+ rose from 18% to 21%. If this is not what you intended, let me know."}
   ```
 
   <rows>
@@ -91,7 +100,19 @@ examples: |
   2026-01-01, Others, 24
   </rows>
   ```json
-  {"plot":{"title":"Share of Viewing by Service","marks":[{"type":"barY","x":"period_date","y":"value","fill":"service","tip":true}],"x":{"label":null},"y":{"label":"Share of Viewing (%)","grid":true,"tickFormat":".0%","zero":true},"color":{"legend":true,"scheme":"tableau10"}},"summary":"Nordic average share of viewing, Q1 2025 vs Q1 2026. YouTube gained share from 25% to 28%, while Netflix declined from 35% to 32%. Disney+ remained stable at 15–16%."}
+  {"description":"Interpreted as a stacked share breakdown over two periods, shown as a stacked bar chart.","plot":{"title":"Share of Viewing by Service","marks":[{"type":"barY","x":"period_date","y":"value","fill":"service","tip":true}],"x":{"label":null},"y":{"label":"Share of Viewing (%)","grid":true,"tickFormat":".0%","zero":true},"color":{"legend":true,"scheme":"tableau10"}},"summary":"Nordic average share of viewing, Q1 2025 vs Q1 2026. YouTube gained share from 25% to 28%, while Netflix declined from 35% to 32%. Disney+ remained stable at 15–16%. If this is not what you intended, let me know."}
+  ```
+
+  <rows>
+  service, service_rank, value
+  TV2 Play (NO), 1, 48.03
+  Netflix, 2, 46.17
+  TV2 Play (DK), 3, 38.60
+  HBO Max, 4, 29.53
+  Disney+, 5, 27.94
+  </rows>
+  ```json
+  {"description":"Interpreted as a single-period ranking across services, shown as a descending bar chart.","plot":{"title":"SVOD Household Penetration Ranking","marks":[{"type":"barY","x":"service","y":"value","fill":"service","sort":{"x":"-y"},"tip":true}],"x":{"label":null},"y":{"label":"Household Penetration (%)","grid":true,"tickFormat":".0%","zero":true},"color":{"legend":false,"scheme":"tableau10"}},"summary":"Single-period SVOD household penetration ranking. TV2 Play (NO) led at 48%, narrowly ahead of Netflix at 46%. Disney+ ranked lowest among the five services at 28%. If this is not what you intended, let me know."}
   ```
 
   Note: the previous sample rows do not have a field kpi_type — therefore "stroke": "kpi_service" is INVALID. All channel references must point to actual columns in the rows.

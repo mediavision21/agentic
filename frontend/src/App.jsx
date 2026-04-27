@@ -29,9 +29,12 @@ function App() {
 	const [authChecked, setAuthChecked] = useState(false)
 	const [adminGroups, setAdminGroups] = useState([]) // [{user, conversations}]
 	const [expandedUsers, setExpandedUsers] = useState({})
+	const [adminViewSession, setAdminViewSession] = useState(null)
 	const $bottom = useRef(null)
 
-	const currentSession = sessions.find(function (s) { return s.id === activeId })
+	const currentSession = (adminViewSession && adminViewSession.id === activeId)
+		? adminViewSession
+		: sessions.find(function (s) { return s.id === activeId })
 
 	// restore session from cookie on page load
 	useEffect(function () {
@@ -89,13 +92,12 @@ function App() {
 	}
 
 	function openAdminConversation(conv) {
-		// add to sessions if not already present, then select + load
-		const existing = sessions.find(function (s) { return s.id === conv.id })
-		if (existing) {
-			selectSession(conv.id)
+		if (adminViewSession && adminViewSession.id === conv.id) {
+			setActiveId(conv.id)
+			setEvalView(null)
 		} else {
 			const stub = { id: conv.id, serverId: conv.id, title: conv.title || "Untitled", messages: [], loaded: false }
-			setSessions(function (prev) { return [stub, ...prev] })
+			setAdminViewSession(stub)
 			setActiveId(conv.id)
 			setEvalView(null)
 			loadConversation(conv.id)
@@ -154,6 +156,12 @@ function App() {
 					return { ...s, messages: msgs, loaded: true }
 				})
 			})
+			setAdminViewSession(function (prev) {
+				if (prev && prev.id === id) {
+					return { ...prev, messages: msgs, loaded: true }
+				}
+				return prev
+			})
 		} catch (e) {
 			console.error("[loadConversation]", e)
 		}
@@ -173,6 +181,7 @@ function App() {
 		setEvalView(null)
 		setTemplateView(null)
 		setPlotEvalView(null)
+		setAdminViewSession(null)
 
 		const session = sessions.find(function (s) { return s.id === id })
 		if (session && session.loaded === false) {
@@ -302,7 +311,7 @@ function App() {
 		const assistantMsg = { role: "assistant", content: { loading: true, streaming_text: "" } }
 
 		setSessions(function (prev) {
-			return prev.map(function (s) {
+			const updated = prev.map(function (s) {
 				if (s.id !== sessionId) return s
 				const isFirst = s.messages.length === 0
 				return {
@@ -311,6 +320,11 @@ function App() {
 					messages: [...s.messages, userMsg, assistantMsg],
 				}
 			})
+			const session = updated.find(function (s) { return s.id === sessionId })
+			if (session) {
+				return [session, ...updated.filter(function (s) { return s.id !== sessionId })]
+			}
+			return updated
 		})
 		setLoading(true)
 
@@ -499,7 +513,7 @@ function App() {
 						return (
 							<div
 								key={s.id}
-								className={"session-item" + (s.id === activeId && !evalView ? " active" : "")}
+								className={"session-item" + (s.id === activeId && !adminViewSession && !evalView ? " active" : "")}
 								onClick={function () { selectSession(s.id) }}
 							>
 								{s.title}
@@ -522,7 +536,7 @@ function App() {
 											return (
 												<div
 													key={c.id}
-													className="session-item admin-user-conv"
+													className={"session-item admin-user-conv" + (c.id === activeId && adminViewSession ? " active" : "")}
 													onClick={function () { openAdminConversation(c) }}
 												>
 													{c.title || "Untitled"}

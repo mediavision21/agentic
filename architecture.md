@@ -164,9 +164,10 @@ Model returns up to 6 candidates with similarity scores (0.0–1.0).
 ### Slow Path — Direct SQL Generation (Sonnet)
 `generate.js run()` with skills-organized system prompt:
 - `## Skill: schema` — database schema
+- `## Skill: kpi_taxonomy` — static KPI taxonomy (Family A/B, slug→kpi_type/dimension/population_weight/quarter rules)
+- `## Skill: kpi_info` — valid KPI combinations (from DB, ground truth)
 - `## Skill: sample_data` — recent sample rows
-- `## Skill: kpi_info` — valid KPI combinations
-- `## Skill: how_to_resolve` — intent resolution guidance
+- `## Skill: how_to_resolve` — per-query resolved intent (dynamic, from intent-extract)
 - Outer retry loop (max 4): each attempt is a single Sonnet call (no tools) that outputs SQL in a ` ```sql ``` ` block
 - Backend extracts SQL, executes it directly
 - After each attempt: `generate.verifyAndGenerate()` — single Sonnet call that verifies rows AND generates plot+summary
@@ -230,7 +231,7 @@ User prompt
     → generate_plot_and_summary (Sonnet) → plot_config + summary
 
     [Slow Path — score < 0.95]
-    → skills prompt (schema + sample_data + kpi_info + how_to_resolve)
+    → skills prompt (schema + kpi_taxonomy + kpi_info + sample_data + how_to_resolve)
     → outer loop (max 4):
         → Sonnet (no tools) → SQL in ```sql``` block → backend executes → rows
         → verify_and_generate (Sonnet, ONE step) → ok + plot + summary
@@ -247,6 +248,11 @@ User prompt
        assistant bubble: SQL collapsible, table, inline chart, one
        collapsible &lt;details&gt; per round (prompt / messages / response / tool_calls)
 </pre>
+
+## Sidebar / Session State (`App.jsx`)
+- `sessions`: array of the **current user's own** conversations (loaded on login, ordered by `created_at DESC` + fresh "New chat" appended). Sending a new message moves that session to position 0 (most-recently-active first).
+- `adminViewSession`: separate state for admin viewing another user's conversation. Never added to `sessions` — avoids polluting the admin's own list. Cleared when user clicks their own session.
+- `activeId`: shared ID for both own sessions and admin view. Admin conv items in the sidebar use `active` class when `c.id === activeId && adminViewSession`.
 
 ## Persistence
 - **SQLite** (`mediavision.db`, via `node/sqlite.js` + native binding): `llm_logs`, `conversations`, `users`, `evaluations`.

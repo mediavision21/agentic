@@ -27,8 +27,12 @@ async function _buildSystemPrompt(options) {
     } = options
 
     const schema = await fetchSchemaText()
-    let base = getGeneratePrompt().header
+    const generatePrompt = getGeneratePrompt()
+    let base = generatePrompt.header
     base += `\n\n## Skill: schema\n${schema}`
+    if (generatePrompt.kpi_taxonomy) {
+        base += `\n\n## Skill: kpi_taxonomy\n${generatePrompt.kpi_taxonomy}`
+    }
     if (kpiCombinations) {
         base += `\n\n## Skill: kpi_info\nValid KPI combinations (CSV: category,kpi_type,kpi_dimension). Only use combinations from this list:\n${kpiCombinations}`
     }
