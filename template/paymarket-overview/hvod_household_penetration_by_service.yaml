@@ -91,7 +91,8 @@ plots:
         },
         "fx": {
             "label": null,
-            "padding": 0.15
+            "padding": 0.15,
+            "tickRotate": 20
         },
         "y": {
             "label": "Household penetration %",
@@ -99,6 +100,7 @@ plots:
         },
         "color": {
             "legend": true,
+            "tickFormat": "fmtPeriod",
             "range": [
                 "#c7e8c7",
                 "#8dc88d",
@@ -107,5 +109,6 @@ plots:
                 "#1a6640",
                 "#0f3d26"
             ]
-        }
+        },
+        "marginBottom": 50
     }

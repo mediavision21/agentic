@@ -89,10 +89,10 @@ plots:
                 "stack": true,
                 "curve": "catmull-rom",
                 "order": [
-                    "Sweden",
-                    "Norway",
-                    "Finland",
-                    "Denmark"
+                  "Sweden",
+                  "Norway",
+                  "Finland",
+                  "Denmark"
                 ]
             },
             {

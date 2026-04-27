@@ -57,7 +57,8 @@ plots:
                 "Other online video",
                 "TV"
             ],
-            "padding": 0.3
+            "padding": 0.3,
+            "tickRotate": 20
         },
         "x": {
             "label": null,
@@ -69,7 +70,8 @@ plots:
         },
         "color": {
             "legend": true,
-            "scheme": "greens"
+            "scheme": "greens",
+            "tickFormat": "fmtPeriod"
         }
     }
 - id: daily_viewing_minutes_video_trend

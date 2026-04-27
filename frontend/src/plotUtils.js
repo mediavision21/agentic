@@ -134,6 +134,11 @@ function sortedBarDomain(options) {
 		.map(function (e) { return e[0] })
 }
 
+function resolveFmt(v) {
+	if (v === "fmtPeriod" || v === "quarter") return fmtPeriod
+	return v
+}
+
 const MARK_FN = {
 	lineY: Plot.lineY,
 	barY: Plot.barY,
@@ -158,7 +163,18 @@ export function buildFromConfig(options, shortCut = true) {
 			if (m.type === "lineY") opts.curve = m.curve || "catmull-rom"
 			return [fn(data, opts)]
 		})
-		result = Plot.plot({ width: width || 600, ...config, marks })
+		const xCol = config.marks[0] && config.marks[0].x
+		const xOpts = { ...(config.x || {}) }
+		if (xOpts.tickFormat) xOpts.tickFormat = resolveFmt(xOpts.tickFormat)
+		if (xCol === 'period_date' && !xOpts.tickFormat) {
+			xOpts.tickFormat = fmtPeriod
+			xOpts.tickRotate = 25
+		}
+		const colorCfg = normalizeColorConfig(config.color) || {}
+		if (colorCfg.tickFormat) colorCfg.tickFormat = resolveFmt(colorCfg.tickFormat)
+		const fxRotate = config.fx && config.fx.tickRotate
+		const marginBottom = config.marginBottom != null ? config.marginBottom : (fxRotate ? 60 : undefined)
+		result = Plot.plot({ width: width || 600, ...config, marginBottom, x: xOpts, color: colorCfg, marks })
 	}
 	else {
 		// auto-compute period_label from period_date if config references it

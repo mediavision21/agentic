@@ -50,7 +50,8 @@ plots:
         },
         "fx": {
             "label": null,
-            "padding": 0.15
+            "padding": 0.15,
+            "tickRotate": 20
         },
         "y": {
             "label": null,
@@ -58,6 +59,7 @@ plots:
         },
         "color": {
             "legend": true,
+            "tickFormat": "fmtPeriod",
             "range": [
                 "#1a5c38",
                 "#1e6b42",

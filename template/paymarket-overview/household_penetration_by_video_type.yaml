@@ -99,7 +99,8 @@ plots:
                 "#111111",
                 "#cccccc"
             ]
-        }
+        },
+        "marginBottom": 50
     }
 - id: household_penetration_compare
   title: Household penetration by video type — latest vs year-ago
@@ -124,7 +125,8 @@ plots:
                 "PAY_TV_CHANNEL",
                 "TVE"
             ],
-            "padding": 0.2
+            "padding": 0.2,
+            "tickRotate": 20
         },
         "x": {
             "label": null,
@@ -140,6 +142,8 @@ plots:
         },
         "color": {
             "legend": true,
-            "scheme": "greens"
-        }
+            "scheme": "greens",
+            "tickFormat": "fmtPeriod"
+        },
+        "marginBottom": 50
     }

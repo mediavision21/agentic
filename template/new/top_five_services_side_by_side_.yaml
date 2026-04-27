@@ -72,7 +72,8 @@ plots:
         },
         "fx": {
             "label": null,
-            "padding": 0.15
+            "padding": 0.15,
+            "tickRotate": 20
         },
         "y": {
             "label": "Penetration %",
@@ -80,6 +81,7 @@ plots:
         },
         "color": {
             "legend": true,
+            "tickFormat": "fmtPeriod",
             "range": [
                 "#c7e8c7",
                 "#52a852"

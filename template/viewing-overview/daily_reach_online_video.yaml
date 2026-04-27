@@ -90,7 +90,8 @@ plots:
                 "Other online",
                 "Total online"
             ],
-            "padding": 0.2
+            "padding": 0.2,
+            "tickRotate": 20
         },
         "x": {
             "label": null,
@@ -106,6 +107,7 @@ plots:
         },
         "color": {
             "legend": true,
-            "scheme": "greens"
+            "scheme": "greens",
+            "tickFormat": "fmtPeriod"
         }
     }
