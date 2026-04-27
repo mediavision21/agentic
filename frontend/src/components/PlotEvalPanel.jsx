@@ -47,20 +47,21 @@ function VersionPanel(options) {
 		setScoring(true)
 		setScore(null)
 		setScoreErr("")
-		fetch("/eval/score", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ config, rows, description }),
-		})
-			.then(function(r) { return r.json() })
-			.then(function(d) {
+		async function runScore() {
+			try {
+				const r = await fetch("/eval/score", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ config, rows, description }),
+				})
+				const d = await r.json()
 				setScore(d)
-				setScoring(false)
-			})
-			.catch(function(err) {
+			} catch(err) {
 				setScoreErr(err.message)
-				setScoring(false)
-			})
+			}
+			setScoring(false)
+		}
+		runScore()
 	}
 
 	return (

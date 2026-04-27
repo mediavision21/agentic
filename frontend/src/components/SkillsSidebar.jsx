@@ -13,15 +13,18 @@ function SkillsSidebar(options) {
 
 	useEffect(function () {
 		if (!user) return
-		fetch("/api/skill-templates", { credentials: "include" })
-			.then(function (r) { return r.json() })
-			.then(function (d) { setSkills(d.files || []) })
+		async function load() {
+			const r = await fetch("/api/skill-templates", { credentials: "include" })
+			const d = await r.json()
+			setSkills(d.files || [])
+		}
+		load()
 	}, [user])
 
-	function fetchEvalSessions() {
-		fetch("/api/evaluated-sessions", { credentials: "include" })
-			.then(function (r) { return r.json() })
-			.then(function (d) { setEvalSessions(d.sessions || []) })
+	async function fetchEvalSessions() {
+		const r = await fetch("/api/evaluated-sessions", { credentials: "include" })
+		const d = await r.json()
+		setEvalSessions(d.sessions || [])
 	}
 
 	return (

@@ -40,22 +40,22 @@ function EvalSidebar(options) {
 	const [templates, setTemplates] = useState([])
 	const [plotEvalFiles, setPlotEvalFiles] = useState([])
 
-	function fetchEvalSessions() {
-		fetch("/api/evaluated-sessions", { credentials: "include" })
-			.then(function (r) { return r.json() })
-			.then(function (d) { setEvalSessions(d.sessions || []) })
+	async function fetchEvalSessions() {
+		const r = await fetch("/api/evaluated-sessions", { credentials: "include" })
+		const d = await r.json()
+		setEvalSessions(d.sessions || [])
 	}
 
-	function fetchTemplates() {
-		fetch("/api/templates", { credentials: "include" })
-			.then(function (r) { return r.json() })
-			.then(function (d) { setTemplates(d.templates || []) })
+	async function fetchTemplates() {
+		const r = await fetch("/api/templates", { credentials: "include" })
+		const d = await r.json()
+		setTemplates(d.templates || [])
 	}
 
-	function fetchPlotEvalFiles() {
-		fetch("/eval/files")
-			.then(function (r) { return r.json() })
-			.then(function (d) { setPlotEvalFiles(d || []) })
+	async function fetchPlotEvalFiles() {
+		const r = await fetch("/eval/files")
+		const d = await r.json()
+		setPlotEvalFiles(d || [])
 	}
 
 	useEffect(function () { fetchTemplates() }, [])

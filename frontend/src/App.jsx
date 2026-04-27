@@ -35,33 +35,38 @@ function App() {
 
 	// restore session from cookie on page load
 	useEffect(function () {
-		fetch("/api/me", { credentials: "include" })
-			.then(function (r) { return r.json() })
-			.then(function (data) {
-				if (data.ok) {
-					setUser(data.username)
-				}
-			})
-			.finally(function () { setAuthChecked(true) })
+		async function check() {
+			const r = await fetch("/api/me", { credentials: "include" })
+			const data = await r.json()
+			if (data.ok) {
+				setUser(data.username)
+			}
+			setAuthChecked(true)
+		}
+		check()
 	}, [])
 
 	// fetch conversation history after login — replace sessions entirely
 	useEffect(function () {
 		if (user) {
-			fetch("/api/conversations", { credentials: "include" })
-				.then(function (r) { return r.json() })
-				.then(function (data) {
-					const history = (data.conversations || []).map(function (c) {
-						return { id: c.id, serverId: c.id, title: c.title, messages: [], loaded: false }
-					})
-					const fresh = { id: makeSessionId(), title: "New chat", messages: [] }
-					setSessions([...history, fresh])
-					setActiveId(fresh.id)
+			async function loadUser() {
+				const r = await fetch("/api/conversations", { credentials: "include" })
+				const data = await r.json()
+				const history = (data.conversations || []).map(function (c) {
+					return { id: c.id, serverId: c.id, title: c.title, messages: [], loaded: false }
 				})
+				const fresh = { id: makeSessionId(), title: "New chat", messages: [] }
+				setSessions([...history, fresh])
+				setActiveId(fresh.id)
+			}
+			loadUser()
 			if (user === "rockie") {
-				fetch("/api/admin/conversations", { credentials: "include" })
-					.then(function (r) { return r.json() })
-					.then(function (data) { setAdminGroups(data.groups || []) })
+				async function loadAdmin() {
+					const r = await fetch("/api/admin/conversations", { credentials: "include" })
+					const data = await r.json()
+					setAdminGroups(data.groups || [])
+				}
+				loadAdmin()
 			}
 		}
 	}, [user])
