@@ -105,7 +105,7 @@ plots:
         "marks": [
             {
                 "type": "barY",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "fill": "business_model",
                 "fx": "age_group",

@@ -80,7 +80,7 @@ plots:
         "marks": [
             {
                 "type": "areaY",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "fill": "service",
                 "z": "service",

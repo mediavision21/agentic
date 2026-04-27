@@ -31,14 +31,14 @@ plots:
         "marks": [
             {
                 "type": "lineY",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "stroke": "#1a5c38",
                 "curve": "catmull-rom"
             },
             {
                 "type": "dot",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "fill": "white",
                 "stroke": "#1a5c38"

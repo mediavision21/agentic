@@ -39,14 +39,14 @@ plots:
         "marks": [
             {
                 "type": "lineY",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "stroke": "business_model",
                 "curve": "catmull-rom"
             },
             {
                 "type": "dot",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "fill": "white",
                 "stroke": "business_model"

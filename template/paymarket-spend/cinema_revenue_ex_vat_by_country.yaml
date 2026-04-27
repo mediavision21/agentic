@@ -82,7 +82,7 @@ plots:
         "marks": [
             {
                 "type": "areaY",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "fill": "country",
                 "z": "country",
@@ -97,7 +97,7 @@ plots:
             },
             {
                 "type": "lineY",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "stroke": "country",
                 "z": "country",
@@ -106,7 +106,7 @@ plots:
             },
             {
                 "type": "dot",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "stroke": "country",
                 "fill": "white",

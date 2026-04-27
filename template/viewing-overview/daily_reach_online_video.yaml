@@ -32,14 +32,14 @@ plots:
         "marks": [
             {
                 "type": "lineY",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "stroke": "reach_type",
                 "curve": "catmull-rom"
             },
             {
                 "type": "dot",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "fill": "white",
                 "stroke": "reach_type"
@@ -77,9 +77,9 @@ plots:
         "marks": [
             {
                 "type": "barY",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
-                "fill": "period_label",
+                "fill": "period_date",
                 "fx": "reach_type"
             }
         ],

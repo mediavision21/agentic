@@ -88,7 +88,7 @@ plots:
         "marks": [
             {
                 "type": "barY",
-                "x": "period_label",
+                "x": "period_date",
                 "y": "value",
                 "fill": "subscription_type",
                 "stack": true
