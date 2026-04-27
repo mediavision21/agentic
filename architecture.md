@@ -6,9 +6,9 @@ Agentic data analytics tool. User asks natural language questions → Claude gen
 `backend/` is the active backend (frontend + deploy.sh target it). `backend2/` has been removed.
 
 ## Stack
-- **Backend**: Python 3.13 / FastAPI / asyncpg / uv
+- **Backend**: Python 3.13 / FastAPI / asyncpg / uv  **or**  Node.js 24 / node:http / pg / @rock/sqlite (see `node/`)
 - **Frontend**: Vite / React 19 (vanilla JS) / Observable Plot / Mediavision brand (Gelasio + Inter, forest green)
-- **LLM**: Claude API only (Sonnet 4.6 for generation, Haiku 4.5 for routing + filter resolution)
+- **LLM**: Claude API only (Sonnet 4.6 for generation + template SQL + verify+plot+summary, Haiku 4.5 for routing)
 - **Database**: Supabase (PostgreSQL) — queries only `macro.nordic` (a view built from dim/fact tables)
 
 ## Directory Layout
@@ -17,19 +17,21 @@ mediavision/
 ├── .env                           # API_KEY, DATABASE_URL, SESSION_SECRET
 ├── backend/                       # active backend (Claude-only)
 │   ├── main.py                    # FastAPI app, /api/ask SSE, /api/sql, /api/templates, conversations, evaluations, login
-│   ├── agent.py                   # pipeline orchestrator: intent → routing → template exec / tool-loop
-│   ├── generate.py                # Sonnet tool loop — single `query` tool against macro.nordic (long/tidy form)
-│   ├── plot.py                    # plot+summary JSON generator — loads prompt from plot-vN.yaml
+│   ├── agent.py                   # pipeline orchestrator: routing → fast/slow path → unified plot+summary
+│   ├── generate.py                # Sonnet tool loop + verify_and_generate (verify+plot+summary in one step)
+│   ├── plot.py                    # generate_plot_and_summary (fast path) — loads prompt from plot-vN.yaml
 │   ├── plot-vx.yaml               # versioned prompt (header + examples); copy to new version to iterate
+│   ├── generate-v1.yaml           # SQL generation system prompt (header); loaded by generate.py
 │   ├── plot-eval.py               # prompt evaluation: runs templates → LLM → SVG, saves YAML to eval-output/
+│   ├── generate-eval.py           # SQL eval: runs template descriptions → intent → SQL → verify, saves YAML
 │   ├── eval_router.py             # FastAPI router /eval/*: list files, render SVG, score with vision LLM
 │   ├── llm.py                     # UNIFIED Claude entrypoint — one async gen for stream / tools / haiku
 │   ├── db.py                      # asyncpg pool, schema introspection, read-only query exec
 │   ├── evaldb.py                  # SQLite: llm_logs, conversations, users, evaluations
-│   ├── intent.py                  # keyword-based intent extraction + default resolution (no LLM)
-│   ├── template_router.py         # Haiku template matcher + filter resolution + template runner
-│   ├── template_filters.py        # [[ AND {{var}} ]] placeholder registry + apply_filters
-│   ├── verify.py                  # verify_rows — Haiku semantic check on query results
+│   ├── intent.py                  # keyword maps + build_suggestions (no longer called in main pipeline)
+│   ├── template_router.py         # Haiku template matcher + Sonnet SQL generator from template
+│   ├── template_filters.py        # [[ AND {{var}} ]] placeholder detection + choices loader
+│   ├── verify.py                  # verify_rows utility (standalone; no longer in main pipeline)
 │   ├── sql_utils.py               # postprocess_sql, build_messages
 │   ├── data_examples.py           # cached few-shot samples + KPI combinations
 │   ├── sql/
@@ -126,66 +128,69 @@ After the loop: `meta` with aggregated usage.
 
 ```
 agent:
-    templates = match_template(prompt)            # Haiku - look up if we already have template able to answer the user question
-    match_sql = apply_filters(top.sql) if top.score >= 0.95 else None
-    loop(templates, match_sql)
+    matches = match_top_templates(prompt)          # Haiku — scores 0.0-1.0
 
-loop(templates, match_sql):
-    sql = match_sql or generate_sql(template_hints=templates[:3])
-    inner loop (max 5 iterations):
+    if matches[0].score >= 0.95:                   # Fast Path
+        sql = generate_sql_from_template(prompt, template, history)   # Sonnet
         rows = run_query(sql)
-        verify(rows, user_prompt)                 # Haiku — criticise if the rows are able to answer the user question
-        if ok:
-            plot, summary, key_takeaways = generate_plot_and_summary(rows)
-            yield and return
-        else:
-            sql = generate_sql(feedback=reason, template_hints)
+        plot, summary = generate_plot_and_summary(rows)               # Sonnet (trusted, no verify)
+        yield and return
+
+    else:                                          # Slow Path
+        # Skills context: schema, sample_data, kpi_info, description, how_to_resolve
+        outer loop (max 5 attempts):
+            inner loop (model uses query tool, max 5 iterations):
+                sql = generate_sql(skills_context, tools=[query])     # Sonnet
+                rows = run_query(sql)                                  # via tool
+            result = verify_and_generate(rows)                        # Sonnet — ONE step
+            if result.ok:
+                yield plot, summary, key_takeaways and return
+            else:
+                add failure feedback to messages, retry
 ```
-
-### Stage 0 — Intent Resolution (Python, no LLM, <5ms)
-`intent.py` extracts structured intent from the user prompt using keyword matching:
-- Extracts: kpi_type, kpi_dimension, category, countries, services, time period, top_n
-- Service filter context (streaming/social/AVOD/FAST/public service) → `is_*` flags on `macro.nordic`
-- Video type comparison → multi-dimension mode (svod, ssvod, bsvod, hvod, tve, pay_tv_channel)
-- Fills missing slots with sensible defaults
-- Emits `preamble` SSE describing what was assumed
-- Injects a "Resolved Query Intent" block into LLM system prompts
-- Generates follow-on suggestions via `build_suggestions(intent)` — used only when the LLM did not emit `<!--suggestions-->` in its own text
-
-**Core principle: generate first, refine after.** Never block on a missing filter.
 
 ### Stage 1 — Routing (Haiku)
 System prompt = brief role + list of all template filenames + descriptions.
 Model returns up to 6 candidates with similarity scores (0.0–1.0).
 
-- **Score ≥ 0.95**: Stage 2 = **Template Execution**
-- **Score < 0.95**: Stage 2 = **Guided Generation** (top 3 templates as hints)
-- **No match**:     Stage 2 = **Open Generation**
+- **Score ≥ 0.95**: **Fast Path** (template trusted)
+- **Score < 0.95**: **Slow Path** (Sonnet with skills context)
+- **No match**:     **Slow Path** (open generation)
 
-### Stage 2a — Template Execution
-Use template SQL directly; results are **buffered** and verified before yielding to client.
-- SQL step — if the template has `[[ AND {{var}} ]]` placeholders, resolve from: (1) user prompt via Haiku, (2) intent defaults, (3) registry defaults. Execute, collect rows.
-- **Verify** (`verify.py`, Haiku) — rule-based (empty/all-null) then semantic check. If `ok=False`, discard template result and fall through to Stage 2b with `template_fallback_feedback` injected into the system prompt.
-- Plot & Summary — render template plot code, generate summary via Sonnet.
+### Fast Path — Template SQL Generation (Sonnet)
+`template_router.generate_sql_from_template()`:
+- Input: user prompt + conversation history + template SQL with placeholders + available choices per placeholder
+- Single Sonnet call fills in all `[[ AND {{var}} ]]` placeholders from user intent and history
+- Returns concrete executable SQL (always; no fallback)
+- Trusted result — no verify step; goes directly to `plot.generate_plot_and_summary()`
 
-### Stage 2b — Tool-Loop Generation (Sonnet)
-Unified for guided + open + follow-up continuations + template fallback. `generate.run` wires the `query` tool to `db.execute_query` (with `postprocess_sql` applied first). Loop ends at `stop_reason != "tool_use"` or `max_iterations=5`.
-After each query with non-empty rows, `verify.py` checks semantic correctness. Failure appends a `VERIFICATION FAILED` note to the tool result so Sonnet revises the SQL; `last_success` is only updated on a passing check.
+### Slow Path — Tool-Loop Generation (Sonnet)
+`generate.run()` with skills-organized system prompt:
+- `## Skill: schema` — database schema
+- `## Skill: sample_data` — recent sample rows
+- `## Skill: kpi_info` — valid KPI combinations
+- `## Skill: how_to_resolve` — intent resolution guidance
+- Outer retry loop (max 5): each attempt runs Sonnet with `query` tool (max 5 inner iterations)
+- After each attempt: `generate.verify_and_generate()` — single Sonnet call that verifies rows AND generates plot+summary
+- If `ok=false`: adds failure reason to messages and retries outer loop
+- If all 5 attempts exhausted: emits "Retry limit reached" round
+
+### verify_and_generate (Sonnet, one step)
+`generate.verify_and_generate()` combines what was previously two separate calls (verify_rows + generate_plot_and_summary):
+- Uses plot-v3.yaml rules with a verification preamble
+- Returns `{"ok": true, "plot": {...}, "summary": "..."}` or `{"ok": false, "reason": "..."}`
+- Bias toward ok=true; only rejects on clearly wrong data
 
 ### SSE rounds emitted per turn
-1. **Routing** (Haiku) — always surfaced when templates loaded, even on `NONE`/errors. Skipped on continuations.
-2. **Filter Resolution** (Haiku) — when a matched template has placeholders.
-3. **generate iter=0 / iter=1 / …** (Sonnet tool loop) — one round per LLM iteration, each with its own `prompt` / `messages` / tokens + `tool_call` + `tool_result` / `response`.
-4. **Plot & Summary** (Sonnet, non-streaming) — `prompt` / `messages` / `response` / `plot_config` / `summary`. Emits `no_plot` when: result has ≤1 row, user explicitly requested no chart/plot, or the model returns `"plot": null` (data doesn't benefit from visualization).
+1. **Routing** (Haiku) — always surfaced when templates loaded, even on `NONE`/errors.
+2. **Template Execution** (Sonnet) — fast path only: template SQL generation round.
+3. **Plot & Summary** (Sonnet) — fast path: `generate_plot_and_summary`; slow path: `verify_and_generate`.
+4. **Generation / Retry N** (Sonnet tool loop) — slow path: one round per outer attempt, each with its own `prompt` / `messages` / tokens + `tool_call` + `tool_result` / `response`.
 
 All calls route through `_log_call` / `_log_response` in `llm.py`, which print ANSI-colored dividers tagged with model family (`[llm:haiku]` blue, `[llm:sonnet]` cyan).
 
 ## Conversation Continuity
-`agent.is_continuation(partial, prior_ctx)`:
-- `True` when the prior assistant turn had stored `sql` + `intent`, AND either `is_data_query(partial)` is False (pure modifier), OR True but **none** of the strong signals fired (`kpi_type`, `service_ids`, `top_n`, `countries`, `category`, `service_filter`).
-- `False` when the new prompt has a strong signal and reads self-contained.
-
-On continuation: prior **resolved** intent is carried directly (no re-merge or re-resolve); only explicit new signals extracted from the current prompt are applied as overrides. Template routing **skipped**, prior SQL injected under `## Prior Turn Context (modify, do not replace)`, prior `plot_config` forwarded to the plot step so the chart is extended rather than rebuilt.
+Prior SQL from history is extracted and passed as `## Prior Turn Context` in the slow path system prompt (under `## Skill: how_to_resolve`). Template matching always runs; if a template matches at ≥ 0.95, it generates fresh SQL from the template using history for context.
 
 Frontend `buildHistory` (App.jsx) carries `{role, text, sql, intent, plot_config, columns}` for assistant turns.
 
@@ -208,36 +213,35 @@ plots:
 ```
 
 ## Template Filters
-`[[ AND {{name}} ]]` placeholders resolved before execution.
-Global registry in `template_filters.py`; per-YAML overrides via the `filters` key.
-Resolution priority: (1) Haiku extraction from user prompt, (2) intent defaults, (3) registry defaults. Only asks the user if all three fail.
+`[[ AND {{name}} ]]` placeholders in template SQL are detected by `template_filters.detect_placeholders()`.
+Available choices for each placeholder are loaded via `template_filters.load_filter_choices()`.
+These choices are provided as context to the Sonnet call in `generate_sql_from_template()` which fills them in based on user intent and conversation history.
 
 ## Data Flow
 <pre>
 User prompt
     → POST /api/ask {prompt, history, session_id}
 
-    [Stage 0 — Intent Resolution (Python)]
-    → extract_intent → resolve_defaults → preamble + intent_block
-
-    [Stage 1 — Routing (Haiku)]
+    [Routing (Haiku)]
     → match_top_templates → top 6 + scores
 
-    [Stage 2a — Template Execution (score ≥ 0.95)]
-    → placeholders resolved → SQL executed → rows streamed
-    → template plot code + Sonnet summary
+    [Fast Path — score ≥ 0.95]
+    → generate_sql_from_template (Sonnet) → concrete SQL
+    → execute SQL → rows
+    → generate_plot_and_summary (Sonnet) → plot_config + summary
 
-    [Stage 2b — Tool-Loop Generation (Sonnet)]
-    → system prompt = schema + sample data + intent_block (+ top 3 template hints)
-    → per iteration: round + prompt + messages + tokens + tool_call + tool_result + response
-    → last successful query → canonical sql + rows
-    → Plot & Summary: separate Sonnet call (prefill + stop_seq for JSON) → plot config + summary + key_takeaways
+    [Slow Path — score < 0.95]
+    → skills prompt (schema + sample_data + kpi_info + how_to_resolve)
+    → outer loop (max 5):
+        → Sonnet tool loop → SQL via query tool → rows
+        → verify_and_generate (Sonnet, ONE step) → ok + plot + summary
+        → if not ok: retry with feedback
 
     → SSE events:
-       conversation_id, msg_id, user_prompt, preamble, intent,
+       conversation_id, msg_id, user_prompt,
        round, prompt, messages, token, tool_call, tool_result, response,
-       sql, rows, plot_config, no_plot, template_plots, summary, key_takeaways,
-       suggestions, distilled_summary, error
+       sql, rows, plot_config, no_plot, summary, key_takeaways,
+       suggestions, error
 
     → llm_logs saved per iteration with user + conversation_id
     → frontend: user bubble (right) + assistant bubble (left)
@@ -253,17 +257,24 @@ User prompt
 - `result_data` on each llm_logs row stores the full assistant content dict (same shape the frontend assembles live from SSE events). `agent._collect()` taps every event and persists once at stream end so chat history renders identically via `ChatMessage` with zero re-derivation.
 
 ## Running
+
+### Python backend (original)
 ```bash
-# backend (active)
 cd backend && uv run uvicorn main:app --reload --port 8000
+cd frontend && npm run dev   # runs on :5173, proxies /api to :8000
+```
 
-# frontend
-cd frontend && npm run dev
+### Node.js backend (node/)
+```bash
+cd node && npm run dev   # serves API + frontend on :8000 via Vite middleware
+```
+Node backend layout mirrors Python module-for-module:
+`server.js` → `router.js` → `agent.js` → `generate.js` / `template_router.js` / `plot.js`
+`llm.js` (Anthropic SDK streaming), `db.js` (pg pool), `sqlite.js` (@rock/sqlite native binding)
+Reads the same `backend/template/` YAML files and `backend/*.yaml` prompts.
 
-# eval UI (port 5174)
-cd eval-ui && npm run dev
-
-# generate eval YAML files
+### Eval tools
+```bash
 uv run python backend/plot-eval.py --versions v1,v2 --limit 1
 uv run python backend/plot-eval.py --versions v1,v2 --template 1
 ```

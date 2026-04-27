@@ -141,147 +141,164 @@ const MARK_FN = {
 	areaY: Plot.areaY,
 }
 
-export function buildFromConfig(options) {
+export function buildFromConfig(options, shortCut = true) {
 	let { config, width } = options
 	let { rows, columns } = options
 	if (typeof config === 'string') config = JSON.parse(config)
-
-	// auto-compute period_label from period_date if config references it
-	const allMarkCols = config.marks.flatMap(m => ['x', 'y', 'fx', 'stroke', 'fill', 'z'].map(k => m[k]).filter(v => typeof v === 'string'))
-	if (allMarkCols.includes('period_label') && columns.includes('period_date') && !columns.includes('period_label')) {
-		rows = rows.map(r => ({ ...r, period_label: r.period_date ? fmtPeriod(r.period_date) : null }))
-		columns = [...columns, 'period_label']
+	let result
+	if (shortCut) {
+		const marks = config.marks.flatMap(m => {
+			const fn = MARK_FN[m.type]
+			if (!fn) return []
+			const data = prepareData({ rows, columns, mark: m })
+			const opts = { x: m.x, y: m.y }
+			if (m.stroke) opts.stroke = m.stroke
+			if (m.fill) opts.fill = m.fill
+			if (m.fx) opts.fx = m.fx
+			if (m.type === "lineY") opts.curve = m.curve || "catmull-rom"
+			return [fn(data, opts)]
+		})
+		result = Plot.plot({ width: width || 600, ...config, marks })
 	}
-
-	const marks = []
-	const xCol = config.marks[0] ? config.marks[0].x : null
-	const yCol = config.marks[0] ? config.marks[0].y : null
-	const isBar = config.marks[0] && config.marks[0].type === "barY"
-
-	let filteredRows = rows
-	for (const m of config.marks) {
-		if (m.fx) {
-			const unique = new Set(filteredRows.map(r => r[m.fx]))
-			if (unique.size > 30) filteredRows = topFilter({ rows: filteredRows, catCol: m.fx, yCol: m.y })
+	else {
+		// auto-compute period_label from period_date if config references it
+		const allMarkCols = config.marks.flatMap(m => ['x', 'y', 'fx', 'stroke', 'fill', 'z'].map(k => m[k]).filter(v => typeof v === 'string'))
+		if (allMarkCols.includes('period_label') && columns.includes('period_date') && !columns.includes('period_label')) {
+			rows = rows.map(r => ({ ...r, period_label: r.period_date ? fmtPeriod(r.period_date) : null }))
+			columns = [...columns, 'period_label']
 		}
-		const seriesCol = m.stroke || m.fill
-		if (seriesCol) {
-			const unique = new Set(filteredRows.map(r => r[seriesCol]))
-			if (unique.size > 30) filteredRows = topFilter({ rows: filteredRows, catCol: seriesCol, yCol: m.y })
+
+		const marks = []
+		const xCol = config.marks[0] ? config.marks[0].x : null
+		const yCol = config.marks[0] ? config.marks[0].y : null
+		const isBar = config.marks[0] && config.marks[0].type === "barY"
+
+		let filteredRows = rows
+		for (const m of config.marks) {
+			if (m.fx) {
+				const unique = new Set(filteredRows.map(r => r[m.fx]))
+				if (unique.size > 30) filteredRows = topFilter({ rows: filteredRows, catCol: m.fx, yCol: m.y })
+			}
+			const seriesCol = m.stroke || m.fill
+			if (seriesCol) {
+				const unique = new Set(filteredRows.map(r => r[seriesCol]))
+				if (unique.size > 30) filteredRows = topFilter({ rows: filteredRows, catCol: seriesCol, yCol: m.y })
+			}
 		}
-	}
 
-	// period_label is a formatted date string — sort chronologically, not by y-value
-	const isPeriodLabelX = xCol === "period_label"
-	let xDomain = isBar && xCol !== "period_date" && !isPeriodLabelX
-		? sortedBarDomain({ rows: filteredRows, xCol, yCol }).slice(0, 30)
-		: xCol ? sortedXDomain({ rows: filteredRows, xCol }) : undefined
+		// period_label is a formatted date string — sort chronologically, not by y-value
+		const isPeriodLabelX = xCol === "period_label"
+		let xDomain = isBar && xCol !== "period_date" && !isPeriodLabelX
+			? sortedBarDomain({ rows: filteredRows, xCol, yCol }).slice(0, 30)
+			: xCol ? sortedXDomain({ rows: filteredRows, xCol }) : undefined
 
-	if (isBar && xCol !== "period_date" && xDomain) {
-		const xSet = new Set(xDomain)
-		filteredRows = filteredRows.filter(r => xSet.has(r[xCol]))
-	}
-
-	const fxCol = config.marks[0] && config.marks[0].fx
-	if (fxCol && xCol && xDomain) {
-		const maxX = maxPeriodsForFacets({ rows: filteredRows, xCol, fxCol, width })
-		if (xDomain.length > maxX) {
-			xDomain = xDomain.slice(-maxX)
+		if (isBar && xCol !== "period_date" && xDomain) {
 			const xSet = new Set(xDomain)
 			filteredRows = filteredRows.filter(r => xSet.has(r[xCol]))
 		}
-	}
 
-	for (const m of config.marks) {
-		const fn = MARK_FN[m.type]
-		if (!fn) continue
-		const data = prepareData({ rows: filteredRows, columns, mark: m })
-		const opts = { x: m.x, y: m.y }
-		if (m.fx) opts.fx = m.fx
-		if (m.stroke) opts.stroke = m.stroke
-		if (m.fill) opts.fill = m.fill
-		if (m.type === "lineY") opts.curve = m.curve || "catmull-rom"
-
-		if (m.stack) {
-			// stacked area/bar: use Plot.stackY transform
-			const stackOpts = { x: m.x, y: m.y }
-			if (m.fx) stackOpts.fx = m.fx
-			if (m.fill) stackOpts.fill = m.fill
-			if (m.stroke) stackOpts.stroke = m.stroke
-			if (m.z) stackOpts.z = m.z
-			if (m.curve) stackOpts.curve = m.curve
-			if (m.order) stackOpts.order = m.order
-			marks.push(fn(data, Plot.stackY(stackOpts)))
-		} else {
-			marks.push(fn(data, opts))
+		const fxCol = config.marks[0] && config.marks[0].fx
+		if (fxCol && xCol && xDomain) {
+			const maxX = maxPeriodsForFacets({ rows: filteredRows, xCol, fxCol, width })
+			if (xDomain.length > maxX) {
+				xDomain = xDomain.slice(-maxX)
+				const xSet = new Set(xDomain)
+				filteredRows = filteredRows.filter(r => xSet.has(r[xCol]))
+			}
 		}
 
-		if (m.type === "barY" && !m.stack) marks.push(Plot.ruleY([0]))
+		for (const m of config.marks) {
+			const fn = MARK_FN[m.type]
+			if (!fn) continue
+			const data = prepareData({ rows: filteredRows, columns, mark: m })
+			const opts = { x: m.x, y: m.y }
+			if (m.fx) opts.fx = m.fx
+			if (m.stroke) opts.stroke = m.stroke
+			if (m.fill) opts.fill = m.fill
+			if (m.type === "lineY") opts.curve = m.curve || "catmull-rom"
 
-		const tipChannels = { x: m.x, y: m.y }
-		if (m.stroke) tipChannels.stroke = m.stroke
-		if (m.fill) tipChannels.fill = m.fill
-		marks.push(Plot.tip(data, Plot.pointerX(tipChannels)))
-	}
+			if (m.stack) {
+				// stacked area/bar: use Plot.stackY transform
+				const stackOpts = { x: m.x, y: m.y }
+				if (m.fx) stackOpts.fx = m.fx
+				if (m.fill) stackOpts.fill = m.fill
+				if (m.stroke) stackOpts.stroke = m.stroke
+				if (m.z) stackOpts.z = m.z
+				if (m.curve) stackOpts.curve = m.curve
+				if (m.order) stackOpts.order = m.order
+				marks.push(fn(data, Plot.stackY(stackOpts)))
+			} else {
+				marks.push(fn(data, opts))
+			}
 
-	marks.unshift(Plot.gridY())
+			if (m.type === "barY" && !m.stack) marks.push(Plot.ruleY([0]))
 
-	const xOpts = { ...(config.x || {}) }
-	if (xCol && filteredRows.length > 0 && isDateLike(filteredRows[0][xCol]) && !isBar) {
-		xOpts.type = xOpts.type || "time"
-	}
-	if (xDomain) {
-		xOpts.domain = xDomain
-		applyTickDensity(xOpts, xDomain)
-	}
-	const isCategorical = xCol && filteredRows.length > 0 && !isDateLike(filteredRows[0][xCol]) && !isNumeric(filteredRows[0][xCol])
-	if (xCol === "period_date" && !xOpts.tickFormat) {
-		xOpts.tickFormat = fmtPeriod
-	}
-	if (isCategorical && !xOpts.tickFormat && !isPeriodLabelX) {
-		xOpts.tickFormat = truncLabel
-	}
-	if (isBar && !xDomain) {
-		const uniqueX = new Set(filteredRows.map(r => r[xCol]))
-		const hasLongLabel = [...uniqueX].some(d => String(d).length > 10)
-		if (uniqueX.size > 6 || hasLongLabel) {
+			const tipChannels = { x: m.x, y: m.y }
+			if (m.stroke) tipChannels.stroke = m.stroke
+			if (m.fill) tipChannels.fill = m.fill
+			marks.push(Plot.tip(data, Plot.pointerX(tipChannels)))
+		}
+
+		marks.unshift(Plot.gridY())
+
+		const xOpts = { ...(config.x || {}) }
+		if (xCol && filteredRows.length > 0 && isDateLike(filteredRows[0][xCol]) && !isBar) {
+			xOpts.type = xOpts.type || "time"
+		}
+		if (xDomain) {
+			xOpts.domain = xDomain
+			applyTickDensity(xOpts, xDomain)
+		}
+		const isCategorical = xCol && filteredRows.length > 0 && !isDateLike(filteredRows[0][xCol]) && !isNumeric(filteredRows[0][xCol])
+		if (xCol === "period_date" && !xOpts.tickFormat) {
+			xOpts.tickFormat = fmtPeriod
+		}
+		if (isCategorical && !xOpts.tickFormat && !isPeriodLabelX) {
+			xOpts.tickFormat = truncLabel
+		}
+		if (isBar && !xDomain) {
+			const uniqueX = new Set(filteredRows.map(r => r[xCol]))
+			const hasLongLabel = [...uniqueX].some(d => String(d).length > 10)
+			if (uniqueX.size > 6 || hasLongLabel) {
+				xOpts.tickRotate = -45
+			}
+		}
+		// when fx+x coexist, ticks are squeezed within each facet — always rotate
+		if (fxCol && !xOpts.tickRotate) {
 			xOpts.tickRotate = -45
 		}
-	}
-	// when fx+x coexist, ticks are squeezed within each facet — always rotate
-	if (fxCol && !xOpts.tickRotate) {
-		xOpts.tickRotate = -45
-	}
 
-	const colorCfg = normalizeColorConfig(config.color) || {}
-	const categoryCol = config.marks.map(m => m.stroke || m.fill).find(Boolean)
-	if (categoryCol === "period_date" || categoryCol === "period_label") {
-		const periodDomain = sortedXDomain({ rows: filteredRows, xCol: categoryCol })
-		if (periodDomain) colorCfg.domain = periodDomain
-	}
-
-	const plotOpts = {
-		className: "plot",
-		style: ".plot-swatch { white-space: nowrap; }",
-		width: width || 600,
-		height: xOpts.tickRotate ? 340 : 300,
-		marginBottom: xOpts.tickRotate ? 50 : undefined,
-		x: xOpts,
-		y: { grid: false, ...(config.y || {}) },
-		color: { legend: true, ...colorCfg },
-		marks,
-	}
-	if (config.fx) plotOpts.fx = config.fx
-	if (fxCol) {
-		const uniqueFx = [...new Set(filteredRows.map(r => r[fxCol]))]
-		const hasLongFxLabel = uniqueFx.some(d => String(d).length > 10) || uniqueFx.size > 6
-		if (hasLongFxLabel) {
-			plotOpts.fx = { tickRotate: 20, ...(plotOpts.fx || {}) }
-			// plotOpts.marginBottom = Math.min((plotOpts.marginBottom || 0) + 50
-			// plotOpts.marginTop = (plotOpts.marginTop || 0) + 50
+		const colorCfg = normalizeColorConfig(config.color) || {}
+		const categoryCol = config.marks.map(m => m.stroke || m.fill).find(Boolean)
+		if (categoryCol === "period_date" || categoryCol === "period_label") {
+			const periodDomain = sortedXDomain({ rows: filteredRows, xCol: categoryCol })
+			if (periodDomain) colorCfg.domain = periodDomain
 		}
+
+		const plotOpts = {
+			className: "plot",
+			style: ".plot-swatch { white-space: nowrap; }",
+			width: width || 600,
+			height: xOpts.tickRotate ? 340 : 300,
+			marginBottom: xOpts.tickRotate ? 50 : undefined,
+			x: xOpts,
+			y: { grid: false, ...(config.y || {}) },
+			color: { legend: true, ...colorCfg },
+			marks,
+		}
+		if (config.fx) plotOpts.fx = config.fx
+		if (fxCol) {
+			const uniqueFx = [...new Set(filteredRows.map(r => r[fxCol]))]
+			const hasLongFxLabel = uniqueFx.some(d => String(d).length > 10) || uniqueFx.size > 6
+			if (hasLongFxLabel) {
+				plotOpts.fx = { tickRotate: 20, ...(plotOpts.fx || {}) }
+				// plotOpts.marginBottom = Math.min((plotOpts.marginBottom || 0) + 50
+				// plotOpts.marginTop = (plotOpts.marginTop || 0) + 50
+			}
+		}
+		result = Plot.plot(plotOpts)
 	}
-	return Plot.plot(plotOpts)
+	return result
 }
 
 const SKIP_Y_COLS = new Set(["period_date"])

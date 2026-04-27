@@ -5,7 +5,7 @@ sql: |-
       SELECT
         period_date,
         canonical_name AS service,
-        SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS reach_population
+        SUM(value * population) / NULLIF(SUM(population), 0) * 100 AS value
       FROM macro.nordic
       WHERE category          = 'online_video'
         AND kpi_type          = 'reach'
@@ -16,23 +16,20 @@ sql: |-
         AND period_date       >= '2013-07-01'
       GROUP BY period_date, canonical_name
     ),
-    latest_period AS (
-      SELECT MAX(period_date) AS max_period_date FROM weighted
-    ),
     top6 AS (
       SELECT service
       FROM weighted
-      WHERE period_date = (SELECT max_period_date FROM latest_period)
-      ORDER BY reach_population DESC
+      WHERE period_date = (SELECT max(period_date) FROM weighted)
+      ORDER BY value DESC
       LIMIT 6
     )
     SELECT
       w.period_date,
       w.service,
-      w.reach_population AS value
+      w.value
     FROM weighted w
     JOIN top6 ON w.service = top6.service
-    ORDER BY w.period_date, w.reach_population DESC
+    ORDER BY w.period_date, w.value DESC
 plots:
 - id: daily_reach_per_service
   title: Daily reach of online video per service
