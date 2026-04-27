@@ -11,13 +11,7 @@ ai.mediavision.se {
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 	}
 
-	handle /api/* {
-		reverse_proxy localhost:8000
-	}
-
 	handle {
-		root * /opt/rock/frontend/dist
-		try_files {path} /index.html
-		file_server
+		reverse_proxy localhost:8001
 	}
 }

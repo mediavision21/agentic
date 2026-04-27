@@ -20,4 +20,5 @@ dist
 .*
 *.log
 package-lock.json
+*.node
 sql

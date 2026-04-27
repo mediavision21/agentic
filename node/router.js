@@ -65,16 +65,20 @@ export async function dispatch(req, res, body, pathname) {
             }
         }
 
+        console.log(`[route] matched ${route.method} ${typeof route.pattern === 'string' ? route.pattern : route.pattern.toString()} params:`, params)
         if (route.auth) {
             const username = getCurrentUser(req)
             if (username) {
+                console.log(`[route] auth ok user=${username}`)
                 await route.handler(req, res, body, params, username)
             } else {
+                console.log(`[route] auth failed — no session`)
                 sendJson(res, { error: 'Not authenticated' }, 401)
             }
         } else {
             await route.handler(req, res, body, params, null)
         }
+        console.log(`[route] handler done for ${pathname}`)
         return true
     }
     return false
@@ -130,20 +134,27 @@ async function handleAsk(req, res, body, params, username) {
     const prompt = (body.prompt || '').slice(0, 4000)
     const history = (body.history || []).slice(0, 50)
     const sessionId = (body.session_id || '').slice(0, 64)
+    console.log(`[ask] user=${username} session=${sessionId} prompt="${prompt.slice(0, 80)}"`)
 
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
     })
+    console.log(`[ask] SSE headers sent`)
 
+    let eventCount = 0
     try {
         for await (const event of generateAgentStream(prompt, history, { user: username || '', conversationId: sessionId })) {
+            eventCount++
+            console.log(`[ask] event #${eventCount} type=${event.type}`)
             res.write(`data: ${JSON.stringify(event)}\n\n`)
         }
     } catch (e) {
+        console.log(`[ask] stream error:`, e.message, e.stack)
         res.write(`data: ${JSON.stringify({ type: 'error', error: String(e.message) })}\n\n`)
     }
+    console.log(`[ask] stream done, total events=${eventCount}`)
     res.end()
 }
 

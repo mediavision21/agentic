@@ -138,10 +138,9 @@ agent:
 
     else:                                          # Slow Path
         # Skills context: schema, sample_data, kpi_info, description, how_to_resolve
-        outer loop (max 5 attempts):
-            inner loop (model uses query tool, max 5 iterations):
-                sql = generate_sql(skills_context, tools=[query])     # Sonnet
-                rows = run_query(sql)                                  # via tool
+        outer loop (max 4 attempts):
+            sql = generate_sql(skills_context)                        # Sonnet — outputs ```sql``` block
+            rows = run_query(sql)                                      # backend executes directly
             result = verify_and_generate(rows)                        # Sonnet — ONE step
             if result.ok:
                 yield plot, summary, key_takeaways and return
@@ -164,16 +163,18 @@ Model returns up to 6 candidates with similarity scores (0.0–1.0).
 - Returns concrete executable SQL (always; no fallback)
 - Trusted result — no verify step; goes directly to `plot.generate_plot_and_summary()`
 
-### Slow Path — Tool-Loop Generation (Sonnet)
+### Slow Path — Direct SQL Generation (Sonnet)
 `generate.run()` with skills-organized system prompt:
 - `## Skill: schema` — database schema
 - `## Skill: sample_data` — recent sample rows
 - `## Skill: kpi_info` — valid KPI combinations
 - `## Skill: how_to_resolve` — intent resolution guidance
-- Outer retry loop (max 5): each attempt runs Sonnet with `query` tool (max 5 inner iterations)
+- Outer retry loop (max 4): each attempt is a single Sonnet call (no tools) that outputs SQL in a ` ```sql ``` ` block
+- Backend extracts SQL, executes it directly
 - After each attempt: `generate.verify_and_generate()` — single Sonnet call that verifies rows AND generates plot+summary
-- If `ok=false`: adds failure reason to messages and retries outer loop
-- If all 5 attempts exhausted: emits "Retry limit reached" round
+- If `ok=false`: injects `## Revision Feedback` and retries outer loop
+- If SQL error: injects error feedback and retries
+- If all 4 attempts exhausted: emits "Retry limit reached" round
 
 ### verify_and_generate (Sonnet, one step)
 `generate.verify_and_generate()` combines what was previously two separate calls (verify_rows + generate_plot_and_summary):
@@ -185,7 +186,7 @@ Model returns up to 6 candidates with similarity scores (0.0–1.0).
 1. **Routing** (Haiku) — always surfaced when templates loaded, even on `NONE`/errors.
 2. **Template Execution** (Sonnet) — fast path only: template SQL generation round.
 3. **Plot & Summary** (Sonnet) — fast path: `generate_plot_and_summary`; slow path: `verify_and_generate`.
-4. **Generation / Retry N** (Sonnet tool loop) — slow path: one round per outer attempt, each with its own `prompt` / `messages` / tokens + `tool_call` + `tool_result` / `response`.
+4. **Generation / Retry N** (Sonnet) — slow path: one round per outer attempt, each with its own `prompt` / `messages` / tokens / `response`.
 
 All calls route through `_log_call` / `_log_response` in `llm.py`, which print ANSI-colored dividers tagged with model family (`[llm:haiku]` blue, `[llm:sonnet]` cyan).
 
@@ -232,10 +233,10 @@ User prompt
 
     [Slow Path — score < 0.95]
     → skills prompt (schema + sample_data + kpi_info + how_to_resolve)
-    → outer loop (max 5):
-        → Sonnet tool loop → SQL via query tool → rows
+    → outer loop (max 4):
+        → Sonnet (no tools) → SQL in ```sql``` block → backend executes → rows
         → verify_and_generate (Sonnet, ONE step) → ok + plot + summary
-        → if not ok: retry with feedback
+        → if not ok: retry with ## Revision Feedback
 
     → SSE events:
        conversation_id, msg_id, user_prompt,

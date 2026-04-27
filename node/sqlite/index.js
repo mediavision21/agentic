@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 
 const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const native = require(join(__dirname, 'build/Release/sqlite_napi.node'))
+const native = require(join(__dirname, 'sqlite_napi.node'))
 
 // open(path) -> db
 // query(db, sql, params) -> rows[]

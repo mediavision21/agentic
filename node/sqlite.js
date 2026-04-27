@@ -1,4 +1,4 @@
-import { open, exec, query, run } from '@rock/sqlite'
+import { open, exec, query, run } from './sqlite/index.js'
 import { pbkdf2Sync, randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 

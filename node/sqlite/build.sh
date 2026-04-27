@@ -14,6 +14,7 @@ fi
 
 # step 2: build N-API addon
 npx node-gyp@latest configure build
+cp build/Release/sqlite_napi.node ./sqlite_napi.node
 
 # step 3: build wasm module
 cd wasm

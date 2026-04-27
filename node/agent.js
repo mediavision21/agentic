@@ -109,6 +109,7 @@ export async function* generateAgentStream(prompt, history, options) {
 async function* _generateAgentStreamInner(prompt, history, user, conversationId) {
     const hist = history || []
     const convId = conversationId || _makeTimestampId()
+    console.log(`[agent] start user=${user} convId=${convId} histLen=${hist.length}`)
     yield { type: 'conversation_id', id: convId }
 
     const msgId = _makeTimestampId()
@@ -205,6 +206,7 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
     // slow path
     const slowLabel = matches.length > 0 ? 'Guided Generation' : 'Open Generation'
 
+    console.log(`[agent] slow path label=${slowLabel} matches=${matches.length}`)
     for await (const event of generateRun({
         prompt,
         matches,
@@ -221,4 +223,5 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
     })) {
         yield event
     }
+    console.log(`[agent] _generateAgentStreamInner done`)
 }

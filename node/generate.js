@@ -62,13 +62,6 @@ async function _buildSystemPrompt(options) {
     return base
 }
 
-function _formatToolResult(columns, rows) {
-    if (!rows || rows.length === 0) {
-        return JSON.stringify({ columns, row_count: 0, rows: [] })
-    }
-    const sample = rows.slice(0, 20)
-    return JSON.stringify({ columns, row_count: rows.length, rows: sample, truncated: rows.length > 20 })
-}
 
 const _VERIFY_AND_GENERATE_PREFIX = `You are verifying query results and generating a visualization.
 
@@ -199,58 +192,14 @@ export async function* run(options) {
     const messages = buildMessages(history, prompt)
     console.log(`[generate] running with ${matches.length} template hints`)
 
-    const tools = [{
-        name: 'query',
-        description: 'Run a read-only SELECT against macro.nordic. Results must be long/tidy: one row per observation, a single `value` column, categorical keys as separate columns. Use the tool for the final answer and for exploration (e.g. `SELECT DISTINCT country FROM macro.nordic WHERE kpi_type=\'reach\' LIMIT 50`). If a call returns 0 rows, call again with a corrected query after investigating — never give up after one attempt.',
-        input_schema: {
-            type: 'object',
-            properties: { sql: { type: 'string', description: 'A read-only SELECT statement against macro.nordic returning long/tidy rows.' } },
-            required: ['sql'],
-        },
-    }]
-
-    for (let attempt = 0; attempt < 5; attempt++) {
-        const lastSuccess = { sql: null, columns: null, rows: null }
+    for (let attempt = 0; attempt < 4; attempt++) {
         let fullText = ''
-
-        const toolHandler = async (name, input) => {
-            if (name !== 'query') {
-                return { content: JSON.stringify({ error: `unknown tool ${name}` }), events: [], rows: 0 }
-            }
-            const rawSql = input.sql || ''
-            const sql = postprocessSql(rawSql)
-            console.log('[generate] query tool →', sql.slice(0, 200))
-            try {
-                const result = await executeQuery(sql)
-                const { columns, rows } = result
-                const perRoundEvents = [
-                    { type: 'sql', sql, plot_config: null, explanation: '' },
-                    { type: 'rows', columns, rows },
-                ]
-                if (rows && rows.length > 0) {
-                    lastSuccess.sql = sql
-                    lastSuccess.columns = columns
-                    lastSuccess.rows = rows
-                }
-                return { content: _formatToolResult(columns, rows), events: perRoundEvents, rows: rows.length }
-            } catch (e) {
-                console.log('[generate] query error:', e.message)
-                return {
-                    content: JSON.stringify({ error: `SQL error: ${e.message}` }),
-                    events: [{ type: 'error', error: `SQL error: ${e.message}` }],
-                    rows: 0,
-                }
-            }
-        }
-
         const roundLabel = attempt === 0 ? label : `Retry ${attempt}`
+
         for await (const chunk of complete({
             system: systemPrompt,
             messages,
             model: 'sonnet',
-            tools,
-            tool_handler: toolHandler,
-            max_iterations: 5,
             label: roundLabel,
             log_id: msgId,
             user,
@@ -264,8 +213,9 @@ export async function* run(options) {
         }
         process.stdout.write('\n')
 
-        if (lastSuccess.rows === null) {
-            // no rows — conversational response
+        const sqlMatch = fullText.match(/```sql\s*([\s\S]*?)\s*```/)
+        if (!sqlMatch) {
+            // no SQL block — conversational response
             const suggestions = []
             const suggMatch = fullText.match(/<!--suggestions\s*(.*?)\s*-->/s)
             if (suggMatch) {
@@ -278,11 +228,31 @@ export async function* run(options) {
             return
         }
 
-        const wantPlot = needsPlot(prompt, lastSuccess.columns, lastSuccess.rows)
+        const sql = postprocessSql(sqlMatch[1].trim())
+        console.log('[generate] extracted sql →', sql.slice(0, 200))
+
+        let columns, rows
+        try {
+            const result = await executeQuery(sql)
+            columns = result.columns
+            rows = result.rows
+            yield { type: 'sql', sql, plot_config: null, explanation: '' }
+            yield { type: 'rows', columns, rows }
+        } catch (e) {
+            console.log('[generate] query error:', e.message)
+            yield { type: 'error', error: `SQL error: ${e.message}` }
+            messages.push(
+                { role: 'assistant', content: fullText },
+                { role: 'user', content: `## Revision Feedback\nSQL error: ${e.message}\n\nFix the SQL and try again.` }
+            )
+            continue
+        }
+
+        const wantPlot = needsPlot(prompt, columns, rows)
         const vgResult = await verifyAndGenerate({
             user_prompt: prompt,
-            columns: lastSuccess.columns,
-            rows: lastSuccess.rows,
+            columns,
+            rows,
             log_id: msgId,
             user,
             conversation_id: conversationId,
@@ -307,20 +277,15 @@ export async function* run(options) {
             }
             if (kt.length > 0) yield { type: 'key_takeaways', items: kt }
             if (summary) yield { type: 'summary', text: summary }
-            updateResultData(msgId, {
-                columns: lastSuccess.columns,
-                rows: lastSuccess.rows,
-                plot_config: plotConfig,
-                summary,
-            })
+            updateResultData(msgId, { columns, rows, plot_config: plotConfig, summary })
             return
         }
 
         const reason = vgResult.reason || "Data doesn't answer the question"
         console.log(`[generate] attempt ${attempt + 1} verify failed: ${reason}`)
         messages.push(
-            { role: 'assistant', content: `The query returned data but it doesn't answer the question: ${reason}` },
-            { role: 'user', content: 'Please try a different SQL query to answer the original question.' }
+            { role: 'assistant', content: fullText },
+            { role: 'user', content: `## Revision Feedback\nThe data does not answer the question: ${reason}\n\nWrite a new SQL query.` }
         )
     }
 
