@@ -3,52 +3,49 @@
 ## Overview
 Agentic data analytics tool. User asks natural language questions → Claude generates SQL → executes against Supabase PostgreSQL → results displayed as table + Observable Plot chart + summary.
 
-`backend/` is the active backend (frontend + deploy.sh target it). `backend2/` has been removed.
+`node/` is the active backend. `backend/` (Python/FastAPI) is no longer used. deploy.sh targets `node/`.
 
 ## Stack
-- **Backend**: Python 3.13 / FastAPI / asyncpg / uv  **or**  Node.js 24 / node:http / pg / @rock/sqlite (see `node/`)
+- **Backend**: Node.js 24 / node:http / pg / @rock/sqlite (native binding in `node/sqlite/`)
 - **Frontend**: Vite / React 19 (vanilla JS) / Observable Plot / Mediavision brand (Gelasio + Inter, forest green)
-- **LLM**: Claude API only (Sonnet 4.6 for generation + template SQL + verify+plot+summary, Haiku 4.5 for routing)
+- **LLM**: Claude API (@anthropic-ai/sdk) — Sonnet 4.6 for generation + template SQL + verify+plot+summary, Haiku 4.5 for routing
 - **Database**: Supabase (PostgreSQL) — queries only `macro.nordic` (a view built from dim/fact tables)
 
 ## Directory Layout
 ```
 mediavision/
-├── .env                           # API_KEY, DATABASE_URL, SESSION_SECRET
-├── backend/                       # active backend (Claude-only)
-│   ├── main.py                    # FastAPI app, /api/ask SSE, /api/sql, /api/templates, conversations, evaluations, login
-│   ├── agent.py                   # pipeline orchestrator: routing → fast/slow path → unified plot+summary
-│   ├── generate.py                # Sonnet tool loop + verify_and_generate (verify+plot+summary in one step)
-│   ├── plot.py                    # generate_plot_and_summary (fast path) — loads prompt from plot-vN.yaml
-│   ├── plot-vx.yaml               # versioned prompt (header + examples); copy to new version to iterate
-│   ├── generate-v1.yaml           # SQL generation system prompt (header); loaded by generate.py
-│   ├── plot-eval.py               # prompt evaluation: runs templates → LLM → SVG, saves YAML to eval-output/
-│   ├── generate-eval.py           # SQL eval: runs template descriptions → intent → SQL → verify, saves YAML
-│   ├── eval_router.py             # FastAPI router /eval/*: list files, render SVG, score with vision LLM
-│   ├── llm.py                     # UNIFIED Claude entrypoint — one async gen for stream / tools / haiku
-│   ├── db.py                      # asyncpg pool, schema introspection, read-only query exec
-│   ├── evaldb.py                  # SQLite: llm_logs, conversations, users, evaluations
-│   ├── intent.py                  # keyword maps + build_suggestions (no longer called in main pipeline)
-│   ├── template_router.py         # Haiku template matcher + Sonnet SQL generator from template
-│   ├── template_filters.py        # [[ AND {{var}} ]] placeholder detection + choices loader
-│   ├── verify.py                  # verify_rows utility (standalone; no longer in main pipeline)
-│   ├── sql_utils.py               # postprocess_sql, build_messages
-│   ├── data_examples.py           # cached few-shot samples + KPI combinations
-│   ├── sql/
-│   │   └── nordic.sql             # materialized view definition (single source of data)
-│   └── template/                  # YAML templates (sql + plots + optional filter overrides)
-│       └── evaluations/           # auto-saved from positive ("thumb up") evaluations
+├── .env                           # API_KEY, DATABASE_URL, SESSION_SECRET, PORT
+├── node/                          # active backend
+│   ├── server.js                  # node:http server; dev: Vite middleware; prod: serves frontend/dist
+│   ├── router.js                  # route table (dispatch) + all HTTP handlers
+│   ├── agent.js                   # pipeline orchestrator: routing → fast/slow path → unified plot+summary
+│   ├── generate.js                # Sonnet SQL generation + verify_and_generate (one step)
+│   ├── plot.js                    # generate_plot_and_summary (fast path)
+│   ├── llm.js                     # UNIFIED Claude entrypoint — async generator for stream / tools / haiku
+│   ├── db.js                      # pg pool, read-only query exec
+│   ├── sqlite.js                  # SQLite wrapper: llm_logs, conversations, users, evaluations
+│   ├── sqlite/                    # @rock/sqlite native N-API binding (built locally)
+│   ├── auth.js                    # HMAC session tokens, rate limiting
+│   ├── template_router.js         # Haiku template matcher + Sonnet SQL generator from template
+│   ├── template_filters.js        # [[ AND {{var}} ]] placeholder detection + choices loader
+│   ├── prompts.js                 # loads versioned YAML prompt files (plot-vN.yaml, generate-vN.yaml)
+│   ├── sql_utils.js               # postprocess_sql, build_messages
+│   └── data_examples.js           # cached few-shot samples + KPI combinations
+├── template/                      # YAML templates (sql + plots + optional filter overrides)
+│   └── evaluations/               # auto-saved from positive ("thumb up") evaluations
 ├── eval/
 │   ├── package.json               # jsdom + @observablehq/plot for server-side SVG rendering
 │   └── render_plot.mjs            # Node.js: reads {config, rows} from stdin, outputs SVG to stdout
-├── eval-output/                   # gitignored — YAML files saved by plot-eval.py
+├── eval-output/                   # gitignored — YAML files saved by eval tools
 ├── frontend/
-│   ├── vite.config.js             # react plugin, /api proxy to :8000
+│   ├── vite.config.js             # react plugin, /api + /eval proxy to :8000
 │   └── src/
 │       ├── main.jsx               # react root mount
 │       ├── App.jsx                # root: state + /api/ask SSE consumer
 │       ├── style.css              # Mediavision brand tokens, chat layout
 │       ├── parseResponse.js       # LEGACY fallback for pre-migration rows
+│       ├── plotUtils.js           # shared plot utility helpers
+│       ├── highlight.js           # SQL syntax highlighting
 │       └── components/
 │           ├── ChatMessage.jsx    # iMessage-style bubble, flat round debug expandables
 │           ├── EvalPanel.jsx      # conversation view with eval ratings (read-only)
@@ -80,17 +77,17 @@ Never pivot to wide form via `CASE WHEN`. Observable Plot groups and facets clie
 - Template filter placeholders `[[AND {{year}}]]` and `[[AND {{quarter_label}}]]` are resolved by `template_filters.py` to EXTRACT-based SQL expressions.
 
 ## Unified Claude entrypoint — `llm.complete(options)`
-Single async generator. `options`:
+Single async generator (`llm.js`). `options`:
 ```
 {
   system, messages,
   model: "sonnet" | "haiku",
-  tools: list | None,
-  tool_handler: async fn | None,
+  tools: array | null,
+  tool_handler: async fn | null,
   max_iterations: int (tools only, default 5),
   max_tokens, label, log_id, user, conversation_id,
-  prefill: str | None,         // prepend as assistant turn (forces JSON output)
-  stop_sequences: list | None  // stop tokens (e.g. ["```"] for JSON prefill mode)
+  prefill: str | null,         // prepend as assistant turn (forces JSON output)
+  stop_sequences: array | null // stop tokens (e.g. ["```"] for JSON prefill mode)
 }
 ```
 Each iteration (a no-tools call is a single iteration) emits:
@@ -101,28 +98,29 @@ After the loop: `meta` with aggregated usage.
 
 `llm.complete_text(options)` is a thin wrapper that collects tokens into a string (used by plot.py and template_router.py for non-streaming calls).
 
-## API endpoints (`backend/main.py`)
+## API endpoints (`node/router.js`)
 
 | Method | Path                                    | Purpose                                           |
 | ------ | --------------------------------------- | ------------------------------------------------- |
-| POST   | /api/login                              | Authenticate user, set session cookie             |
-| GET    | /api/me                                 | Check current session                             |
 | GET    | /api/health                             | Health check                                      |
+| GET    | /api/me                                 | Check current session                             |
+| POST   | /api/login                              | Authenticate user, set session cookie             |
 | POST   | /api/ask                                | Generate SQL from prompt (SSE)                    |
 | POST   | /api/sql                                | Direct SQL execution                              |
 | POST   | /api/conversations                      | Create/persist a conversation                     |
 | GET    | /api/conversations                      | List conversations for current user               |
-| GET    | /api/conversations/{id}                 | Get all messages for a conversation               |
 | GET    | /api/conversations/{id}/evaluations     | Get evaluations for a conversation                |
+| GET    | /api/conversations/{id}                 | Get all messages for a conversation               |
 | POST   | /api/evaluate                           | Save evaluation; "good" → writes template YAML    |
 | GET    | /api/evaluations                        | List all evaluations                              |
 | GET    | /api/evaluated-sessions                 | List sessions that have been evaluated            |
-| GET    | /api/templates                          | List all YAML templates (name, desc)              |
+| GET    | /api/admin/conversations                | All conversations grouped by user (rockie only)   |
+| GET    | /api/templates                          | List all YAML templates (name, desc, category)    |
 | GET    | /api/templates/{name:path}              | Run template SQL, return rows + plots             |
 | GET    | /eval/files                             | List YAML files in eval-output/                   |
 | GET    | /eval/files/{name}                      | Return YAML file content                          |
 | POST   | /eval/render                            | Render SVG from {config, rows}                    |
-| POST   | /eval/score                             | Render → PNG (cairosvg) → Claude vision score     |
+| POST   | /eval/score                             | Render SVG → Claude text score (JSON)             |
 
 ## Pipeline: `/api/ask`
 
@@ -157,28 +155,28 @@ Model returns up to 6 candidates with similarity scores (0.0–1.0).
 - **No match**:     **Slow Path** (open generation)
 
 ### Fast Path — Template SQL Generation (Sonnet)
-`template_router.generate_sql_from_template()`:
+`template_router.js runMatchedTemplate()`:
 - Input: user prompt + conversation history + template SQL with placeholders + available choices per placeholder
 - Single Sonnet call fills in all `[[ AND {{var}} ]]` placeholders from user intent and history
 - Returns concrete executable SQL (always; no fallback)
-- Trusted result — no verify step; goes directly to `plot.generate_plot_and_summary()`
+- Trusted result — no verify step; goes directly to `plot.generatePlotAndSummary()`
 
 ### Slow Path — Direct SQL Generation (Sonnet)
-`generate.run()` with skills-organized system prompt:
+`generate.js run()` with skills-organized system prompt:
 - `## Skill: schema` — database schema
 - `## Skill: sample_data` — recent sample rows
 - `## Skill: kpi_info` — valid KPI combinations
 - `## Skill: how_to_resolve` — intent resolution guidance
 - Outer retry loop (max 4): each attempt is a single Sonnet call (no tools) that outputs SQL in a ` ```sql ``` ` block
 - Backend extracts SQL, executes it directly
-- After each attempt: `generate.verify_and_generate()` — single Sonnet call that verifies rows AND generates plot+summary
+- After each attempt: `generate.verifyAndGenerate()` — single Sonnet call that verifies rows AND generates plot+summary
 - If `ok=false`: injects `## Revision Feedback` and retries outer loop
 - If SQL error: injects error feedback and retries
 - If all 4 attempts exhausted: emits "Retry limit reached" round
 
 ### verify_and_generate (Sonnet, one step)
-`generate.verify_and_generate()` combines what was previously two separate calls (verify_rows + generate_plot_and_summary):
-- Uses plot-v3.yaml rules with a verification preamble
+`generate.js verifyAndGenerate()` combines verification + plot+summary into one call:
+- Uses plot-vN.yaml rules with a verification preamble (loaded via `prompts.js`)
 - Returns `{"ok": true, "plot": {...}, "summary": "..."}` or `{"ok": false, "reason": "..."}`
 - Bias toward ok=true; only rejects on clearly wrong data
 
@@ -188,12 +186,12 @@ Model returns up to 6 candidates with similarity scores (0.0–1.0).
 3. **Plot & Summary** (Sonnet) — fast path: `generate_plot_and_summary`; slow path: `verify_and_generate`.
 4. **Generation / Retry N** (Sonnet) — slow path: one round per outer attempt, each with its own `prompt` / `messages` / tokens / `response`.
 
-All calls route through `_log_call` / `_log_response` in `llm.py`, which print ANSI-colored dividers tagged with model family (`[llm:haiku]` blue, `[llm:sonnet]` cyan).
+All calls route through `llm.js`, which prints ANSI-colored dividers tagged with model family (`[llm:haiku]` blue, `[llm:sonnet]` cyan) and persists to SQLite via `saveLog()`.
 
 ## Conversation Continuity
 Prior SQL from history is extracted and passed as `## Prior Turn Context` in the slow path system prompt (under `## Skill: how_to_resolve`). Template matching always runs; if a template matches at ≥ 0.95, it generates fresh SQL from the template using history for context.
 
-Frontend `buildHistory` (App.jsx) carries `{role, text, sql, intent, plot_config, columns}` for assistant turns.
+Frontend `buildHistory` (`App.jsx`) carries `{role, text, sql, intent, plot_config, columns}` for assistant turns.
 
 ## Template Format (YAML)
 ```yaml
@@ -214,9 +212,9 @@ plots:
 ```
 
 ## Template Filters
-`[[ AND {{name}} ]]` placeholders in template SQL are detected by `template_filters.detect_placeholders()`.
-Available choices for each placeholder are loaded via `template_filters.load_filter_choices()`.
-These choices are provided as context to the Sonnet call in `generate_sql_from_template()` which fills them in based on user intent and conversation history.
+`[[ AND {{name}} ]]` placeholders in template SQL are detected by `template_filters.js detectPlaceholders()`.
+Available choices for each placeholder are resolved via `buildDefaultFilters()` and applied with `applyFilters()`.
+These choices are provided as context to the Sonnet call in `runMatchedTemplate()` which fills them in based on user intent and conversation history.
 
 ## Data Flow
 <pre>
@@ -251,36 +249,29 @@ User prompt
 </pre>
 
 ## Persistence
-- **SQLite** (`mediavision.db`): `llm_logs`, `conversations`, `users`, `evaluations`.
+- **SQLite** (`mediavision.db`, via `node/sqlite.js` + native binding): `llm_logs`, `conversations`, `users`, `evaluations`.
 - `conversations` table: id, user, title, created_at — groups messages by session.
 - `llm_logs`: each row has conversation_id + user for filtering. `GET /api/conversations/{conv_id}` filters by both conversation_id and authenticated user to prevent cross-user access.
 - ID format: `conversation_id` and `msg_id` use server-generated timestamps `yyyy-mm-dd HH:mm:ss.nnnnnnnnn`.
-- `result_data` on each llm_logs row stores the full assistant content dict (same shape the frontend assembles live from SSE events). `agent._collect()` taps every event and persists once at stream end so chat history renders identically via `ChatMessage` with zero re-derivation.
+- `result_data` on each llm_logs row stores the full assistant content dict (same shape the frontend assembles live from SSE events). `agent.js _collect()` taps every event and persists once at stream end so chat history renders identically via `ChatMessage` with zero re-derivation.
 
 ## Running
 
-### Python backend (original)
 ```bash
-cd backend && uv run uvicorn main:app --reload --port 8000
-cd frontend && npm run dev   # runs on :5173, proxies /api to :8000
+cd node && npm run dev   # serves API + frontend on :8000 via Vite middleware (dev)
 ```
 
-### Node.js backend (node/)
-```bash
-cd node && npm run dev   # serves API + frontend on :8000 via Vite middleware
-```
-Node backend layout mirrors Python module-for-module:
-`server.js` → `router.js` → `agent.js` → `generate.js` / `template_router.js` / `plot.js`
-`llm.js` (Anthropic SDK streaming), `db.js` (pg pool), `sqlite.js` (@rock/sqlite native binding)
-Reads the same `backend/template/` YAML files and `backend/*.yaml` prompts.
+In production, `server.js` serves `frontend/dist/` as static files.
+Deploy via `deploy.sh`: builds frontend, rsync node/ + frontend/dist to server, restarts systemd service.
 
 ### Eval tools
 ```bash
-uv run python backend/plot-eval.py --versions v1,v2 --limit 1
-uv run python backend/plot-eval.py --versions v1,v2 --template 1
+node eval/render_plot.mjs   # reads {config, rows} from stdin, outputs SVG to stdout
+# score via POST /eval/score (calls Claude with SVG text)
 ```
 
 ## Safety
-- Read-only guard in `db.execute_query` blocks anything but `SELECT` / `WITH` plus dangerous keywords.
+- Read-only guard in `db.js executeQuery()` blocks anything but `SELECT` / `WITH` plus dangerous keywords.
 - Table names from information_schema only (not user input).
-- Session cookies are HMAC-signed and expire in 7 days.
+- Session cookies are HMAC-signed (`auth.js`), expire per `SESSION_COOKIE_MAX_AGE`.
+- Rate limiting on `/api/login` per IP (`auth.js checkRateLimit`).

@@ -60,7 +60,7 @@ export async function dispatch(req, res, body, pathname) {
 			if (!m) continue
 			if (route.paramNames) {
 				for (let i = 0; i < route.paramNames.length; i++) {
-					params[route.paramNames[i]] = m[i + 1]
+					params[route.paramNames[i]] = decodeURIComponent(m[i + 1])
 				}
 			}
 		}
@@ -180,7 +180,8 @@ async function handleListConversations(req, res, body, params, username) {
 }
 
 async function handleGetConversation(req, res, body, params, username) {
-	const messages = getConversationMessages(params.conv_id, username)
+	const adminUser = username === 'rockie' ? null : username
+	const messages = getConversationMessages(params.conv_id, adminUser)
 	sendJson(res, { messages })
 }
 

@@ -64,6 +64,7 @@ function App() {
 				async function loadAdmin() {
 					const r = await fetch("/api/admin/conversations", { credentials: "include" })
 					const data = await r.json()
+					console.log("[loadAdmin]", data)
 					setAdminGroups(data.groups || [])
 				}
 				loadAdmin()
@@ -111,8 +112,8 @@ function App() {
 	async function loadConversation(id) {
 		try {
 			const [msgsResp, evalsResp] = await Promise.all([
-				fetch("/api/conversations/" + id, { credentials: "include" }),
-				fetch("/api/conversations/" + id + "/evaluations", { credentials: "include" }),
+				fetch("/api/conversations/" + encodeURIComponent(id), { credentials: "include" }),
+				fetch("/api/conversations/" + encodeURIComponent(id) + "/evaluations", { credentials: "include" }),
 			])
 			const msgsData = await msgsResp.json()
 			const evalsData = await evalsResp.json()
