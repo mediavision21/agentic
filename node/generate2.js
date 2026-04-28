@@ -1,9 +1,26 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { complete, completeText } from './llm.js'
-import { executeQuery, fetchSchemaText } from './db.js'
+import { executeQuery } from './db.js'
 import { updateResultData } from './sqlite.js'
-import { loadDataExamples, loadKpiCombinations } from './data_examples.js'
 import { postprocessSql, buildMessages } from './sql_utils.js'
-import { getGeneratePrompt, getPlotPrompt } from './prompts.js'
+import { getPlotPrompt } from './prompts.js'
+
+const ONTOLOGY_PATH = join(import.meta.dirname, '..', 'skills', 'ONTOLOGY.md')
+let _ontology = null
+
+function getOntology() {
+    if (!_ontology) {
+        _ontology = readFileSync(ONTOLOGY_PATH, 'utf8')
+    }
+    return _ontology
+}
+
+const _SYSTEM_HEADER = `You are a SQL expert for Mediavision's media research database.
+Generate a single SQL query that answers the user's question.
+Return the SQL in a \`\`\`sql ... \`\`\` block.
+
+`
 
 const _NO_PLOT_KEYWORDS = ['no chart', 'no plot', 'no graph', 'without chart', 'without plot',
     'no visualization', 'just numbers', 'just the data', 'text only']
@@ -19,29 +36,12 @@ export async function buildSystemPrompt(options) {
     const {
         matches = [],
         templates = {},
-        dataExamples = '',
-        kpiCombinations = '',
-        intentBlock = '',
         priorSql = null,
         templateFallbackFeedback = null,
     } = options
 
-    const schema = await fetchSchemaText()
-    const generatePrompt = getGeneratePrompt()
-    let base = generatePrompt.header
-    base += `\n\n## Skill: schema\n${schema}`
-    if (generatePrompt.kpi_taxonomy) {
-        base += `\n\n## Skill: kpi_taxonomy\n${generatePrompt.kpi_taxonomy}`
-    }
-    if (kpiCombinations) {
-        base += `\n\n## Skill: kpi_info\nValid KPI combinations (CSV: category,kpi_type,kpi_dimension). Only use combinations from this list:\n${kpiCombinations}`
-    }
-    if (dataExamples) {
-        base += `\n\n## Skill: sample_data\nSample data (latest quarter, sweden + norway, key KPI types):\n${dataExamples}`
-    }
-    if (intentBlock) {
-        base += `\n\n## Skill: how_to_resolve\n${intentBlock}`
-    }
+    let base = _SYSTEM_HEADER + getOntology()
+
     if (priorSql) {
         base += '\n\n## Prior Turn Context (this is a follow-up — modify, do not replace)'
         base += '\nThe user is asking to modify the previous result. Adjust the SQL to incorporate their request '
@@ -154,10 +154,9 @@ export async function verifyAndGenerate(options) {
                     debug,
                 }
             } catch (e) {
-                console.log('[generate] verifyAndGenerate parse error:', e.message)
+                console.log('[generate2] verifyAndGenerate parse error:', e.message)
             }
         }
-        // LLM returned JSON without fences — try parsing raw text
         try {
             const obj = JSON.parse(text.trim())
             if (!obj.ok) {
@@ -167,7 +166,7 @@ export async function verifyAndGenerate(options) {
         } catch (_) {}
         return { ok: true, plot_config: null, summary: text.slice(0, 500) || null, key_takeaways: [], debug }
     } catch (e) {
-        console.log('[generate] verifyAndGenerate error:', e.message)
+        console.log('[generate2] verifyAndGenerate error:', e.message)
         return { ok: true, plot_config: null, summary: null, key_takeaways: [], debug }
     }
 }
@@ -181,20 +180,15 @@ export async function* run(options) {
         msg_id: msgId,
         user,
         conversation_id: conversationId,
-        intent_block: intentBlock = '',
         prior_sql: priorSql,
         prior_plot_config: priorPlotConfig,
         label = 'Generation',
         template_fallback_feedback: templateFallbackFeedback,
     } = options
 
-    const dataExamples = await loadDataExamples()
-    const kpiCombinations = await loadKpiCombinations()
-    const systemPrompt = await buildSystemPrompt({
-        matches, templates, dataExamples, kpiCombinations, intentBlock, priorSql, templateFallbackFeedback
-    })
+    const systemPrompt = await buildSystemPrompt({ matches, templates, priorSql, templateFallbackFeedback })
     const messages = buildMessages(history, prompt)
-    console.log(`[generate] running with ${matches.length} template hints`)
+    console.log(`[generate2] running with ${matches.length} template hints`)
 
     for (let attempt = 0; attempt < 4; attempt++) {
         let fullText = ''
@@ -219,7 +213,6 @@ export async function* run(options) {
 
         const sqlMatch = fullText.match(/```sql\s*([\s\S]*?)\s*```/)
         if (!sqlMatch) {
-            // no SQL block — conversational response
             const suggestions = []
             const suggMatch = fullText.match(/<!--suggestions\s*(.*?)\s*-->/s)
             if (suggMatch) {
@@ -233,7 +226,7 @@ export async function* run(options) {
         }
 
         const sql = postprocessSql(sqlMatch[1].trim())
-        console.log('[generate] extracted sql →', sql.slice(0, 200))
+        console.log('[generate2] extracted sql →', sql.slice(0, 200))
 
         let columns, rows
         try {
@@ -243,7 +236,7 @@ export async function* run(options) {
             yield { type: 'sql', sql, plot_config: null, explanation: '' }
             yield { type: 'rows', columns, rows }
         } catch (e) {
-            console.log('[generate] query error:', e.message)
+            console.log('[generate2] query error:', e.message)
             yield { type: 'error', error: `SQL error: ${e.message}` }
             messages.push(
                 { role: 'assistant', content: fullText },
@@ -286,7 +279,7 @@ export async function* run(options) {
         }
 
         const reason = vgResult.reason || "Data doesn't answer the question"
-        console.log(`[generate] attempt ${attempt + 1} verify failed: ${reason}`)
+        console.log(`[generate2] attempt ${attempt + 1} verify failed: ${reason}`)
         messages.push(
             { role: 'assistant', content: fullText },
             { role: 'user', content: `## Revision Feedback\nThe data does not answer the question: ${reason}\n\nWrite a new SQL query.` }
@@ -295,3 +288,5 @@ export async function* run(options) {
 
     yield { type: 'round', label: 'Retry limit reached' }
 }
+
+export default { buildSystemPrompt, verifyAndGenerate, needsPlot, run }

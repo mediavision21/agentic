@@ -1,0 +1,413 @@
+# Mediavision Data Agent — Prompt Evaluation Dataset
+# Format: each prompt maps to one or more (kpi_type + kpi_dimension) or (kpi_type + service_id) intentions.
+# Used for agent prompt evaluation and SQL generation optimization.
+
+# ── kpi_type + kpi_dimension combinations ────────────────────────────────────
+
+- prompt: "What share of Nordic households subscribe to SVOD services?"
+  intentions:
+    - kpi_type: penetration
+      kpi_dimension: svod
+
+- prompt: "How has standalone SVOD uptake changed over the last two years?"
+  intentions:
+    - kpi_type: penetration
+      kpi_dimension: ssvod
+
+- prompt: "How many households have a bundled SVOD subscription through their operator?"
+  intentions:
+    - kpi_type: penetration
+      kpi_dimension: bsvod
+
+- prompt: "What proportion of households have access to a pay TV channel package?"
+  intentions:
+    - kpi_type: penetration
+      kpi_dimension: pay_tv_channel
+
+- prompt: "How widespread is illegal IPTV usage across the Nordic countries?"
+  intentions:
+    - kpi_type: penetration
+      kpi_dimension: illegal_iptv
+
+- prompt: "What percentage of households have a TV Everywhere subscription?"
+  intentions:
+    - kpi_type: penetration
+      kpi_dimension: tve
+
+- prompt: "How many people watch free-to-air TV on a daily basis?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: svod
+
+- prompt: "What is the daily reach of SVOD services in Sweden?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: svod
+
+- prompt: "How many people use standalone SVOD services on a given day?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: ssvod
+
+- prompt: "What is the daily reach of ad-supported streaming (AVOD)?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: avod
+
+- prompt: "How many people watch hybrid VOD content daily?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: hvod
+
+- prompt: "What is the total online video reach including social media?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: online_total
+
+- prompt: "How many people watch online video excluding social platforms?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: online_excluding_social
+
+- prompt: "What is the daily reach of social media video like TikTok and Instagram?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: social
+
+- prompt: "How many people consume public service broadcaster content daily?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: public_service
+
+- prompt: "What is the reach of ad-supported OTT services?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: ads_ott
+
+- prompt: "How many people watch FAST channels like Pluto TV or Samsung TV+?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: fast
+
+- prompt: "What genres do people watch most when streaming online video?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: genre
+
+- prompt: "How much time do SVOD subscribers spend watching per day?"
+  intentions:
+    - kpi_type: viewing_time
+      kpi_dimension: ssvod
+
+- prompt: "What is the average daily viewing time on bundled SVOD services?"
+  intentions:
+    - kpi_type: viewing_time
+      kpi_dimension: bsvod
+
+- prompt: "How long do people spend watching hybrid VOD content daily?"
+  intentions:
+    - kpi_type: viewing_time
+      kpi_dimension: hvod
+
+- prompt: "How much time do people spend on social video platforms each day?"
+  intentions:
+    - kpi_type: viewing_time
+      kpi_dimension: social
+
+- prompt: "What is the daily viewing time for online video excluding social media?"
+  intentions:
+    - kpi_type: viewing_time
+      kpi_dimension: online_excluding_social
+
+- prompt: "How many minutes per day do viewers spend watching AVOD content?"
+  intentions:
+    - kpi_type: viewing_time
+      kpi_dimension: avod
+
+- prompt: "How does viewing time differ across genres like drama, sports and news?"
+  intentions:
+    - kpi_type: viewing_time
+      kpi_dimension: genre
+
+- prompt: "What do Nordic households spend per month on standalone SVOD services?"
+  intentions:
+    - kpi_type: spend
+      kpi_dimension: ssvod
+
+- prompt: "How many SVOD services does the average Nordic household subscribe to?"
+  intentions:
+    - kpi_type: stacking
+      kpi_dimension: svod
+
+- prompt: "What is the average number of standalone streaming services per household?"
+  intentions:
+    - kpi_type: stacking
+      kpi_dimension: ssvod
+
+- prompt: "How many hybrid/ad-supported SVOD services does a household typically have?"
+  intentions:
+    - kpi_type: stacking
+      kpi_dimension: hvod
+
+- prompt: "What share of SVOD subscribers intend to cancel their subscription?"
+  intentions:
+    - kpi_type: churn_intention
+      kpi_dimension: svod
+
+- prompt: "How many households share or plan to share their SVOD account?"
+  intentions:
+    - kpi_type: account_sharing
+      kpi_dimension: svod
+
+- prompt: "What share of standalone SVOD users share account credentials?"
+  intentions:
+    - kpi_type: account_sharing
+      kpi_dimension: ssvod
+
+- prompt: "What is the weekly online video reach in Sweden?"
+  intentions:
+    - kpi_type: reach_weekly
+      kpi_dimension: online_total
+
+# ── kpi_type + service_id combinations ───────────────────────────────────────
+
+- prompt: "How many households subscribe to Netflix in the Nordics?"
+  intentions:
+    - kpi_type: penetration_service
+      service_id: netflix
+
+- prompt: "What is Netflix's household penetration in Norway?"
+  intentions:
+    - kpi_type: penetration_service
+      service_id: netflix
+
+- prompt: "How many households have a Viaplay subscription?"
+  intentions:
+    - kpi_type: penetration_service
+      service_id: viaplay
+
+- prompt: "What is the subscriber base of HBO Max across the Nordic region?"
+  intentions:
+    - kpi_type: penetration_service
+      service_id: hbo_max
+
+- prompt: "How many households subscribe to Disney+ in the Nordics?"
+  intentions:
+    - kpi_type: penetration_service
+      service_id: disney
+
+- prompt: "What share of households have Amazon Prime Video?"
+  intentions:
+    - kpi_type: penetration_service
+      service_id: prime
+
+- prompt: "How many households subscribe to SkyShowtime?"
+  intentions:
+    - kpi_type: penetration_service
+      service_id: skyshowtime
+
+- prompt: "What is the daily reach of Netflix in the Nordics?"
+  intentions:
+    - kpi_type: reach_service
+      service_id: netflix
+
+- prompt: "How many people watch YouTube on a daily basis?"
+  intentions:
+    - kpi_type: reach_service
+      service_id: youtube
+
+- prompt: "What is TikTok's daily reach among Nordic consumers?"
+  intentions:
+    - kpi_type: reach_service
+      service_id: tiktok
+
+- prompt: "How many people watch Instagram Reels or videos daily?"
+  intentions:
+    - kpi_type: reach_service
+      service_id: instagram
+
+- prompt: "What is the daily reach of SVT Play in Sweden?"
+  intentions:
+    - kpi_type: reach_service
+      service_id: svt_play
+
+- prompt: "How many people watch TV4 Play each day?"
+  intentions:
+    - kpi_type: reach_service
+      service_id: tv4_play
+
+- prompt: "What is NRK's daily reach in Norway?"
+  intentions:
+    - kpi_type: reach_service
+      service_id: nrk
+
+- prompt: "How popular is Viaplay on a daily basis?"
+  intentions:
+    - kpi_type: reach_service
+      service_id: viaplay
+
+- prompt: "How many people watch Discovery+ daily?"
+  intentions:
+    - kpi_type: reach_service
+      service_id: discovery
+
+- prompt: "What is the daily reach of Eurosport in the Nordics?"
+  intentions:
+    - kpi_type: reach_service
+      service_id: eurosport
+
+- prompt: "How many minutes per day do Netflix subscribers spend watching?"
+  intentions:
+    - kpi_type: viewing_time_service
+      service_id: netflix
+
+- prompt: "How long do users spend on TikTok each day?"
+  intentions:
+    - kpi_type: viewing_time_service
+      service_id: tiktok
+
+- prompt: "What is the average daily viewing time on YouTube?"
+  intentions:
+    - kpi_type: viewing_time_service
+      service_id: youtube
+
+- prompt: "How much time do Viaplay subscribers watch per day?"
+  intentions:
+    - kpi_type: viewing_time_service
+      service_id: viaplay
+
+- prompt: "How long do people spend watching Disney+ each day?"
+  intentions:
+    - kpi_type: viewing_time_service
+      service_id: disney
+
+- prompt: "How much does a typical household pay for their Viaplay subscription?"
+  intentions:
+    - kpi_type: spend_service
+      service_id: viaplay
+
+- prompt: "What is the average monthly spend on Netflix?"
+  intentions:
+    - kpi_type: spend_service
+      service_id: netflix
+
+- prompt: "How much do households pay for their Telenor TV subscription per month?"
+  intentions:
+    - kpi_type: spend
+      service_id: telenor
+
+- prompt: "What share of Viaplay subscribers plan to cancel?"
+  intentions:
+    - kpi_type: churn_intention_service
+      service_id: viaplay
+
+- prompt: "How many Netflix subscribers intend to cancel their subscription?"
+  intentions:
+    - kpi_type: churn_intention_service
+      service_id: netflix
+
+- prompt: "What is the churn risk for HBO Max in the Nordics?"
+  intentions:
+    - kpi_type: churn_intention_service
+      service_id: hbo_max
+
+- prompt: "How many people have access to Netflix including via account sharing?"
+  intentions:
+    - kpi_type: gross_access_service
+      service_id: netflix
+
+- prompt: "What is the gross access rate for Disney+ across the Nordics?"
+  intentions:
+    - kpi_type: gross_access_service
+      service_id: disney
+
+- prompt: "Among non-subscribers, how many plan to sign up for Netflix?"
+  intentions:
+    - kpi_type: gross_access
+      service_id: netflix
+
+- prompt: "What is the weekly reach of Netflix in Sweden?"
+  intentions:
+    - kpi_type: reach_service_weekly
+      service_id: netflix
+
+- prompt: "How often do people watch Viaplay on a weekly basis?"
+  intentions:
+    - kpi_type: reach_service_weekly
+      service_id: viaplay
+
+# ── multi-intention prompts (ambiguous or compound queries) ───────────────────
+
+- prompt: "Compare Netflix and Viaplay subscriber bases in the Nordics"
+  intentions:
+    - kpi_type: penetration_service
+      service_id: netflix
+    - kpi_type: penetration_service
+      service_id: viaplay
+
+- prompt: "How does Netflix reach compare to YouTube reach?"
+  intentions:
+    - kpi_type: reach_service
+      service_id: netflix
+    - kpi_type: reach_service
+      service_id: youtube
+
+- prompt: "Show me both SVOD penetration and average monthly spend on standalone SVOD"
+  intentions:
+    - kpi_type: penetration
+      kpi_dimension: svod
+    - kpi_type: spend
+      kpi_dimension: ssvod
+
+- prompt: "How does total SVOD reach compare to social media reach?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: svod
+    - kpi_type: reach
+      kpi_dimension: social
+
+- prompt: "What is the stacking level and churn intention among SVOD households?"
+  intentions:
+    - kpi_type: stacking
+      kpi_dimension: svod
+    - kpi_type: churn_intention
+      kpi_dimension: svod
+
+- prompt: "Compare daily reach of TikTok, Instagram and YouTube"
+  intentions:
+    - kpi_type: reach_service
+      service_id: tiktok
+    - kpi_type: reach_service
+      service_id: instagram
+    - kpi_type: reach_service
+      service_id: youtube
+
+- prompt: "How does Netflix viewing time compare to TikTok viewing time among users?"
+  intentions:
+    - kpi_type: viewing_time_service
+      service_id: netflix
+    - kpi_type: viewing_time_service
+      service_id: tiktok
+
+- prompt: "Show penetration and churn intention for Viaplay"
+  intentions:
+    - kpi_type: penetration_service
+      service_id: viaplay
+    - kpi_type: churn_intention_service
+      service_id: viaplay
+
+- prompt: "What are the reach figures for public service broadcasters vs SVOD?"
+  intentions:
+    - kpi_type: reach
+      kpi_dimension: public_service
+    - kpi_type: reach
+      kpi_dimension: svod
+
+- prompt: "How does household spend differ between standalone SVOD and pay TV operators?"
+  intentions:
+    - kpi_type: spend
+      kpi_dimension: ssvod
+    - kpi_type: spend
+      service_id: telenor
+    - kpi_type: spend
+      service_id: telia

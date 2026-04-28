@@ -19,7 +19,8 @@ mediavision/
 │   ├── server.js                  # node:http server; dev: Vite middleware; prod: serves frontend/dist
 │   ├── router.js                  # route table (dispatch) + all HTTP handlers
 │   ├── agent.js                   # pipeline orchestrator: routing → fast/slow path → unified plot+summary
-│   ├── generate.js                # Sonnet SQL generation + verify_and_generate (one step)
+│   ├── generate.js                # Sonnet SQL generation + verify_and_generate (one step) — schema+taxonomy+examples approach
+│   ├── generate2.js               # Ontology-based SQL generation — uses skills/ONTOLOGY.md as sole context (A/B vs generate.js)
 │   ├── plot.js                    # generate_plot_and_summary (fast path)
 │   ├── llm.js                     # UNIFIED Claude entrypoint — async generator for stream / tools / haiku
 │   ├── db.js                      # pg pool, read-only query exec
@@ -30,7 +31,13 @@ mediavision/
 │   ├── template_filters.js        # [[ AND {{var}} ]] placeholder detection + choices loader
 │   ├── prompts.js                 # loads versioned YAML prompt files (plot-vN.yaml, generate-vN.yaml)
 │   ├── sql_utils.js               # postprocess_sql, build_messages
-│   └── data_examples.js           # cached few-shot samples + KPI combinations
+│   ├── data_examples.js           # cached few-shot samples + KPI combinations (used by generate.js only)
+│   ├── generate-eval.js           # eval harness: runs template descriptions through generate2.js, outputs YAML to eval-output/
+│   └── plot-eval.js               # eval harness for plot generation
+├── skills/
+│   ├── ONTOLOGY.md                # authoritative ontology: column ref, KPI types/dims, services, SQL patterns
+│   ├── generate-v1.yaml           # system prompt for generate.js (header + kpi_taxonomy)
+│   └── plot-v3.yaml               # system prompt for verify-and-generate step
 ├── template/                      # YAML templates (sql + plots + optional filter overrides)
 │   └── evaluations/               # auto-saved from positive ("thumb up") evaluations
 ├── eval/
@@ -96,7 +103,7 @@ After the loop: `meta` with aggregated usage.
 
 **Every tool-use iteration is its own visible round.** A 2-tool answer produces 2 rounds in the frontend debug panel, each with its own prompt / messages / response.
 
-`llm.complete_text(options)` is a thin wrapper that collects tokens into a string (used by plot.py and template_router.py for non-streaming calls).
+`llm.completeText(options)` is a thin wrapper that collects tokens into a string (used by plot.js and template_router.js for non-streaming calls).
 
 ## API endpoints (`node/router.js`)
 
@@ -274,6 +281,11 @@ Deploy via `deploy.sh`: builds frontend, rsync node/ + frontend/dist to server, 
 ```bash
 node eval/render_plot.mjs   # reads {config, rows} from stdin, outputs SVG to stdout
 # score via POST /eval/score (calls Claude with SVG text)
+
+# CLI eval scripts (run from node/):
+node --env-file=../.env generate-eval.js [--limit N] [--template T]   # SQL generation quality
+node --env-file=../.env plot-eval.js [--versions v3] [--limit N] [--template T]   # plot config quality
+# both write YAML results to eval-output/
 ```
 
 ## Safety

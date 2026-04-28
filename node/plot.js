@@ -34,9 +34,10 @@ export async function generatePlotAndSummary(options) {
         user = '',
         conversation_id: conversationId = '',
         prior_plot_config: priorPlotConfig,
+        prompt_data: promptDataOverride,
     } = options
 
-    const promptData = getPlotPrompt()
+    const promptData = promptDataOverride || getPlotPrompt()
     const sample = rows.slice(0, 50)
     const header = columns.join(', ')
     const lines = [header, ...sample.map(row => columns.map(c => row[c] === null || row[c] === undefined ? '' : String(row[c])).join(', '))]

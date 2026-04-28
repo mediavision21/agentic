@@ -8,7 +8,37 @@
 			"program": "${workspaceFolder}/node/server.js",
 			"cwd": "${workspaceFolder}/node",
 			"envFile": "${workspaceFolder}/.env",
-			"runtimeArgs": ["--inspect"],
+			"runtimeArgs": [
+				"--inspect"
+			],
+			"console": "integratedTerminal"
+		},
+		{
+			"name": "generate-eval",
+			"type": "node",
+			"request": "launch",
+			"program": "${workspaceFolder}/node/generate-eval.js",
+			"cwd": "${workspaceFolder}/node",
+			"envFile": "${workspaceFolder}/.env",
+			"args": [
+				"--limit",
+				"1"
+			],
+			"console": "integratedTerminal"
+		},
+		{
+			"name": "plot-eval",
+			"type": "node",
+			"request": "launch",
+			"program": "${workspaceFolder}/node/plot-eval.js",
+			"cwd": "${workspaceFolder}/node",
+			"envFile": "${workspaceFolder}/.env",
+			"args": [
+				"--limit",
+				"1",
+				"--versions",
+				"v3"
+			],
 			"console": "integratedTerminal"
 		},
 		{
