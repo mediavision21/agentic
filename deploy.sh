@@ -10,7 +10,7 @@ rsync -az --exclude 'node_modules' --exclude 'sqlite/build' --exclude 'package.j
     "./node/" "rock@mediavision:/opt/rock/node/"
 
 echo "==> Syncing template ..."
-#rsync -az "./template/" "rock@mediavision:/opt/rock/template/"
+rsync -az "./template/" "rock@mediavision:/opt/rock/template/"
 rsync -az "./skills/" "rock@mediavision:/opt/rock/skills/"
 
 #echo "==> Installing node deps on server..."

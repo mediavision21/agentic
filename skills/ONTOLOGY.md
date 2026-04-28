@@ -516,6 +516,7 @@ ORDER BY value DESC;
 ## SQL rules
   - Generate ONLY SELECT queries. Never INSERT, UPDATE, DELETE, DROP.
   - Use column names and types from the schema exactly.
+  - `kpi_type = {}` MUST easy in the sql
   - the final SELECT MUST always include the `value` column
   - PostgreSQL (Supabase) restrictions — strictly follow:
     - Never nest aggregate functions (e.g. `SUM(AVG(...))` is illegal). Use a subquery or CTE to compute the inner aggregate first.

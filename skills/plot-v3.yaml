@@ -36,6 +36,7 @@ header: |
 
   ## axis
 
+  - y-axis shall start from 0 by default ("zero": true); only omit this when the data range is narrow and a zero baseline would obscure meaningful variation (e.g. temperature fluctuating between 18–22°C)
   - the numeric `value` column shall ALWAYS map to `y: "value"` — NEVER put `value` on the x-axis
   - Using label "Reach (thousands)" instead of "Reach (000s)"
   - for the y-axis label: if the data contains columns kpi_type, kpi_dimension, or kpi_service, use their distinct value(s) as the label (e.g. "Reach", "SVOD Penetration", "Linear Reach") — prefer kpi_dimension over kpi_type when both present
