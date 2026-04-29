@@ -1,0 +1,48 @@
+description: In what country does Netflix have the highest penetration?
+sql: |-
+  SELECT
+      country,
+      period_date,
+      ROUND((value * 100)::numeric, 1) AS value
+  FROM macro.nordic
+  WHERE
+      category = 'online_video'
+      AND kpi_type = 'penetration'
+      AND service_id = 'netflix'
+      AND age_group = '15-74'
+      AND population_segment IS NULL
+      AND period_date = (SELECT MAX(period_date) FROM macro.nordic)
+  ORDER BY value DESC;
+plots:
+  - id: chart
+    title: In what country does Netflix have the highest penetration?
+    config: |-
+      {
+          "title": "Netflix Household Penetration by Country (Q1 2026)",
+          "marks": [
+              {
+                  "type": "barY",
+                  "x": "country",
+                  "y": "value",
+                  "fill": "country",
+                  "sort": {
+                      "x": "-y"
+                  },
+                  "tip": true
+              }
+          ],
+          "x": {
+              "label": "Country"
+          },
+          "y": {
+              "label": "Household Penetration (%)",
+              "grid": true,
+              "tickFormat": ".0%",
+              "zero": true
+          },
+          "color": {
+              "legend": false,
+              "scheme": "tableau10"
+          }
+      }
+timestamp: 2026-04-29_13-23-59

@@ -2,6 +2,7 @@ import { updateResultData } from './sqlite.js'
 import { loadTemplates, matchTopTemplates, runMatchedTemplate } from './template_router.js'
 import { generatePlotAndSummary } from './plot.js'
 import { needsPlot, run as generateRun } from './generate2.js'
+import { saveTemplateFromContent, NEW_TEMPLATE_DIR } from './template_save.js'
 
 function _makeTimestampId() {
 	const now = new Date()
@@ -102,6 +103,14 @@ export async function* generateAgentStream(prompt, history, options) {
 			} catch (e) {
 				console.log('[agent] persist content failed:', e.message)
 			}
+			if (content.sql && (content.plot_config || content.template_plots) && !content.error) {
+				try {
+					const path = saveTemplateFromContent(content, NEW_TEMPLATE_DIR)
+					if (path) console.log('[agent] auto-saved template', path)
+				} catch (e) {
+					console.log('[agent] auto-save template failed:', e.message)
+				}
+			}
 		}
 	}
 }
@@ -148,6 +157,7 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 		yield { type: 'round', label: 'Template Execution' }
 		let templateCols = null
 		let templateRows = null
+		let templateSql = null
 		let gotError = false
 
 		for await (const event of runMatchedTemplate({
@@ -162,6 +172,8 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 			if (event.type === 'rows') {
 				templateCols = event.columns
 				templateRows = event.rows
+			} else if (event.type === 'sql') {
+				templateSql = event.sql
 			} else if (event.type === 'error') {
 				gotError = true
 			}
@@ -177,6 +189,7 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 						user_prompt: prompt,
 						columns: templateCols,
 						rows: templateRows,
+						sql: templateSql,
 						label: 'template-plot',
 						log_id: msgId,
 						user,

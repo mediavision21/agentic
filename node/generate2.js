@@ -25,6 +25,27 @@ Return the SQL in a \`\`\`sql ... \`\`\` block.
 const _NO_PLOT_KEYWORDS = ['no chart', 'no plot', 'no graph', 'without chart', 'without plot',
     'no visualization', 'just numbers', 'just the data', 'text only']
 
+const _REQUIRED_COLS = ['period_date', 'country', 'kpi_type', 'kpi_dimension', 'service_id', 'age_group', 'value']
+const _DIM_COLS = ['period_date', 'country', 'kpi_type', 'kpi_dimension', 'service_id', 'age_group']
+
+function validateColumnCardinality(columns, rows) {
+    const missing = _REQUIRED_COLS.filter(c => !columns.includes(c))
+    if (missing.length > 0) {
+        return { ok: false, reason: `SQL must SELECT these columns: ${missing.join(', ')}` }
+    }
+    const multiValueCols = _DIM_COLS.filter(col => {
+        const vals = new Set(rows.map(r => r[col] === null ? '__null__' : String(r[col])))
+        return vals.size > 1
+    })
+    if (multiValueCols.length > 2) {
+        return {
+            ok: false,
+            reason: `Too many varying dimensions: ${multiValueCols.join(', ')}. At most 2 dimension columns may vary across rows. Add filters or GROUP BY to reduce the variation.`
+        }
+    }
+    return { ok: true }
+}
+
 export function needsPlot(prompt, columns, rows) {
     const p = prompt.toLowerCase()
     if (_NO_PLOT_KEYWORDS.some(k => p.includes(k))) return false
@@ -90,6 +111,7 @@ export async function verifyAndGenerate(options) {
         user_prompt: userPrompt,
         columns,
         rows,
+        sql,
         log_id: logId,
         user = '',
         conversation_id: conversationId = '',
@@ -122,6 +144,7 @@ export async function verifyAndGenerate(options) {
         const priorJson = JSON.stringify(priorPlotConfig, null, 2)
         userMsg += '\n\nPrevious plot config (extend this — keep the same mark type and structure, just add/adjust fields for the new data):\n```json\n' + priorJson + '\n```'
     }
+    if (sql) userMsg += `\n\nSQL used to produce this data:\n\`\`\`sql\n${sql}\n\`\`\``
     if (noPlot) {
         userMsg += '\n\nNote: The user requested no visualization — return "plot": null.'
     }
@@ -235,6 +258,16 @@ export async function* run(options) {
             rows = result.rows
             yield { type: 'sql', sql, plot_config: null, explanation: '' }
             yield { type: 'rows', columns, rows }
+            const cardinalityCheck = validateColumnCardinality(columns, rows)
+            if (!cardinalityCheck.ok) {
+                console.log('[generate2] cardinality check failed:', cardinalityCheck.reason)
+                yield { type: 'error', error: cardinalityCheck.reason }
+                messages.push(
+                    { role: 'assistant', content: fullText },
+                    { role: 'user', content: `## Revision Feedback\n${cardinalityCheck.reason}\n\nRewrite the SQL to fix this.` }
+                )
+                continue
+            }
         } catch (e) {
             console.log('[generate2] query error:', e.message)
             yield { type: 'error', error: `SQL error: ${e.message}` }
@@ -250,6 +283,7 @@ export async function* run(options) {
             user_prompt: prompt,
             columns,
             rows,
+            sql,
             log_id: msgId,
             user,
             conversation_id: conversationId,

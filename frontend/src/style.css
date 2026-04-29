@@ -1592,3 +1592,7 @@ body {
 	background: var(--color-gray-dark);
 	color: var(--color-gray-light);
 }
+
+.plot text {
+	text-transform: capitalize;
+}

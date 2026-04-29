@@ -136,7 +136,12 @@ function sortedBarDomain(options) {
 
 function resolveFmt(v) {
 	if (v === "fmtPeriod" || v === "quarter") return fmtPeriod
+	if (v === "pct") return d => d + '%'
 	return v
+}
+
+function resolveTitle(tmpl) {
+	return function (d) { return tmpl.replace(/{(\w+)}/g, function (_, k) { return d[k] ?? '' }) }
 }
 
 const MARK_FN = {
@@ -160,7 +165,10 @@ export function buildFromConfig(options, shortCut = true) {
 			if (m.stroke) opts.stroke = m.stroke
 			if (m.fill) opts.fill = m.fill
 			if (m.fx) opts.fx = m.fx
+			if (m.sort) opts.sort = m.sort
 			if (m.type === "lineY") opts.curve = m.curve || "catmull-rom"
+			if (m.tip) opts.tip = m.tip
+			if (m.title) opts.title = resolveTitle(m.title)
 			return [fn(data, opts)]
 		})
 		const xCol = config.marks[0] && config.marks[0].x
@@ -170,11 +178,13 @@ export function buildFromConfig(options, shortCut = true) {
 			xOpts.tickFormat = fmtPeriod
 			xOpts.tickRotate = 25
 		}
+		const yOpts = { ...(config.y || {}) }
+		if (yOpts.tickFormat) yOpts.tickFormat = resolveFmt(yOpts.tickFormat)
 		const colorCfg = normalizeColorConfig(config.color) || {}
 		if (colorCfg.tickFormat) colorCfg.tickFormat = resolveFmt(colorCfg.tickFormat)
 		const fxRotate = config.fx && config.fx.tickRotate
 		const marginBottom = config.marginBottom != null ? config.marginBottom : (fxRotate ? 60 : undefined)
-		result = Plot.plot({ width: width || 600, ...config, marginBottom, x: xOpts, color: colorCfg, marks })
+		result = Plot.plot({ width: width || 600, ...config, marginBottom, x: xOpts, y: yOpts, color: colorCfg, marks })
 	}
 	else {
 		// auto-compute period_label from period_date if config references it
@@ -252,6 +262,7 @@ export function buildFromConfig(options, shortCut = true) {
 			const tipChannels = { x: m.x, y: m.y }
 			if (m.stroke) tipChannels.stroke = m.stroke
 			if (m.fill) tipChannels.fill = m.fill
+			if (m.title) tipChannels.title = resolveTitle(m.title)
 			marks.push(Plot.tip(data, Plot.pointerX(tipChannels)))
 		}
 
@@ -291,6 +302,8 @@ export function buildFromConfig(options, shortCut = true) {
 			if (periodDomain) colorCfg.domain = periodDomain
 		}
 
+		const yOptsFull = { grid: false, ...(config.y || {}) }
+		if (yOptsFull.tickFormat) yOptsFull.tickFormat = resolveFmt(yOptsFull.tickFormat)
 		const plotOpts = {
 			className: "plot",
 			style: ".plot-swatch { white-space: nowrap; }",
@@ -298,7 +311,7 @@ export function buildFromConfig(options, shortCut = true) {
 			height: xOpts.tickRotate ? 340 : 300,
 			marginBottom: xOpts.tickRotate ? 50 : undefined,
 			x: xOpts,
-			y: { grid: false, ...(config.y || {}) },
+			y: yOptsFull,
 			color: { legend: true, ...colorCfg },
 			marks,
 		}

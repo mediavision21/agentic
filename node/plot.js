@@ -29,6 +29,7 @@ export async function generatePlotAndSummary(options) {
         user_prompt: userPrompt,
         columns,
         rows,
+        sql,
         label = 'plot',
         log_id: logId,
         user = '',
@@ -42,6 +43,7 @@ export async function generatePlotAndSummary(options) {
     const header = columns.join(', ')
     const lines = [header, ...sample.map(row => columns.map(c => row[c] === null || row[c] === undefined ? '' : String(row[c])).join(', '))]
     let userMsg = `User question: ${userPrompt}\n\nQuery result: \n${lines.join('\n')}`
+    if (sql) userMsg += `\n\nSQL used to produce this data:\n\`\`\`sql\n${sql}\n\`\`\``
 
     for (const kpiCol of ['kpi_dimension', 'kpi_type', 'kpi_service']) {
         if (columns.includes(kpiCol)) {

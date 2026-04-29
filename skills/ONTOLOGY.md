@@ -244,6 +244,8 @@ WHERE is_fast = true
 #### `reach_weekly`
 `aftonbladet`, `allente_stream`, `apple_tv`, `dazn`, `discovery`, `disney`, `eurosport`, `expressen`, `facebook`, `hayu`, `hbo_max`, `instagram`, `netflix`, `other`, `pluto_tv`, `prime`, `rakuten_tv`, `samsung_tv`, `skyshowtime`, `snapchat`, `svt_play`, `tele2_play`, `telenor_stream`, `telia_play`, `tiktok`, `tv4_play`, `twitch`, `ur_play`, `viaplay`, `youtube`
 
+reach_weekly only exist for sweden
+
 #### `spend`
 `allente`, `altibox`, `antenni_tv`, `boxer`, `dna`, `elisa`, `nextgen_tel`, `norlys`, `other`, `riks_tv`, `tele2`, `telenor`, `telia`, `viasat`, `waoo`, `yousee`
 
@@ -512,12 +514,16 @@ ORDER BY value DESC;
 | Use `service_id` in output | Use `canonical_name` for all user-facing output |
 | Query any `kpi_type` + `kpi_dimension` combo not in Section 6.5 | Validate against the confirmed combinations list |
 | Query any `kpi_type` + `service_id` combo not in Section 8.3 | Validate against the confirmed combinations list |
+| SELECT `kpi_dimension` for a service-level query | Omit `kpi_dimension` from SELECT when `service_id` is specified; it is always NULL and causes fan-out rows |
+| Leave `kpi_dimension` unfiltered in WHERE | Always filter to exactly one value: either `kpi_dimension IS NULL` (service queries) or `kpi_dimension = '<value>'` (market queries) |
+| SELECT columns that are not needed for the plot | Only include columns that are categorical keys for grouping/color or the single `value` column — omit constant-value columns |
 
 ## SQL rules
   - Generate ONLY SELECT queries. Never INSERT, UPDATE, DELETE, DROP.
   - Use column names and types from the schema exactly.
   - `kpi_type = {}` MUST easy in the sql
-  - the final SELECT MUST always include the `value` column
+  - the final SELECT MUST always include ALL of: `period_date`, `country`, `kpi_type`, `kpi_dimension`, `service_id`, `age_group`, `value`
+  - At most TWO of `period_date`, `country`, `kpi_type`, `kpi_dimension`, `service_id`, `age_group` may have multiple distinct values across rows — e.g. period varies + country varies is OK; period + country + service_id all varying is not
   - PostgreSQL (Supabase) restrictions — strictly follow:
     - Never nest aggregate functions (e.g. `SUM(AVG(...))` is illegal). Use a subquery or CTE to compute the inner aggregate first.
     - Never use a window function directly inside an aggregate, or vice versa. Stage them in separate CTEs.
@@ -530,7 +536,7 @@ ORDER BY value DESC;
 
 ## Thinking Steps
 
-- Whether the question is market level question or service level question. add `kpi_dimension is not null` if it's a market level question. add `kpi_dimension is null` if it's a service level question
+- Whether the question is market level question or service level question. For **service-level** questions (a named service is specified via `service_id`): always add `kpi_dimension IS NULL` in WHERE — service rows never have a dimension. For **market-level** questions: pick exactly one `kpi_dimension` value and filter to it explicitly (e.g. `kpi_dimension = 'svod'`). Never leave `kpi_dimension` unfiltered.
 - Which kpi_type is the user in refer to, pick one is most relevant. then say so in the summary.
 - Which country is the user is asking, pick either one country by add `country = {country}`. otherwise no extra filter indicate nordic
 - Which quarters is the user is asking, if it the country is sweden only, then we can use all 4 quarters, otherwise, add `EXTRACT(MONTH FROM period_date) IN (1, 7)`

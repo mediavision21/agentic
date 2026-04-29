@@ -1,0 +1,508 @@
+## Mediavision SQL Generation Prompt — Evaluation Questions
+## Each question is tagged with:
+##   difficulty: easy | medium | hard
+##   category: the primary concept being tested
+##   expected_kpis: relevant kpi_type values the SQL should target
+##   notes: tricky aspects the prompt must handle correctly
+
+questions:
+
+  # ── SINGLE COUNTRY, SINGLE KPI ────────────────────────────────────────────
+
+  - id: q01
+    question: "What is the SVOD penetration in Sweden in the latest period?"
+    difficulty: easy
+    category: single_country_latest
+    expected_kpis: [penetration]
+    expected_filters:
+      country: se
+      kpi_type: penetration
+      kpi_dimension: svod
+    notes: >
+      Tests basic single-country latest-period lookup. Prompt must use
+      per-country MAX(period_sort) pattern, not a global max.
+
+  - id: q02
+    question: "How has Netflix penetration in Norway changed over time?"
+    difficulty: easy
+    category: single_country_trend
+    expected_kpis: [penetration_service]
+    expected_filters:
+      country: no
+      service_id: netflix
+    notes: >
+      Tests service-level penetration trend. Should join dim_service and
+      dim_period, order by period_sort.
+
+  - id: q03
+    question: "What is the daily reach of online video in Denmark?"
+    difficulty: easy
+    category: single_country_latest
+    expected_kpis: [reach]
+    expected_filters:
+      country: dk
+      category: online_video
+    notes: >
+      Tests reach KPI for a specific category. Should exclude age_group rows
+      (age_group IS NULL OR age_group = '').
+
+  - id: q04
+    question: "How many minutes per day do Swedish viewers spend watching SVOD?"
+    difficulty: easy
+    category: single_country_latest
+    expected_kpis: [viewing_time]
+    expected_filters:
+      country: se
+      kpi_type: viewing_time
+      kpi_dimension: svod
+    notes: >
+      Tests viewing_time KPI. Value is already in minutes — no transformation
+      needed. But must check population_segment is empty (total population).
+
+  - id: q05
+    question: "What is the average monthly household spend on streaming in Finland?"
+    difficulty: easy
+    category: single_country_latest
+    expected_kpis: [spend]
+    expected_filters:
+      country: fi
+      kpi_type: spend
+    notes: >
+      Tests spend KPI. Value is in local currency (EUR for Finland). No FX
+      conversion needed for a single-country query.
+
+  # ── MULTI-COUNTRY COMPARISONS ──────────────────────────────────────────────
+
+  - id: q06
+    question: "Compare SVOD penetration across all four Nordic countries in the latest period."
+    difficulty: medium
+    category: multi_country_comparison
+    expected_kpis: [penetration]
+    expected_filters:
+      quarter: [q1, q3]
+      kpi_dimension: svod
+    notes: >
+      Must filter quarter IN ('q1','q3'). Must use per-country latest period
+      pattern. Should NOT compute a weighted Nordic average here — just show
+      each country separately.
+
+  - id: q07
+    question: "What is the Nordic average SVOD penetration, weighted by household population?"
+    difficulty: hard
+    category: nordic_weighted_average
+    expected_kpis: [penetration]
+    notes: >
+      Tests population-weighted aggregation across all four countries. Must
+      join fact_population with population_type='households', use
+      SUM(value * pop) / SUM(pop) pattern, filter quarter IN ('q1','q3'),
+      and use per-country latest period logic before averaging.
+
+  - id: q08
+    question: "Which country has the highest Netflix penetration right now?"
+    difficulty: medium
+    category: multi_country_ranking
+    expected_kpis: [penetration_service]
+    expected_filters:
+      service_id: netflix
+      quarter: [q1, q3]
+    notes: >
+      Must use per-country latest period. Should rank by value DESC and show
+      all four countries. Filter quarter IN ('q1','q3').
+
+  - id: q09
+    question: "How does daily TV reach compare between Sweden and Norway over the past three years?"
+    difficulty: medium
+    category: multi_country_trend
+    expected_kpis: [reach]
+    expected_filters:
+      category: tv
+      quarter: [q1, q3]
+    notes: >
+      Two-country trend. Must filter quarter IN ('q1','q3') to keep periods
+      comparable. Should join dim_period for proper labels and ordering.
+
+  - id: q10
+    question: "Show me household media spend in EUR across all Nordic countries for the latest comparable period."
+    difficulty: hard
+    category: multi_country_fx_conversion
+    expected_kpis: [spend]
+    notes: >
+      Requires FX conversion for SE (SEK), NO (NOK), DK (DKK) — FI already
+      in EUR. Must join fact_fx_rate_quarterly on period_key + currency_code
+      and multiply by rate_to_eur. Filter quarter IN ('q1','q3').
+
+  # ── SERVICE-LEVEL QUERIES ──────────────────────────────────────────────────
+
+  - id: q11
+    question: "Which streaming services have the highest penetration in Sweden?"
+    difficulty: medium
+    category: service_ranking
+    expected_kpis: [penetration_service]
+    expected_filters:
+      country: se
+    notes: >
+      Should rank services by latest-period value. Must join dim_service for
+      canonical_name. Should filter out empty service_id rows (market-level rows).
+
+  - id: q12
+    question: "Show me the top 5 SVOD services by penetration in Norway."
+    difficulty: medium
+    category: service_ranking_top_n
+    expected_kpis: [penetration_service]
+    expected_filters:
+      country: no
+    notes: >
+      Top-N pattern. Should rank at latest period and LIMIT 5. Needs
+      dim_service join. Only q1/q3 available for Norway.
+
+  - id: q13
+    question: "How has Viaplay's penetration trended in Denmark over the last two years?"
+    difficulty: medium
+    category: single_service_trend
+    expected_kpis: [penetration_service]
+    expected_filters:
+      country: dk
+      service_id: viaplay
+    notes: >
+      Single service trend. Only q1/q3 available for Denmark. Must order by
+      period_sort. Needs dim_period join for display labels.
+
+  - id: q14
+    question: "What is the churn intention rate for Netflix subscribers in Sweden?"
+    difficulty: medium
+    category: churn_service
+    expected_kpis: [churn_intention_service]
+    expected_filters:
+      country: se
+      service_id: netflix
+    notes: >
+      Tests churn_intention_service. Value is a proportion — must multiply
+      by 100 for display. population_segment should be empty (total) or
+      checked carefully.
+
+  - id: q15
+    question: "Compare the daily reach of Netflix vs Disney+ vs HBO Max in Sweden."
+    difficulty: medium
+    category: multi_service_comparison
+    expected_kpis: [reach_service]
+    expected_filters:
+      country: se
+    notes: >
+      Multi-service comparison. service_id values: netflix, disney, hbo_max.
+      Should show latest period side-by-side. Consider using the top-services
+      + CROSS JOIN pattern if showing a time series.
+
+  # ── DEMOGRAPHIC / AGE SPLITS ───────────────────────────────────────────────
+
+  - id: q16
+    question: "How does daily reach of online video differ by age group in Sweden?"
+    difficulty: medium
+    category: age_group_breakdown
+    expected_kpis: [reach]
+    expected_filters:
+      country: se
+      category: online_video
+    notes: >
+      Must query rows where age_group IS NOT NULL AND age_group != '' to get
+      the breakdown. Should NOT include the total-population row in the same
+      result set to avoid double-counting.
+
+  - id: q17
+    question: "What is the SVOD reach among 25-34 year olds in Norway?"
+    difficulty: medium
+    category: age_group_filter
+    expected_kpis: [reach]
+    expected_filters:
+      country: no
+      age_group: "25-34"
+    notes: >
+      Single age group filter. age_group = '25-34'. Note: age splits only
+      available for reach and viewing_time — not penetration or spend.
+      Only q1/q3 available for Norway.
+
+  - id: q18
+    question: "Show me viewing time by age group for traditional TV in Finland."
+    difficulty: medium
+    category: age_group_breakdown
+    expected_kpis: [viewing_time]
+    expected_filters:
+      country: fi
+      category: tv
+    notes: >
+      viewing_time by age group. Must include all age_group rows and exclude
+      the empty (total) row. Value is in minutes — no transformation.
+
+  # ── POPULATION SEGMENT QUERIES ─────────────────────────────────────────────
+
+  - id: q19
+    question: "How many minutes per day do active SVOD viewers spend watching in Sweden?"
+    difficulty: medium
+    category: population_segment
+    expected_kpis: [viewing_time]
+    expected_filters:
+      country: se
+      population_segment: viewers
+      kpi_dimension: svod
+    notes: >
+      population_segment = 'viewers' means only among people who actually
+      watched. Very different from the total-population figure. Must filter
+      explicitly on population_segment = 'viewers'.
+
+  - id: q20
+    question: "What is the average monthly spend among Netflix subscribers in Denmark?"
+    difficulty: medium
+    category: population_segment_subscribers
+    expected_kpis: [spend_service]
+    expected_filters:
+      country: dk
+      service_id: netflix
+      population_segment: subscribers
+    notes: >
+      spend_service among subscribers only. Must filter population_segment =
+      'subscribers'. Value in DKK — note for display context.
+
+  # ── STACKING / ACCOUNT SHARING ─────────────────────────────────────────────
+
+  - id: q21
+    question: "What is the average number of SVOD services per household in Sweden?"
+    difficulty: easy
+    category: stacking
+    expected_kpis: [stacking]
+    expected_filters:
+      country: se
+    notes: >
+      Tests stacking KPI. Value is a decimal (e.g. 1.85) — no transformation.
+      Should show latest period.
+
+  - id: q22
+    question: "How has SVOD service stacking changed over time in Norway?"
+    difficulty: medium
+    category: stacking_trend
+    expected_kpis: [stacking]
+    expected_filters:
+      country: no
+      quarter: [q1, q3]
+    notes: >
+      Stacking trend. Norway only has q1/q3. Should order by period_sort.
+
+  - id: q23
+    question: "What share of households share a streaming account in Finland?"
+    difficulty: easy
+    category: account_sharing
+    expected_kpis: [account_sharing]
+    expected_filters:
+      country: fi
+    notes: >
+      account_sharing KPI. Value is a proportion — multiply by 100 for
+      display as percentage.
+
+  # ── GENRE QUERIES ──────────────────────────────────────────────────────────
+
+  - id: q24
+    question: "What is the reach of local drama on SVOD in Sweden?"
+    difficulty: hard
+    category: genre
+    expected_kpis: [reach]
+    expected_filters:
+      country: se
+      kpi_dimension: genre
+      kpi_detail: drama_local
+    notes: >
+      kpi_dimension = 'genre' AND kpi_detail = 'drama_local'. Tests that
+      the prompt knows kpi_detail is only populated when kpi_dimension = genre.
+
+  - id: q25
+    question: "Compare viewing time for sports vs drama content in Norway."
+    difficulty: hard
+    category: genre_comparison
+    expected_kpis: [viewing_time]
+    expected_filters:
+      country: no
+      kpi_dimension: genre
+      kpi_detail: [sports_total, drama_total]
+    notes: >
+      Multiple kpi_detail values. Filter kpi_detail IN ('sports_total',
+      'drama_total'). Norway only q1/q3.
+
+  # ── SOCIAL VIDEO ───────────────────────────────────────────────────────────
+
+  - id: q26
+    question: "What is the daily reach of TikTok in Sweden?"
+    difficulty: medium
+    category: social_video_service
+    expected_kpis: [reach_service]
+    expected_filters:
+      country: se
+      service_id: tiktok
+    notes: >
+      TikTok is a social video service (is_social_video = true in dim_service).
+      reach_service KPI. Should join dim_service for canonical_name.
+
+  - id: q27
+    question: "How does social media video reach compare to SVOD reach in Denmark?"
+    difficulty: medium
+    category: social_vs_svod
+    expected_kpis: [reach]
+    expected_filters:
+      country: dk
+      kpi_dimension: [social, svod]
+    notes: >
+      Compares kpi_dimension = 'social' vs kpi_dimension = 'svod' within
+      reach KPI. Should show both in the same result. Denmark q1/q3 only.
+
+  # ── GROSS ACCESS / HVOD ────────────────────────────────────────────────────
+
+  - id: q28
+    question: "What percentage of households have access to Netflix including via account sharing in Sweden?"
+    difficulty: medium
+    category: gross_access
+    expected_kpis: [gross_access_service]
+    expected_filters:
+      country: se
+      service_id: netflix
+    notes: >
+      gross_access_service includes households with access through account
+      sharing, not just subscribers. Different from penetration_service.
+
+  - id: q29
+    question: "What is the HVOD penetration trend in Sweden?"
+    difficulty: medium
+    category: hvod_trend
+    expected_kpis: [penetration]
+    expected_filters:
+      country: se
+      kpi_dimension: hvod
+    notes: >
+      HVOD = hybrid VOD (ad-supported tier within SVOD). kpi_dimension = 'hvod'.
+      Sweden has all four quarters so trend will be richer.
+
+  # ── PERIOD / TIME FILTERING ────────────────────────────────────────────────
+
+  - id: q30
+    question: "What was SVOD penetration in Sweden in Q1 2023?"
+    difficulty: easy
+    category: specific_period
+    expected_kpis: [penetration]
+    expected_filters:
+      country: se
+      year: "2023"
+      quarter: q1
+      kpi_dimension: svod
+    notes: >
+      Specific period filter. year = '2023' AND quarter = 'q1'. No need for
+      latest-period logic.
+
+  - id: q31
+    question: "Show me Netflix penetration in all Nordic countries from 2021 to 2023."
+    difficulty: hard
+    category: multi_country_period_range
+    expected_kpis: [penetration_service]
+    expected_filters:
+      service_id: netflix
+      year: ["2021", "2022", "2023"]
+      quarter: [q1, q3]
+    notes: >
+      Multi-country + date range. Must filter quarter IN ('q1','q3') AND
+      year IN ('2021','2022','2023'). Join dim_period for proper sort order.
+
+  # ── INSIGHT TEXT / QUALITATIVE ─────────────────────────────────────────────
+
+  - id: q32
+    question: "What are the analyst comments about SVOD penetration in Sweden?"
+    difficulty: easy
+    category: insight_text
+    notes: >
+      Should query macro.insight_text, not nordic_long_v2. Filter on
+      country = 'se', kpi_type = 'penetration', kpi_dimension = 'svod'.
+      Return comment_text and comment_type. Never use the comment column
+      from nordic_long_v2.
+
+  - id: q33
+    question: "What does the latest report say about online video growth drivers in Norway?"
+    difficulty: medium
+    category: insight_text_latest
+    notes: >
+      Query insight_text filtered to country = 'no', category = 'online_video',
+      comment_type = 'driver'. Should order by report_period DESC to get
+      the latest commentary.
+
+  # ── EDGE CASES & TRAP QUESTIONS ────────────────────────────────────────────
+
+  - id: q34
+    question: "What is the average SVOD penetration across all Nordic countries?"
+    difficulty: hard
+    category: nordic_weighted_average_trap
+    expected_kpis: [penetration]
+    notes: >
+      TRAP: naive AVG() across countries is wrong because Sweden is much
+      larger than Denmark or Finland. Must use household population weighting.
+      Also must filter quarter IN ('q1','q3') and use per-country latest period.
+      Tests whether prompt enforces population weighting.
+
+  - id: q35
+    question: "What is the latest Netflix penetration in Sweden?"
+    difficulty: medium
+    category: latest_period_trap
+    expected_kpis: [penetration_service]
+    expected_filters:
+      country: se
+      service_id: netflix
+    notes: >
+      TRAP: 'latest' for Sweden could be Q4 (which other countries don't have).
+      For a single-country query this is fine. But tests whether the prompt
+      correctly uses per-country MAX(period_sort) rather than a hardcoded date.
+
+  - id: q36
+    question: "Compare SVOD penetration between Sweden and Norway in the most recent period."
+    difficulty: hard
+    category: latest_period_multi_country_trap
+    expected_kpis: [penetration]
+    notes: >
+      TRAP: Sweden has Q4, Norway only has Q3. A global MAX will give Sweden
+      a different (more recent) period than Norway, making comparison invalid.
+      Prompt must use per-country latest period AND filter quarter IN ('q1','q3')
+      to ensure a fair comparison.
+
+  - id: q37
+    question: "What is the reach of SVOD among 25-34 year olds in Sweden, and how does it compare to the total population?"
+    difficulty: hard
+    category: age_group_vs_total
+    expected_kpis: [reach]
+    notes: >
+      Requires two sets of rows: one with age_group = '25-34' and one with
+      (age_group IS NULL OR age_group = ''). Must not double-count. Tests
+      careful NULL/empty handling for age_group.
+
+  - id: q38
+    question: "What is the SVOD penetration in Sweden, broken down by standalone vs bundled?"
+    difficulty: medium
+    category: kpi_dimension_breakdown
+    expected_kpis: [penetration]
+    expected_filters:
+      country: se
+      kpi_dimension: [ssvod, bsvod, svod]
+    notes: >
+      kpi_dimension values: ssvod (standalone), bsvod (bundled), svod (total).
+      Should return all three for comparison. Tests whether the prompt knows
+      kpi_dimension distinctions.
+
+  - id: q39
+    question: "What is the total media spend per household in Sweden, including TV and streaming?"
+    difficulty: medium
+    category: aggregation_across_dimensions
+    expected_kpis: [spend]
+    notes: >
+      TRAP: values are NOT additive across kpi_dimension or category rows.
+      The total spend row should have kpi_dimension empty/NULL. Prompt must
+      not SUM across dimension rows — it should find the total-level row
+      with (kpi_dimension IS NULL OR kpi_dimension = '').
+
+  - id: q40
+    question: "Show me all KPIs available for TikTok in Sweden."
+    difficulty: hard
+    category: exploratory_service
+    notes: >
+      Open-ended discovery query. Should return distinct kpi_type values
+      (and possibly kpi_dimension) where service_id = 'tiktok' AND
+      country = 'se'. Tests whether the prompt can handle exploratory intent
+      rather than a specific metric request.

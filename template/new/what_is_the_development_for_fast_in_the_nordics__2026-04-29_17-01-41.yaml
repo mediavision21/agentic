@@ -1,0 +1,50 @@
+description: What is the development for FAST in the nordics?
+sql: |-
+  SELECT
+    period_date,
+    country,
+    kpi_type,
+    kpi_dimension,
+    service_id,
+    age_group,
+    ROUND((value * 100)::numeric, 1) AS value
+  FROM macro.nordic
+  WHERE category           = 'online_video'
+    AND kpi_type           = 'reach'
+    AND kpi_dimension      = 'fast'
+    AND service_id         IS NULL
+    AND age_group          = '15-74'
+    AND population_segment IS NULL
+    AND EXTRACT(MONTH FROM period_date) IN (1, 7)
+  ORDER BY period_date, country;
+plots:
+  - id: chart
+    title: What is the development for FAST in the nordics?
+    config: |-
+      {
+          "title": "Daily Reach – FAST (Nordics)",
+          "marks": [
+              {
+                  "type": "lineY",
+                  "x": "period_date",
+                  "y": "value",
+                  "stroke": "country",
+                  "curve": "catmull-rom",
+                  "tip": true
+              }
+          ],
+          "x": {
+              "label": null
+          },
+          "y": {
+              "label": "FAST Daily Reach (%)",
+              "grid": true,
+              "zero": true,
+              "tickFormat": "pct"
+          },
+          "color": {
+              "legend": true,
+              "scheme": "tableau10"
+          }
+      }
+timestamp: 2026-04-29_17-01-41

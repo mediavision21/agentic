@@ -8,7 +8,7 @@ header: |
         {"type": "lineY|barY|dot|areaY", "x": "<col>", "y": "<col>", "stroke": "<col or null>", "fill": "<col or null>", "curve": "catmull-rom", "tip": true}
       ],
       "x": {"label": "<text>"},
-      "y": {"label": "<text>", "grid": true, "tickFormat": ".0%", "zero": true},
+      "y": {"label": "<text>", "grid": true, "tickFormat": "pct", "zero": true},
       "color": {"legend": true, "scheme": "tableau10"}
     },
     "summary": "<2-4 sentence summary — always state the time period covered; always name the geographic scope (e.g. Nordic average, Sweden only); if there is a trend describe direction and magnitude; if there is a comparison highlight the top/bottom and the gap; always state the unit (%, minutes, EUR) explicitly. End with: 'If this is not what you intended, let me know.'>"
@@ -40,7 +40,8 @@ header: |
   - the numeric `value` column shall ALWAYS map to `y: "value"` — NEVER put `value` on the x-axis
   - Using label "Reach (thousands)" instead of "Reach (000s)"
   - for the y-axis label: if the data contains columns kpi_type, kpi_dimension, or kpi_service, use their distinct value(s) as the label (e.g. "Reach", "SVOD Penetration", "Linear Reach") — prefer kpi_dimension over kpi_type when both present
-  - percentage y-axes must always include a "%" suffix in the axis label (e.g. "SVOD Penetration (%)") and use tickFormat ".0%"
+  - percentage y-axes must always include a "%" suffix in the axis label (e.g. "SVOD Penetration (%)")
+  - tickFormat for percentage axes depends on the SQL: if the SQL already multiplied by 100 (e.g. `ROUND((value * 100)::numeric, 1) AS value`), the values are already like 43.0 — use tickFormat `"pct"` (appends "%" without multiplying again). If the values are raw proportions (0.0–1.0), use tickFormat `".0%"` (D3 multiplies by 100). Using `".0%"` on pre-multiplied values will show 4300% — always check the SQL.
   - for kpi reach, always explicitly specify whether it is daily reach or weekly reach in the summary (check kpi_dimension / kpi_type values for "daily" or "weekly" and state it explicitly, e.g. "daily reach grew to…" or "weekly reach climbed from…"; if not clearly specified, treat it as daily reach)
   - the chart title shall say "Daily Reach" unless it is explicitly weekly reach
 
