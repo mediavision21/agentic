@@ -20,14 +20,12 @@ Values are **never additive across rows**. Never `SUM()` penetration, reach, chu
 |---|---|---|
 | `period_date` | `DATE` | First day of the survey quarter: Jan 1, Apr 1, Jul 1, Oct 1 |
 | `country` | `text` | `'sweden'`, `'norway'`, `'denmark'`, `'finland'` |
-| `category` | `text` | Media category — `NULL` if not applicable |
-| `service_id` | `text` | Service identifier — `NULL` on market-level rows |
-| `canonical_name` | `text` | Human-readable service name, e.g. `'Netflix'`, `'TV 2 Play'` — `NULL` when no service |
+| `service_id` | `text` | Service identifier — `NULL` on market-level rows. service_id is mutually exclusive with kpi_dimension |
 | `kpi_type` | `text` | The KPI being measured — see Section 5 |
 | `kpi_dimension` | `text` | Sub-type of the KPI — `NULL` when not applicable |
-| `kpi_detail` | `text` | Genre detail — `NULL` when not applicable |
+| `kpi_detail` | `text` | detail only for Genre — `NULL` when not applicable |
 | `age_group` | `text` | Age bracket — always `'15-74'` for total population, never empty |
-| `population_segment` | `text` | Sub-population filter — `NULL` for general population |
+| `population_segment` | `text` | Sub-population filter — `NULL` means general population |
 | `value` | `numeric` | The KPI value — units depend on `kpi_type` |
 | `is_social_video` | `boolean` | `true` for social platforms — `NULL` on market-level rows |
 | `is_streaming_service` | `boolean` | `true` for SVOD/streaming platforms — `NULL` on market-level rows |
@@ -49,19 +47,8 @@ Every user question resolves to **one of two patterns**:
 | `kpi_type` + `kpi_dimension` | Market-level — no specific service named | `service_id IS NULL` |
 | `kpi_type` + `service_id` | Service-specific — a named platform or operator | `service_id = '<id>'` |
 
-If both a dimension and a service are implied by the question, apply both filters.
-
----
-
-## 4. Categories (`category`)
-
-| `category` | Description |
-|---|---|
-| `'online_video'` | All streaming, social video, VOD — the primary category for most queries |
-| `'tv'` | Traditional linear television |
-| `'cinema'` | Cinema attendance |
-| `'dvd_blu_ray'` | Physical media |
-| `'tvod'` | Transactional VOD (pay-per-view) |
+If both a dimension and a service are implied by the question, ask user further question to clarify. 
+The sql to query shall using either dimension or service not both at the same time.
 
 ---
 
@@ -85,6 +72,8 @@ If both a dimension and a service are implied by the question, apply both filter
 ### 5.2 Market-level vs per-service
 
 The same `kpi_type` value covers both market-level and per-service rows. The distinction is made by `service_id`:
+market_level: kpi_type + kpi_dimension, service_id is NULL
+per-service: kpi_type + service_id, kpi_dimension is NULL
 
 | User intent | `kpi_type` | `service_id` |
 |---|---|---|
@@ -150,7 +139,7 @@ Narrows what a market-level KPI measures. `NULL` means the full category with no
 
 | `kpi_dimension` | Note |
 |---|---|
-| `'genre'` | Always add a `kpi_detail` filter for the specific genre. Use `population_segment = 'genre_viewers'` for reach-among-genre-viewers. |
+| `'genre'` | Always add a `kpi_detail` filter for the specific genre. |
 
 ### 6.5 Valid `kpi_type` + `kpi_dimension` combinations
 
@@ -174,29 +163,14 @@ Only these combinations exist in the data. Do not construct others.
 
 Only populated when `kpi_dimension = 'genre'`. `NULL` in all other rows.
 
-| `kpi_detail` | Description |
-|---|---|
-| `drama_local` | Local drama |
-| `drama_foreign` | Foreign drama |
-| `drama_total` | All drama combined |
-| `film_local` | Local films |
-| `film_foreign` | Foreign films |
-| `tv_series_local` | Local TV series |
-| `tv_series_foreign` | Foreign TV series |
-| `sports_local` | Local sports |
-| `sports_foreign` | Foreign/international sports |
-| `sports_total` | All sports combined |
-| `entertainment_local` | Local entertainment |
-| `entertainment_foreign` | Foreign entertainment |
-| `entertainment_total` | All entertainment combined |
-| `family_kids` | Family and children's content |
-| `news_debate` | News and debate |
-| `factual_documentary` | Factual and documentary |
-| `gaming_esport` | Gaming and esports |
-| `music` | Music content |
-| `humor_clips` | Comedy clips |
-| `animal_clips` | Animal/nature clips |
-| `other` | Other/unclassified |
+`kpi_detail` values:
+- `drama_local` `drama_foreign` `drama_total`
+- `film_local` `film_foreign`
+- `tv_series_local` `tv_series_foreign`
+- `sports_local` `sports_foreign` `sports_total`
+- `entertainment_local` `entertainment_foreign` `entertainment_total`
+- `family_kids` `news_debate` `factual_documentary` `gaming_esport`
+- `music` `humor_clips` `animal_clips` `other`
 
 ---
 
@@ -256,6 +230,8 @@ reach_weekly only exist for sweden
 
 ## 9. Population Segments (`population_segment`)
 
+population_segment is addon information. not for filter. 
+There is no duplicate population_segment the same measure. no filter on query is needed
 `NULL` means general population — the correct default for most queries.
 
 | `population_segment` | Meaning |
@@ -266,6 +242,7 @@ reach_weekly only exist for sweden
 | `'users'` | People who used the service, including free users |
 | `'genre_viewers'` | Only people who watched a specific genre — use with `kpi_dimension = 'genre'` |
 
+**Important:** NEVER filter based on population_segment, it is just as one extra meta data to say what the value's population is.
 **Important:** `viewing_time` without `population_segment = 'viewers'` is minutes-per-capita across the whole population. With it, it is minutes-per-day among actual watchers. These are very different numbers — clarify which is needed before querying.
 
 ---
@@ -396,8 +373,8 @@ Analyst commentary from quarterly reports. Surface alongside numeric results whe
 | "Public service reach" | `reach` | `public_service` | `IS NULL` or `nrk` / `svt_play` |
 | "SVT reach" | `reach` | `IS NULL` | `= 'svt_play'` |
 | "FAST / Pluto TV reach" | `reach` | `fast` | `IS NULL` |
-| "Genre viewership" | `reach` | `genre` | `IS NULL` — also add `kpi_detail` + `population_segment = 'genre_viewers'` |
-| "Time spent on Netflix / TikTok" | `viewing_time` | — | named service — add `population_segment = 'viewers'` |
+| "Genre viewership" | `reach` | `genre` | `IS NULL` — also add `kpi_detail`  |
+| "Time spent on Netflix / TikTok" | `viewing_time` | — | named service  |
 | "SVOD / standalone viewing time" | `viewing_time` | `ssvod` | `IS NULL` |
 | "Social video time spent" | `viewing_time` | `social` | `IS NULL` |
 | "Monthly spend on streaming" | `spend` | `ssvod` | `IS NULL` |
@@ -421,12 +398,10 @@ SELECT
   period_date,
   ROUND(value * 100, 1) AS value
 FROM macro.nordic
-WHERE category           = 'online_video'
-  AND kpi_type           = 'penetration'
+WHERE kpi_type           = 'penetration'
   AND kpi_dimension      = 'svod'
   AND service_id         IS NULL
   AND age_group          = '15-74'
-  AND population_segment IS NULL
   AND country            = 'sweden'
 ORDER BY period_date;
 ```
@@ -438,12 +413,10 @@ SELECT
   period_date,
   ROUND(SUM(value * population_household) / SUM(population_household) * 100, 1) AS value
 FROM macro.nordic
-WHERE category           = 'online_video'
-  AND kpi_type           = 'penetration'
+WHERE kpi_type           = 'penetration'
   AND kpi_dimension      = 'svod'
   AND service_id         IS NULL
   AND age_group          = '15-74'
-  AND population_segment IS NULL
   AND EXTRACT(MONTH FROM period_date) IN (1, 7)
 GROUP BY period_date
 ORDER BY period_date;
@@ -456,12 +429,10 @@ SELECT
   period_date,
   SUM(value * population_1574) / SUM(population_1574) AS value
 FROM macro.nordic
-WHERE category           = 'online_video'
-  AND kpi_type           = 'reach'
+WHERE kpi_type           = 'reach'
   AND kpi_dimension      = 'svod'
   AND service_id         IS NULL
   AND age_group          = '15-74'
-  AND population_segment IS NULL
   AND EXTRACT(MONTH FROM period_date) IN (1, 7)
 GROUP BY period_date
 ORDER BY period_date;
@@ -475,11 +446,9 @@ SELECT
   country,
   ROUND(value * 100, 1) AS value
 FROM macro.nordic
-WHERE category           = 'online_video'
-  AND kpi_type           = 'penetration'
+WHERE kpi_type           = 'penetration'
   AND service_id         IS NOT NULL
   AND age_group          = '15-74'
-  AND population_segment IS NULL
   AND period_date        = (SELECT MAX(period_date) FROM macro.nordic)
 ORDER BY value DESC;
 ```
@@ -491,11 +460,9 @@ SELECT
   canonical_name,
   ROUND(value * 100, 1) AS value
 FROM macro.nordic
-WHERE category           = 'online_video'
-  AND kpi_type           = 'reach'
+WHERE kpi_type           = 'reach'
   AND is_streaming_service = true
   AND age_group          = '15-74'
-  AND population_segment IS NULL
   AND period_date        = (SELECT MAX(period_date) FROM macro.nordic)
 ORDER BY value DESC;
 ```
@@ -522,7 +489,7 @@ ORDER BY value DESC;
   - Generate ONLY SELECT queries. Never INSERT, UPDATE, DELETE, DROP.
   - Use column names and types from the schema exactly.
   - `kpi_type = {}` MUST easy in the sql
-  - the final SELECT MUST always include ALL of: `period_date`, `country`, `kpi_type`, `kpi_dimension`, `service_id`, `age_group`, `value`
+  - the final SELECT MUST always include ALL of: `period_date`, `country`, `kpi_type`, `kpi_dimension`, `service_id`, `age_group`, `population_segment`, `value`. population_segment is an addon information, never as filter. 
   - At most TWO of `period_date`, `country`, `kpi_type`, `kpi_dimension`, `service_id`, `age_group` may have multiple distinct values across rows — e.g. period varies + country varies is OK; period + country + service_id all varying is not
   - PostgreSQL (Supabase) restrictions — strictly follow:
     - Never nest aggregate functions (e.g. `SUM(AVG(...))` is illegal). Use a subquery or CTE to compute the inner aggregate first.
@@ -542,6 +509,7 @@ ORDER BY value DESC;
 - Which quarters is the user is asking, if it the country is sweden only, then we can use all 4 quarters, otherwise, add `EXTRACT(MONTH FROM period_date) IN (1, 7)`
 - Which years is the user is asking QoQ, YoY, or some past history
 - What age_group is the user is asking, if without clear specify add filter `age_group = '15-74'` otherwise add explict age group filter.
+- `population_segment` is NEVER a filter. It is metadata that travels with every row. Do not add `WHERE population_segment = ...` or `AND population_segment IS NULL` — the correct rows already exist without filtering on it.
 
 ## Output
 

@@ -8,6 +8,16 @@ import { getPlotPrompt } from './prompts.js'
 
 const ONTOLOGY_PATH = join(import.meta.dirname, '..', 'skills', 'ONTOLOGY.md')
 let _ontology = null
+let _serviceIdToCanonical = undefined
+
+async function getServiceIdToCanonical() {
+    if (_serviceIdToCanonical === undefined) {
+        const result = await executeQuery(`SELECT service_id, canonical_name FROM macro.dim_service WHERE canonical_name IS NOT NULL`)
+        _serviceIdToCanonical = Object.fromEntries(result.rows.map(r => [r.service_id, r.canonical_name]))
+        console.log('[generate2] loaded service_id→canonical_name map:', Object.keys(_serviceIdToCanonical).length, 'entries')
+    }
+    return _serviceIdToCanonical
+}
 
 function getOntology() {
     if (!_ontology) {
@@ -66,9 +76,9 @@ export async function buildSystemPrompt(options) {
     if (priorSql) {
         base += '\n\n## Prior Turn Context (this is a follow-up — modify, do not replace)'
         base += '\nThe user is asking to modify the previous result. Adjust the SQL to incorporate their request '
-        base += 'while preserving the prior query\'s structure (e.g., add a period, filter, or column). '
+        base += `while preserving the prior query's structure (e.g., add a period, filter, or column). `
         base += 'Keep the same kpi_type, services, countries, and grouping unless the user explicitly asks to change them.'
-        base += `\n\nPrior SQL:\n\`\`\`sql\n${priorSql}\n\`\`\``
+        base += '\n\nPrior SQL:\n```sql\n${priorSql}\n```'
     }
     if (templateFallbackFeedback) {
         base = `## Context: A pre-built template was tried but failed: ${templateFallbackFeedback}. Generate SQL from scratch.\n\n` + base
@@ -88,14 +98,20 @@ export async function buildSystemPrompt(options) {
 }
 
 
-const _VERIFY_AND_GENERATE_PREFIX = `You are verifying query results and generating a visualization.
+const _VERIFY_AND_GENERATE_PREFIX = `You are generating a visualization and summary for query results.
 
-First check: does this data answer the user's question?
-- If the data is clearly wrong (wrong metric entirely, asked for entity X but no rows for X, clearly wrong time period when user specified one), return ONLY:
+Default assumption: the data is correct. Proceed to generate unless BOTH of these are true:
+1. The data contains zero rows for the entity the user asked about (e.g. user asked about Netflix but no Netflix rows exist)
+2. AND the data cannot be used as a proxy or partial answer
+
+Only in that case return:
   \`\`\`json
   {"ok": false, "reason": "brief explanation"}
   \`\`\`
-- Otherwise (even if partial or approximate), generate the visualization below.
+
+When in doubt, generate. Null population_segment, extra metadata columns, or values being per-capita instead of per-viewer are NOT reasons to return false.
+
+population_segment: this column is metadata about who the value represents — it is NOT a filter dimension and will never split the rows. When non-null values are present, mention what population the numbers refer to in your summary (e.g. "These are minutes per actual viewer, not per capita" for population_segment='viewers').
 
 When generating, return ONLY a \`\`\`json ... \`\`\` block:
 {
@@ -139,6 +155,11 @@ export async function verifyAndGenerate(options) {
             const vals = [...new Set(rows.filter(r => r[kpiCol]).map(r => String(r[kpiCol])))]
             if (vals.length > 0) userMsg += `\n${kpiCol} values: ${vals.join(', ')}`
         }
+    }
+    if (columns.includes('population_segment')) {
+        const segMap = { viewers: 'actual viewers (not per-capita)', subscribers: 'subscribers only', users: 'active users', genre_viewers: 'genre-specific viewers' }
+        const segs = [...new Set(rows.filter(r => r['population_segment']).map(r => String(r['population_segment'])))]
+        if (segs.length > 0) userMsg += `\npopulation_segment: ${segs.map(s => `${s} (${segMap[s] || s})`).join(', ')} — mention this in your summary`
     }
     if (priorPlotConfig) {
         const priorJson = JSON.stringify(priorPlotConfig, null, 2)
@@ -256,10 +277,27 @@ export async function* run(options) {
             const result = await executeQuery(sql)
             columns = result.columns
             rows = result.rows
+            // filter out columns with only one distinct value — they carry no visual information
+            const filteredColumns = columns/*.filter(col => {
+                const unique = new Set(rows.map(r => r[col]))
+                return unique.size > 1
+            })*/
+            
             yield { type: 'sql', sql, plot_config: null, explanation: '' }
             yield { type: 'rows', columns, rows }
             const cardinalityCheck = validateColumnCardinality(columns, rows)
-            if (!cardinalityCheck.ok) {
+
+			columns = filteredColumns
+            rows = rows.map(r => Object.fromEntries(filteredColumns.map(col => [col, r[col]])))
+
+            if (cardinalityCheck.ok) {
+                if (columns.includes('service_id')) {
+                    const map = await getServiceIdToCanonical()
+                    columns = [...columns, 'canonical_name']
+                    rows = rows.map(r => ({ ...r, canonical_name: map[r.service_id] || null }))
+                }
+            }
+            else {
                 console.log('[generate2] cardinality check failed:', cardinalityCheck.reason)
                 yield { type: 'error', error: cardinalityCheck.reason }
                 messages.push(

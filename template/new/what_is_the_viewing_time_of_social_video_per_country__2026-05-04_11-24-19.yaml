@@ -1,0 +1,51 @@
+description: what is the viewing time of social video per country?
+sql: |-
+  SELECT
+      n.period_date,
+      n.country,
+      n.kpi_type,
+      n.kpi_dimension,
+      n.service_id,
+      n.age_group,
+      n.population_segment,
+      ROUND((n.value)::numeric, 1) AS value
+  FROM macro.nordic n
+  WHERE
+      n.kpi_type = 'viewing_time'
+      AND n.kpi_dimension = 'social'
+      AND n.service_id IS NULL
+      AND n.age_group = '15-74'
+      AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
+  ORDER BY
+      n.period_date,
+      n.country;
+plots:
+  - id: chart
+    title: what is the viewing time of social video per country?
+    config: |-
+      {
+          "title": "Social Video Viewing Time per Country",
+          "marks": [
+              {
+                  "type": "lineY",
+                  "x": "period_date",
+                  "y": "value",
+                  "stroke": "country",
+                  "curve": "catmull-rom",
+                  "tip": true
+              }
+          ],
+          "x": {
+              "label": null
+          },
+          "y": {
+              "label": "Viewing Time (minutes/day)",
+              "grid": true,
+              "zero": true
+          },
+          "color": {
+              "legend": true,
+              "scheme": "tableau10"
+          }
+      }
+timestamp: 2026-05-04_11-24-19
