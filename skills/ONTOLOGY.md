@@ -12,6 +12,20 @@ Read this before generating any SQL.
 
 Values are **never additive across rows**. Never `SUM()` penetration, reach, churn, or similar figures across services or dimensions. The only valid multi-row aggregation is population-weighted averaging across countries.
 
+### CRITICAL: correct denominator when aggregating across services
+
+When comparing or ranking **multiple services** across Nordic countries, always use the fixed Nordic total as the denominator — never `SUM(population_household)` of the rows returned:
+
+```sql
+-- WRONG — denominator shifts per service (Sweden-only service vs pan-Nordic service are not comparable)
+SUM(value * population_household) / NULLIF(SUM(population_household), 0)
+
+-- CORRECT — fixed denominator; missing countries count as 0
+SUM(value * population_household) / MAX(population_household_nordic)
+```
+
+`population_household_nordic` is a pre-computed column on `macro.nordic` equal to the sum of all 4 countries' household populations for that year. Always include it in the base CTE (`n.population_household_nordic`) when writing cross-service queries.
+
 ---
 
 ## 2. Column Reference
@@ -35,6 +49,8 @@ Values are **never additive across rows**. Never `SUM()` penetration, reach, chu
 | `population` | `numeric` | Individuals for this row's specific `age_group` and country/year |
 | `population_1574` | `numeric` | Total individuals aged 15–74 for country/year — use for cross-age-group weighting |
 | `population_household` | `numeric` | Total households aged 15–74 for country/year |
+| `population_household_nordic` | `numeric` | Sum of `population_household` across **all 4 Nordic countries** for that year — fixed denominator for pan-Nordic weighting |
+| `population_1574_nordic` | `numeric` | Sum of `population_1574` across **all 4 Nordic countries** for that year — fixed denominator for pan-Nordic weighting |
 
 ---
 
@@ -324,15 +340,68 @@ Without this, Sweden contributes twice as many data points as the others, skewin
 
 ### Nordic weighted average pattern
 
+**Single-country or same-service queries** (denominator = countries with data):
 ```sql
 -- Household KPI
-SUM(value * population_household) / SUM(population_household)
+SUM(value * population_household) / NULLIF(SUM(population_household), 0)
 
 -- Individual KPI
-SUM(value * population_1574) / SUM(population_1574)
+SUM(value * population_1574) / NULLIF(SUM(population_1574), 0)
 ```
 
+**Cross-service ranking across the Nordics** — use the fixed Nordic totals so all services share the same denominator, whether or not they have data in every country:
+```sql
+-- Household KPI (penetration, spend, stacking …)
+SUM(value * population_household) / MAX(population_household_nordic)
+
+-- Individual KPI (reach, viewing_time …)
+SUM(value * population_1574) / MAX(population_1574_nordic)
+```
+
+Using `SUM(population_household)` as the denominator when ranking services is **wrong**: a service present in only Sweden gets `Swedish_pop` as denominator, while Netflix gets all 4 countries' pop — making them incomparable. The `_nordic` columns are pre-summed across all 4 countries for the year, so the denominator is always constant.
+
 Never use `AVG()` across countries. Never use `SUM(value)` across services or dimensions.
+
+### Ranking services across countries (top N) — complete pattern
+
+```sql
+WITH base AS (
+    SELECT
+        n.period_date,
+        n.country,
+        n.canonical_name                AS service,
+        n.value                         AS penetration_country,
+        n.population_household,
+        n.population_household_nordic   -- fixed total; MUST be included
+    FROM macro.nordic n
+    WHERE ...
+      AND EXTRACT(MONTH FROM n.period_date) IN (1, 7)
+),
+penetration_weighted AS (
+    SELECT
+        period_date,
+        service,
+        -- CORRECT: fixed Nordic denominator so all services are comparable
+        SUM(penetration_country * population_household)
+            / MAX(population_household_nordic) AS penetration_weighted
+    FROM base
+    GROUP BY period_date, service
+),
+latest_period AS (SELECT MAX(period_date) AS max_period_date FROM penetration_weighted),
+service_rank AS (
+    SELECT service,
+           ROW_NUMBER() OVER (ORDER BY penetration_weighted DESC) AS rn
+    FROM penetration_weighted
+    WHERE period_date = (SELECT max_period_date FROM latest_period)
+),
+top_services AS (SELECT service, rn FROM service_rank WHERE rn <= 5)
+SELECT g.period_date, g.service, g.rn,
+       pw.penetration_weighted * 100 AS value
+FROM top_services g
+CROSS JOIN (SELECT DISTINCT period_date FROM penetration_weighted) p
+LEFT JOIN penetration_weighted pw ON pw.service = g.service AND pw.period_date = p.period_date
+ORDER BY g.rn, p.period_date;
+```
 
 ---
 

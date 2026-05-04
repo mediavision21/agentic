@@ -34,7 +34,11 @@ SELECT
     -- always 15-74 individuals — use for country-weighting across age groups
     ind.value                                                               AS population_1574,
     -- always 15-74 households
-    hh.value                                                                AS population_household
+    hh.value                                                                AS population_household,
+    -- total Nordic 15-74 households across all 4 countries for this year
+    nordic_hh.total                                                         AS population_household_nordic,
+    -- total Nordic 15-74 individuals across all 4 countries for this year
+    nordic_ind.total                                                        AS population_1574_nordic
 FROM macro.nordic_long_v2       l
 LEFT JOIN macro.dim_service      s   ON l.service_id = s.service_id
 LEFT JOIN macro.fact_population  pop ON l.country = pop.country
@@ -49,4 +53,18 @@ LEFT JOIN macro.fact_population  hh  ON l.country = hh.country
                                     AND l.year::integer = hh.year
                                     AND hh.age = '15-74'
                                     AND hh.population_type = 'households'
+LEFT JOIN (
+    SELECT year, SUM(value) AS total
+    FROM macro.fact_population
+    WHERE age = '15-74' AND population_type = 'households'
+        AND country IN ('dk', 'fi', 'no', 'se')
+    GROUP BY year
+)                                nordic_hh  ON l.year::integer = nordic_hh.year
+LEFT JOIN (
+    SELECT year, SUM(value) AS total
+    FROM macro.fact_population
+    WHERE age = '15-74' AND population_type = 'individuals'
+        AND country IN ('dk', 'fi', 'no', 'se')
+    GROUP BY year
+)                                nordic_ind ON l.year::integer = nordic_ind.year
 WHERE l.year >= '2013'

@@ -1,5 +1,6 @@
-description: SVOD household penetration by service across Nordic countries, top 15
-  services ranked by latest period
+description: SVOD household penetration by service across Nordic countries, top N
+  services (e.g. top 5, top 10, top 15) ranked by latest period — uses population-weighted
+  Nordic average
 filters:
   quarter_label:
     choices:
@@ -13,7 +14,8 @@ sql: |-
             n.country,
             n.canonical_name AS service,
             n.value AS penetration_country,
-            n.population_household
+            n.population_household,
+            n.population_household_nordic
         FROM macro.nordic n
         WHERE
             n.category = 'online_video'
@@ -34,7 +36,7 @@ sql: |-
             period_date,
             service,
             SUM(penetration_country * population_household)
-                / NULLIF(SUM(population_household), 0) AS penetration_household_weighted
+                / MAX(population_household_nordic) AS penetration_household_weighted
         FROM base
         GROUP BY period_date, service
     ),

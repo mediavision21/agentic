@@ -15,7 +15,7 @@ function _readTemplatesRecursive(dir, baseDir) {
 	const entries = readdirSync(dir, { withFileTypes: true })
 	for (const entry of entries) {
 		const fullPath = join(dir, entry.name)
-		if (entry.isDirectory()) {
+		if (entry.isDirectory() && entry.name !== 'new') {
 			Object.assign(result, _readTemplatesRecursive(fullPath, baseDir))
 		} else if (entry.isFile() && extname(entry.name) === '.yaml') {
 			const rel = relative(baseDir, fullPath)
