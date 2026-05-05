@@ -2,7 +2,7 @@ import { updateResultData } from './sqlite.js'
 import { loadTemplates, matchTopTemplates, runMatchedTemplate } from './template_router.js'
 import { generatePlotAndSummary } from './plot.js'
 import { needsPlot, run as generateRun } from './generate2.js'
-import { saveTemplateFromContent, NEW_TEMPLATE_DIR } from './template_save.js'
+import { saveTemplateFromContent } from './template_save.js'
 
 function _makeTimestampId() {
 	const now = new Date()
@@ -87,6 +87,7 @@ export function _collect(event, content) {
 	}
 }
 
+// history is send from client side
 export async function* generateAgentStream(prompt, history, options) {
 	const { user = '', conversationId = '' } = options || {}
 	const content = { loading: false, rounds: [] }
@@ -105,7 +106,7 @@ export async function* generateAgentStream(prompt, history, options) {
 			}
 			if (content.sql && (content.plot_config || content.template_plots) && !content.error) {
 				try {
-					const path = saveTemplateFromContent(content, NEW_TEMPLATE_DIR)
+					const path = saveTemplateFromContent(content)
 					if (path) console.log('[agent] auto-saved template', path)
 				} catch (e) {
 					console.log('[agent] auto-save template failed:', e.message)
@@ -140,12 +141,9 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 	// template matching
 	const templates = loadTemplates()
 	let matches = []
-	let matchDebug = null
 	if (Object.keys(templates).length > 0) {
+		let matchDebug
 		;[matches, matchDebug] = await matchTopTemplates(prompt, templates)
-	}
-
-	if (matchDebug) {
 		yield { type: 'round', label: 'Routing' }
 		yield { type: 'prompt', text: matchDebug.prompt }
 		yield { type: 'messages', messages: matchDebug.messages }
@@ -153,7 +151,7 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 	}
 
 	if (matches.length > 0 && matches[0].score >= 0.95) {
-		// fast path: template trusted, no verify needed
+		// fast path: template has high confidence score, just run query and generate summary
 		yield { type: 'round', label: 'Template Execution' }
 		let templateCols = null
 		let templateRows = null

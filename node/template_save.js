@@ -88,7 +88,7 @@ export function plotConfigToJs(config) {
 }
 
 // saves content (from agent stream) as a template YAML into the given dir
-export function saveTemplateFromContent(content, dir) {
+export function saveTemplateFromContent(content, dir = NEW_TEMPLATE_DIR) {
     const sql = content.sql || ''
     if (!sql) return null
 

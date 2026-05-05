@@ -19,7 +19,6 @@ mediavision/
 │   ├── server.js                  # node:http server; dev: Vite middleware; prod: serves frontend/dist
 │   ├── router.js                  # route table (dispatch) + all HTTP handlers
 │   ├── agent.js                   # pipeline orchestrator: routing → fast/slow path → unified plot+summary
-│   ├── generate.js                # Sonnet SQL generation + verify_and_generate (one step) — schema+taxonomy+examples approach
 │   ├── generate2.js               # Ontology-based SQL generation — uses skills/ONTOLOGY.md as sole context (A/B vs generate.js)
 │   ├── plot.js                    # generate_plot_and_summary (fast path)
 │   ├── llm.js                     # UNIFIED Claude entrypoint — async generator for stream / tools / haiku

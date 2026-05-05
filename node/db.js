@@ -5,27 +5,37 @@ pg.types.setTypeParser(1082, val => val)
 const SCHEMA = 'macro'
 const SCHEMA_TABLES = ['nordic']
 
-let _pool = null
+let _poolPromise = null
 let _schemaTextCache = null
 
-export async function initPool() {
+async function _createPool() {
 	const url = process.env.DATABASE_URL
-	// pg handles URL connection strings directly
-	_pool = new Pool({ connectionString: url })
-	// set search_path on each new connection
-	_pool.on('connect', client => {
+	const pool = new Pool({ connectionString: url })
+	pool.on('connect', client => {
 		client.query(`SET search_path TO ${SCHEMA}, public`)
 	})
-	// test connection
-	const client = await _pool.connect()
+	const client = await pool.connect()
 	console.log('[db] connected to postgresql')
 	client.release()
+	return pool
+}
+
+function getPool() {
+	if (!_poolPromise) {
+		_poolPromise = _createPool()
+	}
+	return _poolPromise
+}
+
+export async function initPool() {
+	return getPool()
 }
 
 export async function closePool() {
-	if (_pool) {
-		await _pool.end()
-		_pool = null
+	if (_poolPromise) {
+		const pool = await _poolPromise
+		await pool.end()
+		_poolPromise = null
 	}
 }
 
@@ -38,7 +48,8 @@ async function _getColumns(table) {
         ORDER BY ordinal_position
         LIMIT 50
     `
-	let result = await _pool.query(sql, [table])
+	const pool = await getPool()
+	let result = await pool.query(sql, [table])
 	if (result.rows.length === 0) {
 		// fallback for materialized views
 		const sqlMat = `
@@ -55,7 +66,7 @@ async function _getColumns(table) {
             ORDER BY a.attnum
             LIMIT 50
         `
-		result = await _pool.query(sqlMat, [table])
+		result = await pool.query(sqlMat, [table])
 	}
 	return result.rows.map(r => ({ name: r.column_name, type: r.data_type, nullable: r.is_nullable }))
 }
@@ -65,16 +76,17 @@ const NUMERIC_TYPES = ['int', 'float', 'numeric', 'real', 'double', 'decimal', '
 async function _getColumnStats(table, colName, colType, threshold = 20) {
 	const quoted = `"${colName}"`
 	try {
-		const countRes = await _pool.query(`SELECT COUNT(DISTINCT ${quoted}) FROM ${SCHEMA}."${table}"`)
+		const pool = await getPool()
+		const countRes = await pool.query(`SELECT COUNT(DISTINCT ${quoted}) FROM ${SCHEMA}."${table}"`)
 		const count = parseInt(countRes.rows[0].count, 10)
 		if (count <= threshold) {
-			const res = await _pool.query(`SELECT DISTINCT ${quoted} FROM ${SCHEMA}."${table}" ORDER BY ${quoted}`)
+			const res = await pool.query(`SELECT DISTINCT ${quoted} FROM ${SCHEMA}."${table}" ORDER BY ${quoted}`)
 			const vals = res.rows.map(r => String(r[colName])).filter(v => v !== 'null')
 			return `values:[${vals.join(',')}]`
 		}
 		const isNumeric = NUMERIC_TYPES.some(t => colType.toLowerCase().includes(t))
 		if (isNumeric) {
-			const res = await _pool.query(`SELECT MIN(${quoted}), MAX(${quoted}) FROM ${SCHEMA}."${table}"`)
+			const res = await pool.query(`SELECT MIN(${quoted}), MAX(${quoted}) FROM ${SCHEMA}."${table}"`)
 			return `range:[${res.rows[0].min}-${res.rows[0].max}]`
 		}
 		return `${count} distinct`
@@ -93,7 +105,7 @@ export async function getKpiTypeDimensions(table) {
         ORDER BY kpi_type, kpi_dimension
     `
 	try {
-		const result = await _pool.query(sql)
+		const result = await (await getPool()).query(sql)
 		const map = {}
 		for (const r of result.rows) {
 			const kt = r.kpi_type
@@ -150,7 +162,7 @@ function _isReadOnly(sql) {
 export async function executeQuery(sql) {
 	console.log('executing:', sql)
 	if (_isReadOnly(sql)) {
-		const client = await _pool.connect()
+		const client = await (await getPool()).connect()
 		try {
 			await client.query(`SET search_path TO ${SCHEMA}, public`)
 			const result = await client.query(sql)
@@ -187,7 +199,7 @@ export async function executeQuery(sql) {
 export async function querySingleColumn(sql) {
 	console.log('executing:', sql)
 	if (_isReadOnly(sql)) {
-		const client = await _pool.connect()
+		const client = await (await getPool()).connect()
 		try {
 			await client.query(`SET search_path TO ${SCHEMA}, public`)
 			const result = await client.query(sql)

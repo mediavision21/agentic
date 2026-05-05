@@ -253,10 +253,10 @@ function ChatMessage(options) {
 					)
 				})}
 
-				{loading && (
+				{!summary && !text && (
 					<div>
 						<span className="loading-dots">Thinking</span>
-						{streaming_text && <pre className="streaming-text">{streaming_text}</pre>}
+						{loading && streaming_text && <pre className="streaming-text">{streaming_text}</pre>}
 					</div>
 				)}
 				{enableDebug && !loading && streaming_text && sql && (
@@ -314,7 +314,7 @@ function ChatMessage(options) {
 				)}
 
 				{/* eval buttons for live chat */}
-				{!evalMode && !loading && msg_id && <EvalBar msgId={msg_id} user={user} />}
+				{!evalMode && !loading && msg_id && (summary || text) && <EvalBar msgId={msg_id} user={user} />}
 
 				{/* read-only evals at same position */}
 				{evalInfo && evalInfo.length > 0 && (

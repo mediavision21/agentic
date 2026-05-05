@@ -286,7 +286,6 @@ export async function* run(options) {
 			columns = filteredColumns
             rows = rows.map(r => Object.fromEntries(filteredColumns.map(col => [col, r[col]])))
 
-            if (!cardinalityCheck.ok) lastFailReason = cardinalityCheck.reason
             if (cardinalityCheck.ok) {
                 if (columns.includes('service_id')) {
                     const map = await getServiceIdToCanonical()
@@ -295,6 +294,7 @@ export async function* run(options) {
                 }
             }
             else {
+				lastFailReason = cardinalityCheck.reason
                 console.log('[generate2] cardinality check failed:', cardinalityCheck.reason)
                 yield { type: 'error', error: cardinalityCheck.reason }
                 messages.push(

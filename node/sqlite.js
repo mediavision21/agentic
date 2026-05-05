@@ -1,4 +1,4 @@
-import { open, exec, query, run } from './sqlite/index.js'
+import { open, exec, query, run } from '../sqlite/index.js'
 import { pbkdf2Sync, randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 
@@ -9,47 +9,44 @@ let _db = null
 function db() {
     if (!_db) {
         _db = open(DB_PATH)
+        exec(_db, `
+            CREATE TABLE IF NOT EXISTS llm_logs (
+                id TEXT PRIMARY KEY,
+                timestamp TEXT,
+                prompt TEXT,
+                system_prompt TEXT,
+                messages TEXT,
+                response TEXT,
+                model TEXT,
+                usage TEXT,
+                user TEXT DEFAULT '',
+                conversation_id TEXT DEFAULT '',
+                result_data TEXT DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS conversations (
+                id TEXT PRIMARY KEY,
+                user TEXT,
+                title TEXT,
+                created_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS evaluations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                log_id TEXT,
+                rating TEXT,
+                user TEXT,
+                comment TEXT,
+                timestamp TEXT
+            );
+        `)
+        console.log('[sqlite] db initialized')
     }
     return _db
-}
-
-export function initDb() {
-    exec(db(), `
-        CREATE TABLE IF NOT EXISTS llm_logs (
-            id TEXT PRIMARY KEY,
-            timestamp TEXT,
-            prompt TEXT,
-            system_prompt TEXT,
-            messages TEXT,
-            response TEXT,
-            model TEXT,
-            usage TEXT,
-            user TEXT DEFAULT '',
-            conversation_id TEXT DEFAULT '',
-            result_data TEXT DEFAULT ''
-        );
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            created_at TEXT
-        );
-        CREATE TABLE IF NOT EXISTS conversations (
-            id TEXT PRIMARY KEY,
-            user TEXT,
-            title TEXT,
-            created_at TEXT
-        );
-        CREATE TABLE IF NOT EXISTS evaluations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            log_id TEXT,
-            rating TEXT,
-            user TEXT,
-            comment TEXT,
-            timestamp TEXT
-        );
-    `)
-    console.log('[sqlite] db initialized')
 }
 
 function _hashPassword(password, salt = null) {

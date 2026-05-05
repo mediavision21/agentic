@@ -2,9 +2,6 @@ import http from 'node:http'
 import { join } from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { initDb } from './sqlite.js'
-import { initPool } from './db.js'
-import { loadDimensionToKpi } from './data_examples.js'
 import { dispatch } from './router.js'
 
 const PORT = process.env.PORT || 8001
@@ -43,9 +40,6 @@ async function serveStatic(req, res) {
 }
 
 async function main() {
-    initDb()
-    await initPool()
-    await loadDimensionToKpi()
 
     let vite = null
     if (DEV) {
