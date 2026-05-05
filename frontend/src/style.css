@@ -391,6 +391,30 @@ body {
 	margin-top: 6px;
 }
 
+.debug-toggle {
+	background: transparent;
+	border: 1px solid var(--color-gray-lighter);
+	border-radius: 3px;
+	color: var(--color-gray-mid);
+	cursor: pointer;
+	font-size: 10px;
+	opacity: 0.4;
+	padding: 3px 5px;
+	position: absolute;
+	right: 4px;
+	top: 4px;
+}
+
+.debug-toggle.active {
+	color: var(--color-accent);
+	/* border-color: var(--color-accent); */
+	opacity: 1;
+}
+
+.debug-toggle:hover {
+	opacity: 1;
+}
+
 .debug-round {
 	border-left: 2px solid var(--color-gray-mid);
 	margin-bottom: 6px;
@@ -526,7 +550,8 @@ body {
 	margin-top: 10px;
 }
 
-.suggestion-chip {
+.suggestion-chip,
+.code-inline-btn {
 	background: transparent;
 	border: 1px solid var(--color-gray-light);
 	border-radius: 16px;
@@ -537,6 +562,7 @@ body {
 	padding: 5px 12px;
 }
 
+.code-inline-btn:hover,
 .suggestion-chip:hover {
 	background: var(--color-gray-lighter);
 	border-color: var(--color-gray-mid);
@@ -560,6 +586,23 @@ body {
 /* VOI dark theme: axis text color */
 .chart-container svg text {
 	fill: var(--color-voi-axis);
+}
+
+.table-wrap-scroll {
+	max-height: 480px;
+	overflow-y: auto;
+}
+
+.chart-row-ctrl {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+	margin-top: 4px;
+}
+
+.chart-row-note {
+	color: var(--vscode-descriptionForeground);
+	font-size: 0.8em;
 }
 
 /* ── template plot tabs ── */
@@ -634,6 +677,22 @@ body {
 	border-radius: 3px;
 	font-size: 12px;
 	padding: 1px 4px;
+}
+
+.mv-bar {
+	background: var(--color-gray-lighter, #e0e0e0);
+	border-radius: 2px;
+	display: inline-block;
+	height: 8px;
+	vertical-align: middle;
+	width: 100px;
+}
+
+.mv-bar-fill {
+	background: var(--color-green-500, #4e79a7);
+	border-radius: 2px;
+	display: block;
+	height: 100%;
 }
 
 /* ── error ── */
@@ -1262,13 +1321,13 @@ body {
 
 .code-inline-btn {
 	background: none;
-	border: none;
-	color: var(--color-gray-mid);
+	/* border: none; */
+	/* color: var(--color-gray-mid); */
 	cursor: pointer;
-	font-family: var(--font-body);
-	font-size: 10px;
+	/* font-family: var(--font-body); */
+	/* font-size: 10px; */
 	margin-left: 8px;
-	padding: 0 4px;
+	/* padding: 0 4px; */
 	vertical-align: middle;
 }
 
@@ -1580,6 +1639,32 @@ body {
 	font-size: 11px;
 	white-space: nowrap;
 }
+
+.bubble table {
+	border-collapse: collapse;
+	width: 100%;
+	table-layout: fixed;
+}
+
+.bubble th,
+.bubble td {
+	padding: 3px 10px;
+	text-align: left;
+	border: none;
+}
+
+.bubble tbody tr {
+	border-top: 1px solid var(--color-gray-lighter);
+}
+
+/* 
+th {
+	background-color: #c5c5c5;	
+	border: none;
+}
+table tr:nth-child(even) {
+  background-color: #f5f5f5;
+} */
 
 .plot-eval-table th,
 .plot-eval-table td {

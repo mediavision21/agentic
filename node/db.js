@@ -163,8 +163,10 @@ export async function executeQuery(sql) {
 					const v = r[k]
 					if (v === null || v === undefined) {
 						row[k] = null
-					} else if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') {
+					} else if (typeof v === 'number' || typeof v === 'boolean') {
 						row[k] = v
+					} else if (typeof v === 'string') {
+						row[k] = k === 'value' ? parseFloat(v) : v
 					} else if (v instanceof Date) {
 						row[k] = v.toISOString()
 					} else {

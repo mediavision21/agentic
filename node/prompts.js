@@ -4,7 +4,7 @@ import { load as yamlLoad } from 'js-yaml'
 
 const SKILLS = join(import.meta.dirname, '..', 'skills')
 
-let _generate, _plot, _intentExtract
+let _generate, _plot, _intentExtract, _summary
 
 export function getGeneratePrompt() {
 	if (!_generate) {
@@ -25,4 +25,11 @@ export function getIntentExtractPrompt() {
 		_intentExtract = yamlLoad(readFileSync(join(SKILLS, 'intent-extract.yaml'), 'utf8'))
 	}
 	return _intentExtract
+}
+
+export function getSummaryPrompt() {
+	if (!_summary) {
+		_summary = readFileSync(join(SKILLS, 'SUMMARY.md'), 'utf8')
+	}
+	return _summary
 }

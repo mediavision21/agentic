@@ -4,7 +4,7 @@ import { complete, completeText } from './llm.js'
 import { executeQuery } from './db.js'
 import { updateResultData } from './sqlite.js'
 import { postprocessSql, buildMessages } from './sql_utils.js'
-import { getPlotPrompt } from './prompts.js'
+import { getSummaryPrompt } from './prompts.js'
 
 const ONTOLOGY_PATH = join(import.meta.dirname, '..', 'skills', 'ONTOLOGY.md')
 let _ontology = null
@@ -29,6 +29,8 @@ function getOntology() {
 const _SYSTEM_HEADER = `You are a SQL expert for Mediavision's media research database.
 Generate a single SQL query that answers the user's question.
 Return the SQL in a \`\`\`sql ... \`\`\` block.
+
+**Never ask clarifying questions.** When kpi_type or other parameters are ambiguous, apply the defaults defined in the ontology and generate SQL immediately. The summary layer will offer follow-up suggestions to the user.
 
 `
 
@@ -98,30 +100,6 @@ export async function buildSystemPrompt(options) {
 }
 
 
-const _VERIFY_AND_GENERATE_PREFIX = `You are generating a visualization and summary for query results.
-
-Default assumption: the data is correct. Proceed to generate unless BOTH of these are true:
-1. The data contains zero rows for the entity the user asked about (e.g. user asked about Netflix but no Netflix rows exist)
-2. AND the data cannot be used as a proxy or partial answer
-
-Only in that case return:
-  \`\`\`json
-  {"ok": false, "reason": "brief explanation"}
-  \`\`\`
-
-When in doubt, generate. Null population_segment, extra metadata columns, or values being per-capita instead of per-viewer are NOT reasons to return false.
-
-population_segment: this column is metadata about who the value represents — it is NOT a filter dimension and will never split the rows. When non-null values are present, mention what population the numbers refer to in your summary (e.g. "These are minutes per actual viewer, not per capita" for population_segment='viewers').
-
-When generating, return ONLY a \`\`\`json ... \`\`\` block:
-{
-  "ok": true,
-  "plot": {<Observable Plot config or null if no visualization needed>},
-  "summary": "<2-4 sentence summary>"
-}
-
-`
-
 export async function verifyAndGenerate(options) {
     const {
         user_prompt: userPrompt,
@@ -133,44 +111,47 @@ export async function verifyAndGenerate(options) {
         conversation_id: conversationId = '',
         prior_plot_config: priorPlotConfig,
         no_plot: noPlot = false,
+        sql_gen_messages: sqlGenMessages = null,
+        force = false,
     } = options
 
     if (!rows || rows.length === 0) {
         return { ok: false, reason: 'Query returned no rows', debug: {} }
     }
 
-    const plotData = getPlotPrompt()
-    const plotHeader = plotData.header
-    const sourceRowsIdx = plotHeader.indexOf('## source rows')
-    const plotRules = sourceRowsIdx > 0 ? plotHeader.slice(sourceRowsIdx) : plotHeader
-    const system = _VERIFY_AND_GENERATE_PREFIX + plotRules + '\n' + plotData.examples
+    let system = getSummaryPrompt()
+    if (force) {
+        system += '\n\nIMPORTANT: You MUST return ok:true. Do not return ok:false. Provide your best-effort answer even if the data is imperfect. Note any limitations in the summary.'
+    }
 
     const sample = rows.slice(0, 50)
     const header = columns.join(', ')
     const dataLines = [header, ...sample.map(row => columns.map(c => row[c] === null || row[c] === undefined ? '' : String(row[c])).join(', '))]
-    let userMsg = `User question: ${userPrompt}\n\nQuery result:\n${dataLines.join('\n')}`
 
-    for (const kpiCol of ['kpi_dimension', 'kpi_type', 'kpi_service']) {
-        if (columns.includes(kpiCol)) {
-            const vals = [...new Set(rows.filter(r => r[kpiCol]).map(r => String(r[kpiCol])))]
-            if (vals.length > 0) userMsg += `\n${kpiCol} values: ${vals.join(', ')}`
-        }
-    }
+    let dataMsg = `Query result:\n${dataLines.join('\n')}`
+
     if (columns.includes('population_segment')) {
         const segMap = { viewers: 'actual viewers (not per-capita)', subscribers: 'subscribers only', users: 'active users', genre_viewers: 'genre-specific viewers' }
         const segs = [...new Set(rows.filter(r => r['population_segment']).map(r => String(r['population_segment'])))]
-        if (segs.length > 0) userMsg += `\npopulation_segment: ${segs.map(s => `${s} (${segMap[s] || s})`).join(', ')} — mention this in your summary`
+        if (segs.length > 0) dataMsg += `\npopulation_segment: ${segs.map(s => `${s} (${segMap[s] || s})`).join(', ')} — mention this in your summary`
     }
     if (priorPlotConfig) {
         const priorJson = JSON.stringify(priorPlotConfig, null, 2)
-        userMsg += '\n\nPrevious plot config (extend this — keep the same mark type and structure, just add/adjust fields for the new data):\n```json\n' + priorJson + '\n```'
+        dataMsg += '\n\nPrevious plot config (extend this — keep the same mark type and structure, just add/adjust fields for the new data):\n```json\n' + priorJson + '\n```'
     }
-    if (sql) userMsg += `\n\nSQL used to produce this data:\n\`\`\`sql\n${sql}\n\`\`\``
-    if (noPlot) {
-        userMsg += '\n\nNote: The user requested no visualization — return "plot": null.'
+    if (noPlot) dataMsg += '\n\nNote: The user requested no visualization — return "plot": null.'
+
+    let messages
+    if (sqlGenMessages) {
+        // Reuse SQL generation conversation history — LLM already knows the question and SQL
+        messages = [...sqlGenMessages, { role: 'user', content: dataMsg }]
+    } else {
+        // Standalone call — include full context
+        let userMsg = `User question: ${userPrompt}\n\n${dataMsg}`
+        if (sql) userMsg += `\n\nSQL used:\n\`\`\`sql\n${sql}\n\`\`\``
+        messages = [{ role: 'user', content: userMsg }]
     }
 
-    const messages = [{ role: 'user', content: userMsg }]
     const debug = { prompt: system, messages, response: '' }
     try {
         const text = await completeText({
@@ -195,6 +176,7 @@ export async function verifyAndGenerate(options) {
                     plot_config: obj.plot || null,
                     summary: obj.summary || null,
                     key_takeaways: obj.key_takeaways || [],
+                    suggestions: obj.suggestions || [],
                     debug,
                 }
             } catch (e) {
@@ -206,7 +188,7 @@ export async function verifyAndGenerate(options) {
             if (!obj.ok) {
                 return { ok: false, reason: obj.reason || "Data doesn't answer question", debug }
             }
-            return { ok: true, plot_config: obj.plot || null, summary: obj.summary || null, key_takeaways: obj.key_takeaways || [], debug }
+            return { ok: true, plot_config: obj.plot || null, summary: obj.summary || null, key_takeaways: obj.key_takeaways || [], suggestions: obj.suggestions || [], debug }
         } catch (_) {}
         return { ok: true, plot_config: null, summary: text.slice(0, 500) || null, key_takeaways: [], debug }
     } catch (e) {
@@ -233,6 +215,8 @@ export async function* run(options) {
     const systemPrompt = await buildSystemPrompt({ matches, templates, priorSql, templateFallbackFeedback })
     const messages = buildMessages(history, prompt)
     console.log(`[generate2] running with ${matches.length} template hints`)
+
+    let lastSql = null, lastColumns = null, lastRows = null, lastFailReason = null
 
     for (let attempt = 0; attempt < 4; attempt++) {
         let fullText = ''
@@ -285,11 +269,24 @@ export async function* run(options) {
             
             yield { type: 'sql', sql, plot_config: null, explanation: '' }
             yield { type: 'rows', columns, rows }
+
+            if (rows.length === 0) {
+                lastFailReason = 'Query returned no rows'
+                console.log('[generate2] query returned 0 rows')
+                yield { type: 'error', error: 'Query returned no rows' }
+                messages.push(
+                    { role: 'assistant', content: fullText },
+                    { role: 'user', content: `## Revision Feedback\nThe query returned 0 rows. The data may not exist for these filter criteria. Try different filters, a different time period, or a different metric.\n\nWrite a new SQL query.` }
+                )
+                continue
+            }
+
             const cardinalityCheck = validateColumnCardinality(columns, rows)
 
 			columns = filteredColumns
             rows = rows.map(r => Object.fromEntries(filteredColumns.map(col => [col, r[col]])))
 
+            if (!cardinalityCheck.ok) lastFailReason = cardinalityCheck.reason
             if (cardinalityCheck.ok) {
                 if (columns.includes('service_id')) {
                     const map = await getServiceIdToCanonical()
@@ -308,6 +305,7 @@ export async function* run(options) {
             }
         } catch (e) {
             console.log('[generate2] query error:', e.message)
+            lastFailReason = e.message
             yield { type: 'error', error: `SQL error: ${e.message}` }
             messages.push(
                 { role: 'assistant', content: fullText },
@@ -317,6 +315,7 @@ export async function* run(options) {
         }
 
         const wantPlot = needsPlot(prompt, columns, rows)
+        const sqlHistory = [...messages, { role: 'assistant', content: fullText }]
         const vgResult = await verifyAndGenerate({
             user_prompt: prompt,
             columns,
@@ -327,6 +326,7 @@ export async function* run(options) {
             conversation_id: conversationId,
             prior_plot_config: wantPlot ? priorPlotConfig : null,
             no_plot: !wantPlot,
+            sql_gen_messages: sqlHistory,
         })
 
         const vgDebug = vgResult.debug || {}
@@ -339,6 +339,7 @@ export async function* run(options) {
             const plotConfig = vgResult.plot_config
             const summary = vgResult.summary
             const kt = vgResult.key_takeaways || []
+            const suggestions = vgResult.suggestions || []
             if (plotConfig && wantPlot) {
                 yield { type: 'plot_config', plot_config: plotConfig }
             } else {
@@ -346,19 +347,51 @@ export async function* run(options) {
             }
             if (kt.length > 0) yield { type: 'key_takeaways', items: kt }
             if (summary) yield { type: 'summary', text: summary }
+            if (suggestions.length > 0) yield { type: 'suggestions', items: suggestions }
             updateResultData(msgId, { columns, rows, plot_config: plotConfig, summary })
             return
         }
 
         const reason = vgResult.reason || "Data doesn't answer the question"
         console.log(`[generate2] attempt ${attempt + 1} verify failed: ${reason}`)
+        lastSql = sql; lastColumns = columns; lastRows = rows; lastFailReason = reason
         messages.push(
             { role: 'assistant', content: fullText },
             { role: 'user', content: `## Revision Feedback\nThe data does not answer the question: ${reason}\n\nWrite a new SQL query.` }
         )
     }
 
-    yield { type: 'round', label: 'Retry limit reached' }
+    yield { type: 'round', label: 'Best Effort' }
+    if (lastColumns && lastRows) {
+        const wantPlot = needsPlot(prompt, lastColumns, lastRows)
+        const forced = await verifyAndGenerate({
+            user_prompt: prompt,
+            columns: lastColumns,
+            rows: lastRows,
+            sql: lastSql,
+            log_id: msgId,
+            user,
+            conversation_id: conversationId,
+            prior_plot_config: wantPlot ? priorPlotConfig : null,
+            no_plot: !wantPlot,
+            force: true,
+        })
+        const forcedDebug = forced.debug || {}
+        if (forcedDebug.prompt) yield { type: 'prompt', text: forcedDebug.prompt }
+        if (forcedDebug.messages) yield { type: 'messages', messages: forcedDebug.messages }
+        if (forcedDebug.response) yield { type: 'response', text: forcedDebug.response }
+        if (forced.plot_config && wantPlot) yield { type: 'plot_config', plot_config: forced.plot_config }
+        else yield { type: 'no_plot' }
+        if ((forced.key_takeaways || []).length > 0) yield { type: 'key_takeaways', items: forced.key_takeaways }
+        if (forced.summary) yield { type: 'summary', text: forced.summary }
+        if ((forced.suggestions || []).length > 0) yield { type: 'suggestions', items: forced.suggestions }
+        updateResultData(msgId, { columns: lastColumns, rows: lastRows, plot_config: forced.plot_config, summary: forced.summary })
+    } else {
+        const text = lastFailReason
+            ? `I was unable to find data that answers your question. ${lastFailReason}`
+            : `I was unable to find data that answers your question after several attempts.`
+        yield { type: 'summary', text }
+    }
 }
 
 export default { buildSystemPrompt, verifyAndGenerate, needsPlot, run }

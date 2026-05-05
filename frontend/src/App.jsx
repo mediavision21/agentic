@@ -316,7 +316,7 @@ function App() {
 				const isFirst = s.messages.length === 0
 				return {
 					...s,
-					title: isFirst ? prompt.slice(0, 40) : s.title,
+					title: isFirst ? prompt : s.title,
 					messages: [...s.messages, userMsg, assistantMsg],
 				}
 			})
@@ -469,7 +469,7 @@ function App() {
 						fetch("/api/conversations", {
 							method: "POST",
 							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({ id: sess.serverId, title: prompt.slice(0, 40) }),
+							body: JSON.stringify({ id: sess.serverId, title: prompt.slice(0, 100) }),
 							credentials: "include",
 						})
 					}

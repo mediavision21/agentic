@@ -63,8 +63,21 @@ Every user question resolves to **one of two patterns**:
 | `kpi_type` + `kpi_dimension` | Market-level — no specific service named | `service_id IS NULL` |
 | `kpi_type` + `service_id` | Service-specific — a named platform or operator | `service_id = '<id>'` |
 
-If both a dimension and a service are implied by the question, ask user further question to clarify. 
-The sql to query shall using either dimension or service not both at the same time.
+The sql to query shall using either dimension or service not both at the same time. When both are implied, default to the service-level pattern (`kpi_type` + `service_id`) and offer the market-level view as a suggestion.
+
+**Never ask clarifying questions.** Always resolve ambiguity using defaults below and generate SQL.
+
+### Defaults when kpi_type is not specified
+
+| Question type | Default `kpi_type` | Default `kpi_dimension` |
+|---|---|---|
+| "top services", service rankings, no metric given | `penetration` | `svod` |
+| "who watches", "how many people watch" | `reach` | *(null — total)* |
+| general overview, no signal | `penetration` | `svod` |
+
+When country is not specified → include all Nordic countries.
+When time period is not specified → use the latest available period.
+When defaults are used, the summary will offer follow-up suggestions — do not ask the user.
 
 ---
 
@@ -327,6 +340,33 @@ AND EXTRACT(MONTH FROM period_date) IN (1, 7)
 
 Without this, Sweden contributes twice as many data points as the others, skewing any aggregation.
 
+### Full Nordic vs individual country
+
+`macro.nordic` already contains pre-aggregated rows where `country = 'nordic'`. **Never compute the nordic aggregate manually** (no `SUM(value * population) / MAX(population_nordic)` for nordic, no UNION ALL with a hand-rolled nordic CTE). Just include `'nordic'` in the country filter.
+
+| User intent | Filter |
+|---|---|
+| "Full Nordic" only | `AND country = 'nordic'` |
+| Each country + nordic | `AND country IN ('sweden', 'norway', 'denmark', 'finland', 'nordic')` |
+
+For top-N per country (including nordic as one facet), use a single ranked CTE with `PARTITION BY country` — `'nordic'` is just another country value:
+
+```sql
+WITH base AS (
+    SELECT ...
+    FROM macro.nordic
+    WHERE ...
+      AND country IN ('sweden', 'norway', 'denmark', 'finland', 'nordic')
+),
+ranked AS (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY country ORDER BY value DESC) AS rn
+    FROM base
+)
+SELECT ... FROM ranked WHERE rn <= 5 ORDER BY country, value DESC;
+```
+
+**Never split into separate CTEs for individual countries and nordic then UNION ALL.** The single `PARTITION BY country` handles all of them.
+
 ---
 
 ## 13. Aggregation and Weighting
@@ -553,12 +593,16 @@ ORDER BY value DESC;
 | SELECT `kpi_dimension` for a service-level query | Omit `kpi_dimension` from SELECT when `service_id` is specified; it is always NULL and causes fan-out rows |
 | Leave `kpi_dimension` unfiltered in WHERE | Always filter to exactly one value: either `kpi_dimension IS NULL` (service queries) or `kpi_dimension = '<value>'` (market queries) |
 | SELECT columns that are not needed for the plot | Only include columns that are categorical keys for grouping/color or the single `value` column — omit constant-value columns |
+| Manually compute nordic aggregate with `SUM(value * population) / MAX(population_nordic)` | Use `country = 'nordic'` rows directly — they are pre-aggregated in `macro.nordic` |
+| UNION ALL separate CTEs for individual countries and nordic | Use `country IN ('sweden','norway','denmark','finland','nordic')` and `PARTITION BY country` — one CTE handles all |
 
 ## SQL rules
   - Generate ONLY SELECT queries. Never INSERT, UPDATE, DELETE, DROP.
   - Use column names and types from the schema exactly.
   - `kpi_type = {}` MUST easy in the sql
-  - the final SELECT MUST always include ALL of: `period_date`, `country`, `kpi_type`, `kpi_dimension`, `service_id`, `age_group`, `population_segment`, `value`. population_segment is an addon information, never as filter. 
+  - the final SELECT MUST always include ALL of: `period_date`, `country`, `kpi_type`, `kpi_dimension`, `service_id`, `age_group`, `population_segment`, `value`. population_segment is an addon information, never as filter.
+  - for service-level queries, the final SELECT MUST also include `canonical_name` — it is required for display and chart labeling. Never drop it when passing through CTEs.
+  - for top-N per country queries, ALWAYS use `ROW_NUMBER() OVER (PARTITION BY country ORDER BY value DESC) AS rn` and filter `WHERE rn <= N`. Never use `LIMIT N` as a substitute — `LIMIT` truncates global rows, not per-country rows.
   - At most TWO of `period_date`, `country`, `kpi_type`, `kpi_dimension`, `service_id`, `age_group` may have multiple distinct values across rows — e.g. period varies + country varies is OK; period + country + service_id all varying is not
   - PostgreSQL (Supabase) restrictions — strictly follow:
     - Never nest aggregate functions (e.g. `SUM(AVG(...))` is illegal). Use a subquery or CTE to compute the inner aggregate first.
@@ -574,31 +618,13 @@ ORDER BY value DESC;
 
 - Whether the question is market level question or service level question. For **service-level** questions (a named service is specified via `service_id`): always add `kpi_dimension IS NULL` in WHERE — service rows never have a dimension. For **market-level** questions: pick exactly one `kpi_dimension` value and filter to it explicitly (e.g. `kpi_dimension = 'svod'`). Never leave `kpi_dimension` unfiltered.
 - Which kpi_type is the user in refer to, pick one is most relevant. then say so in the summary.
-- Which country is the user is asking, pick either one country by add `country = {country}`. otherwise no extra filter indicate nordic
+- Which country is the user is asking. If they say "full nordic" or "nordic total", then do not exclude any country, nordic take the same role as a country as well. For top-N per country, always use `ROW_NUMBER() OVER (PARTITION BY country ORDER BY value DESC)` — never replace with `LIMIT`.
 - Which quarters is the user is asking, if it the country is sweden only, then we can use all 4 quarters, otherwise, add `EXTRACT(MONTH FROM period_date) IN (1, 7)`
 - Which years is the user is asking QoQ, YoY, or some past history
 - What age_group is the user is asking, if without clear specify add filter `age_group = '15-74'` otherwise add explict age group filter.
 - `population_segment` is NEVER a filter. It is metadata that travels with every row. Do not add `WHERE population_segment = ...` or `AND population_segment IS NULL` — the correct rows already exist without filtering on it.
 
-## Output
-
-<!--suggestions
-  Option text 1
-  Option text 2
-  -->
-
-  Each line inside the block becomes a clickable button the user can tap instead of typing.
-
-  - When you have returned data rows, append key takeaways (3-5 short bullet strings) when the data shows clear trends, comparisons, or seasonal patterns. Omit when data is too simple or sparse.
-
-  <!--key-takeaways
-  Takeaway 1
-  Takeaway 2
-  -->
-
-  Each line becomes a bullet point shown below the chart.
-
-format: long/tidy (required for Observable Plot)
+## Output format: long/tidy (required for Observable Plot)
 
   Return **long/tidy data only**:
   - One row per observation
@@ -607,3 +633,4 @@ format: long/tidy (required for Observable Plot)
   - All categorical dimensions as separate key columns (e.g. `period_date`, `country`, `service`, `age_group`)
   - t
   **Never pivot to wide form.** No `CASE WHEN ... END` per-category columns — Observable Plot handles grouping and faceting client-side from the key columns.
+

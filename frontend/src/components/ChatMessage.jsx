@@ -137,6 +137,8 @@ function ChatMessage(options) {
 	const { message, onSuggest, evalMode, evalUser, evalInfo, user } = options
 	const [localRows, setLocalRows] = useState(null)
 	const [localColumns, setLocalColumns] = useState(null)
+	const isAdmin = localStorage.getItem('isAdmin')
+	const [enableDebug, setEnableDebug] = useState(!!localStorage.getItem('enableDebug'))
 
 	async function handleRerunSQL(sql) {
 		const resp = await fetch("/api/sql", {
@@ -152,6 +154,16 @@ function ChatMessage(options) {
 		}
 	}
 
+	function toggleDebug() {
+		const next = !enableDebug
+		if (next) {
+			localStorage.setItem('enableDebug', '1')
+		} else {
+			localStorage.removeItem('enableDebug')
+		}
+		setEnableDebug(next)
+	}
+
 	if (message.role === "user") {
 		return (
 			<div className={"bubble-row user" + (evalUser ? " with-label" : "")}>
@@ -163,19 +175,43 @@ function ChatMessage(options) {
 		)
 	}
 
+	const enableNormalPlot = localStorage.getItem('enableNormalPlot')
+	
 	// assistant
 	const { loading, error, sql, explanation, text, columns, rows, summary, key_takeaways, plot_config, no_plot, streaming_text, suggestions, msg_id, template_plots, rounds } = message.content
-	const displayColumns = localColumns || columns
-	const displayRows = localRows || rows
+	const rawRows = localRows || rows || []
+	const rawColumns = localColumns || columns || []
+	// filter out rows where every value is empty
+	const nonEmptyRows = rawRows.filter(function (row) {
+		return rawColumns.some(function (col) {
+			const v = row[col]
+			return v !== null && v !== undefined && v !== ""
+		})
+	})
+	// remove columns where all values are empty
+	const displayColumns = rawColumns.filter(function (col) {
+		return nonEmptyRows.some(function (row) {
+			const v = row[col]
+			return v !== null && v !== undefined && v !== ""
+		})
+	})
+	const displayRows = nonEmptyRows
 	// const showDebug = location.hostname === "localhost" || localStorage.getItem("debug") === "1"
-	const showDebug = true
+	
 
 	return (
-		<div className="bubble-row assistant">
+		<div className="bubble-row assistant" style={{ position: "relative" }}>
+			{isAdmin && (
+				<button
+					className={"debug-toggle" + (enableDebug ? " active" : "")}
+					onClick={toggleDebug}
+					title="Toggle debug"
+				>Show Debug 🩺</button>
+			)}
 			<div className="bubble bubble-assistant">
 				{message.content.preamble && <p className="preamble">{message.content.preamble}</p>}
 
-				{showDebug && rounds && rounds.map(function (r, i) {
+				{enableDebug && rounds && rounds.map(function (r, i) {
 					// infer which model produced this round from its label
 					const label = r.label || ""
 					const isHaiku = label === "Routing" || label === "Filter Resolution"
@@ -223,7 +259,7 @@ function ChatMessage(options) {
 						{streaming_text && <pre className="streaming-text">{streaming_text}</pre>}
 					</div>
 				)}
-				{!loading && streaming_text && sql && (
+				{enableDebug && !loading && streaming_text && sql && (
 					<details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streaming_text}</pre></details>
 				)}
 
@@ -232,15 +268,8 @@ function ChatMessage(options) {
 				{/* conversational reply — show as markdown, no SQL block */}
 				{text && !sql && <Markdown text={text} />}
 
-				{sql && (
+				{enableDebug && sql && (
 					<SqlDisplay label="SQL" code={sql} explanation={explanation} onRerun={handleRerunSQL} />
-				)}
-
-				{displayRows && displayRows.length > 0 && (
-					<details className="collapsible">
-						<summary>Data ({displayRows.length} rows)</summary>
-						<ResultTable columns={displayColumns} rows={displayRows} />
-					</details>
 				)}
 
 				{key_takeaways && key_takeaways.length > 0 && (
@@ -253,8 +282,15 @@ function ChatMessage(options) {
 
 				{summary && <Markdown text={summary} />}
 
-				{plot_config && !template_plots && (
+				{enableNormalPlot && plot_config && !template_plots && (
 					<ResultChart columns={displayColumns} rows={displayRows} plot_config={plot_config} msg_id={msg_id} />
+				)}
+
+				{enableDebug && displayRows && displayRows.length > 0 && (
+					<details className="collapsible" open>
+						<summary>Data ({displayRows.length} rows)</summary>
+						<ResultTable columns={displayColumns} rows={displayRows} />
+					</details>
 				)}
 
 				{template_plots && template_plots.length > 0 && rows && rows.length > 0 && (

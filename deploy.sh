@@ -23,6 +23,7 @@ echo "==> Restart service ..."
 ssh mediavision "systemctl restart rock"
 
 
+
 # echo "==> Syncing .env if exists..."
 # if [ -f "$SCRIPT_DIR/.env" ]; then
 #     rsync -az "$SCRIPT_DIR/.env" "mediavision:/opt/rock/.env"

@@ -35,9 +35,10 @@ mediavision/
 │   ├── generate-eval.js           # eval harness: runs template descriptions through generate2.js, outputs YAML to eval-output/
 │   └── plot-eval.js               # eval harness for plot generation
 ├── skills/
-│   ├── ONTOLOGY.md                # authoritative ontology: column ref, KPI types/dims, services, SQL patterns
+│   ├── ONTOLOGY.md                # SQL-only ontology: column ref, KPI types/dims, services, SQL rules, tidy-format rules
+│   ├── SUMMARY.md                 # summary+plot generation guidance: narrative patterns, %%BAR:XX%% table format, plot config rules
 │   ├── generate-v1.yaml           # system prompt for generate.js (header + kpi_taxonomy)
-│   └── plot-v3.yaml               # system prompt for verify-and-generate step
+│   └── plot-v3.yaml               # LEGACY — superseded by SUMMARY.md for the slow path
 ├── template/                      # YAML templates (sql + plots + optional filter overrides)
 │   └── evaluations/               # auto-saved from positive ("thumb up") evaluations
 ├── eval/
@@ -183,8 +184,10 @@ Model returns up to 6 candidates with similarity scores (0.0–1.0).
 - If all 4 attempts exhausted: emits "Retry limit reached" round
 
 ### verify_and_generate (Sonnet, one step)
-`generate.js verifyAndGenerate()` combines verification + plot+summary into one call:
-- Uses plot-vN.yaml rules with a verification preamble (loaded via `prompts.js`)
+`generate2.js verifyAndGenerate()` combines verification + plot+summary into one call:
+- System prompt = `skills/SUMMARY.md` (loaded via `getSummaryPrompt()` from `prompts.js`)
+- Reuses SQL generation conversation history as context (`sql_gen_messages`) — avoids re-sending full ontology
+- Summary follows nordic-first → country-breakdown pattern; ranking data outputs `%%BAR:XX%%` table markers
 - Returns `{"ok": true, "plot": {...}, "summary": "..."}` or `{"ok": false, "reason": "..."}`
 - Bias toward ok=true; only rejects on clearly wrong data
 
