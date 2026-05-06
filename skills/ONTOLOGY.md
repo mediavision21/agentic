@@ -498,7 +498,7 @@ Analyst commentary from quarterly reports. Surface alongside numeric results whe
 
 ---
 
-## 16. SQL Templates
+## 16. SQL Examples
 
 ### Single country
 
@@ -520,7 +520,7 @@ ORDER BY period_date;
 ```sql
 SELECT
   period_date,
-  ROUND(SUM(value * population_household) / SUM(population_household) * 100, 1) AS value
+  ROUND((SUM(value * population_household) / SUM(population_household) * 100)::numeric, 1) AS value
 FROM macro.nordic
 WHERE kpi_type           = 'penetration'
   AND kpi_dimension      = 'svod'
@@ -553,7 +553,7 @@ ORDER BY period_date;
 SELECT
   canonical_name,
   country,
-  ROUND(value * 100, 1) AS value
+  ROUND((value * 100)::numeric, 1) AS value
 FROM macro.nordic
 WHERE kpi_type           = 'penetration'
   AND service_id         IS NOT NULL
@@ -567,7 +567,7 @@ ORDER BY value DESC;
 ```sql
 SELECT
   canonical_name,
-  ROUND(value * 100, 1) AS value
+  ROUND((value * 100)::numeric, 1) AS value
 FROM macro.nordic
 WHERE kpi_type           = 'reach'
   AND is_streaming_service = true
@@ -576,7 +576,150 @@ WHERE kpi_type           = 'reach'
 ORDER BY value DESC;
 ```
 
-## 17. What NOT to Do
+### Trend — per-service across countries
+
+```sql
+-- "How has Netflix reach developed over time?"
+SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, population_segment,
+       canonical_name,
+       ROUND((value * 100)::numeric, 1) AS value
+FROM macro.nordic
+WHERE kpi_type      = 'reach'
+  AND service_id    = 'netflix'
+  AND country       IN ('sweden', 'norway', 'denmark', 'finland', 'nordic')
+  AND age_group     = '15-74'
+  AND kpi_dimension IS NULL
+  AND EXTRACT(MONTH FROM period_date) IN (1, 7)
+ORDER BY period_date, country;
+```
+
+### Comparison — service vs service, snapshot
+
+```sql
+-- "Netflix vs Disney+ daily reach in the Nordics"
+SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, population_segment,
+       canonical_name,
+       ROUND((value * 100)::numeric, 1) AS value
+FROM macro.nordic
+WHERE kpi_type      = 'reach'
+  AND service_id    IN ('netflix', 'disney')
+  AND country       = 'nordic'
+  AND age_group     = '15-74'
+  AND kpi_dimension IS NULL
+  AND period_date   = (SELECT MAX(period_date) FROM macro.nordic
+                       WHERE EXTRACT(MONTH FROM period_date) IN (1, 7))
+ORDER BY value DESC;
+```
+
+### Comparison — country vs country, snapshot
+
+```sql
+-- "Compare SVOD penetration across Nordic countries"
+SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, population_segment,
+       ROUND((value * 100)::numeric, 1) AS value
+FROM macro.nordic
+WHERE kpi_type      = 'penetration'
+  AND kpi_dimension = 'svod'
+  AND service_id    IS NULL
+  AND age_group     = '15-74'
+  AND country       IN ('sweden', 'norway', 'denmark', 'finland', 'nordic')
+  AND period_date   = (SELECT MAX(period_date) FROM macro.nordic
+                       WHERE EXTRACT(MONTH FROM period_date) IN (1, 7))
+ORDER BY country;
+```
+
+### Distribution / mix — subscription model breakdown
+
+```sql
+-- "What does the SVOD subscription mix look like?"
+SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, population_segment,
+       ROUND((value * 100)::numeric, 1) AS value
+FROM macro.nordic
+WHERE kpi_type      = 'penetration'
+  AND kpi_dimension IN ('svod', 'ssvod', 'bsvod', 'hvod')
+  AND service_id    IS NULL
+  AND age_group     = '15-74'
+  AND country       = 'nordic'
+  AND period_date   = (SELECT MAX(period_date) FROM macro.nordic
+                       WHERE EXTRACT(MONTH FROM period_date) IN (1, 7))
+ORDER BY value DESC;
+```
+
+### Correlation — two KPIs in long/tidy format
+
+```sql
+-- "Is per-subscriber spend declining as stacking increases?"
+-- Intentional exception: kpi_type and kpi_dimension both vary because each
+-- (kpi_type, kpi_dimension) pair uniquely identifies one metric.
+-- Values are NOT multiplied by 100 — spend is local currency, stacking is decimal count.
+SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, population_segment,
+       ROUND(value::numeric, 2) AS value
+FROM macro.nordic
+WHERE country       = 'sweden'
+  AND age_group     = '15-74'
+  AND service_id    IS NULL
+  AND (
+    (kpi_type = 'spend'    AND kpi_dimension = 'ssvod')
+    OR
+    (kpi_type = 'stacking' AND kpi_dimension = 'svod')
+  )
+ORDER BY kpi_type, period_date;
+```
+
+### Market scorecard — multiple KPIs, single country
+
+```sql
+-- "Give me a summary of the Norwegian streaming market"
+-- Each metric uses its own per-KPI MAX(period_date) subquery.
+-- CASE WHEN scales proportions ×100; stacking and spend are kept raw.
+SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, population_segment,
+       CASE
+           WHEN kpi_type IN ('penetration', 'reach', 'churn_intention', 'account_sharing',
+                             'gross_access', 'reach_weekly', 'reach_monthly')
+               THEN ROUND((value * 100)::numeric, 1)
+           ELSE ROUND(value::numeric, 2)
+       END AS value
+FROM macro.nordic
+WHERE country    = 'norway'
+  AND age_group  = '15-74'
+  AND service_id IS NULL
+  AND (
+    (kpi_type = 'penetration'     AND kpi_dimension = 'svod'
+     AND period_date = (SELECT MAX(period_date) FROM macro.nordic WHERE kpi_type = 'penetration'     AND kpi_dimension = 'svod' AND country = 'norway' AND EXTRACT(MONTH FROM period_date) IN (1, 7)))
+    OR
+    (kpi_type = 'reach'           AND kpi_dimension = 'svod'
+     AND period_date = (SELECT MAX(period_date) FROM macro.nordic WHERE kpi_type = 'reach'           AND kpi_dimension = 'svod' AND country = 'norway' AND EXTRACT(MONTH FROM period_date) IN (1, 7)))
+    OR
+    (kpi_type = 'stacking'        AND kpi_dimension = 'svod'
+     AND period_date = (SELECT MAX(period_date) FROM macro.nordic WHERE kpi_type = 'stacking'        AND kpi_dimension = 'svod' AND country = 'norway' AND EXTRACT(MONTH FROM period_date) IN (1, 7)))
+    OR
+    (kpi_type = 'churn_intention' AND kpi_dimension = 'svod'
+     AND period_date = (SELECT MAX(period_date) FROM macro.nordic WHERE kpi_type = 'churn_intention' AND kpi_dimension = 'svod' AND country = 'norway' AND EXTRACT(MONTH FROM period_date) IN (1, 7)))
+  )
+ORDER BY kpi_type;
+```
+
+## 17. Answer Types
+
+The model must always include `answer_type` in its JSON response so the frontend routes to the correct renderer.
+
+| # | `answer_type`          | SQL pattern                                   | When to use                                         |
+|---|------------------------|-----------------------------------------------|-----------------------------------------------------|
+| 1 | `ranking`              | Per-service ranked snapshot (ROW_NUMBER)      | "Which services have the highest reach?"            |
+| 2 | `trend`                | Single metric over time, 1–2 series           | "How has Netflix reach developed over time?"        |
+| 3 | `comparison`           | Multiple services or countries, latest period | "Sweden vs Norway", "Netflix vs Disney+"            |
+| 4 | `distribution`         | Multiple `kpi_dimension` values, same period  | "What does the subscription mix look like?"         |
+| 5 | `correlation`          | UNION ALL of two KPIs over time               | "Is spend decline affecting stacking growth?"       |
+| 6 | `text_with_data`       | Standard single-KPI query, cited inline       | "Why is reach declining?" — reasoning + key figure  |
+| 7 | `scorecard`            | OR-conditions across 3–5 KPIs, same market    | "Give me a summary of the Norwegian market"         |
+| 8 | `data_not_available`   | No SQL                                        | Requested data not in schema — explain what exists  |
+| 9 | `clarification_needed` | No SQL                                        | Question too vague — ask one specific follow-up     |
+
+**Scaling note for multi-KPI queries (scorecard, correlation):** Do not apply a blanket `× 100` transform. Use `CASE WHEN kpi_type IN ('penetration', 'reach', 'churn_intention', 'account_sharing', 'gross_access', 'reach_weekly', 'reach_monthly') THEN value * 100 ELSE value END` so that `spend` (local currency) and `stacking` (decimal count) are not incorrectly scaled.
+
+**Correlation exception:** The two-varying-column rule (at most two of `period_date`, `country`, `kpi_type`, `kpi_dimension`, `service_id`, `age_group` varying) is intentionally relaxed for `correlation` queries. Use a single `WHERE ... OR ...` block (not UNION ALL) so the result stays in one tidy table with `kpi_type` as the series label.
+
+## 18. What NOT to Do
 
 | ❌ Wrong | ✅ Correct |
 |---|---|

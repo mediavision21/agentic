@@ -23,3 +23,4 @@ package-lock.json
 *.node
 sql
 template/new
+AGENTS.md

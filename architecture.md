@@ -34,7 +34,7 @@ mediavision/
 │   ├── generate-eval.js           # eval harness: runs template descriptions through generate2.js, outputs YAML to eval-output/
 │   └── plot-eval.js               # eval harness for plot generation
 ├── skills/
-│   ├── ONTOLOGY.md                # SQL-only ontology: column ref, KPI types/dims, services, SQL rules, tidy-format rules
+│   ├── ONTOLOGY.md                # SQL-only ontology: column ref, KPI types/dims, services, SQL rules, tidy-format rules, answer types (§17)
 │   ├── SUMMARY.md                 # summary+plot generation guidance: narrative patterns, %%BAR:XX%% table format, plot config rules
 │   ├── generate-v1.yaml           # system prompt for generate.js (header + kpi_taxonomy)
 │   └── plot-v3.yaml               # LEGACY — superseded by SUMMARY.md for the slow path
@@ -65,6 +65,11 @@ mediavision/
 │           ├── ResultTable.jsx    # tabular results, capped at top 20 rows
 │           └── ResultChart.jsx    # Observable Plot inline; hard limit 30 categories; edit stays client-side
 ```
+
+## Answer types
+ONTOLOGY.md §17 defines 9 `answer_type` values the model must include in every JSON response:
+`ranking`, `trend`, `comparison`, `distribution`, `correlation`, `text_with_data`, `scorecard`, `data_not_available`, `clarification_needed`.
+Each maps to a SQL pattern and a frontend renderer. Multi-KPI queries (scorecard, correlation) use `CASE WHEN kpi_type IN (...)` to scale proportions ×100 and keep spend/stacking raw.
 
 ## Tidy / long-form output
 Every SQL the LLM generates must return **long / tidy form**:

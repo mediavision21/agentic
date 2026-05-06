@@ -9,6 +9,9 @@ echo "==> Syncing node backend..."
 rsync -az --exclude 'node_modules' --exclude 'sqlite/build' --exclude 'package.json' --exclude '*.node' \
     "./node/" "rock@mediavision:/opt/rock/node/"
 
+# rsync -az --exclude 'node_modules' --exclude 'sqlite/build' --exclude 'package.json' --exclude '*.node' \
+#     "./sqlite/" "rock@mediavision:/opt/rock/sqlite/"
+
 echo "==> Syncing template ..."
 rsync -az "./template/" "rock@mediavision:/opt/rock/template/"
 rsync -az "./skills/" "rock@mediavision:/opt/rock/skills/"
