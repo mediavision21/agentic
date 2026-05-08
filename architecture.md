@@ -35,7 +35,7 @@ mediavision/
 │   └── plot-eval.js               # eval harness for plot generation
 ├── skills/
 │   ├── ONTOLOGY.md                # SQL-only ontology: column ref, KPI types/dims, services, SQL rules, tidy-format rules, answer types (§17)
-│   ├── SUMMARY.md                 # summary+plot generation guidance: narrative patterns, %%BAR:XX%% table format, plot config rules
+│   ├── SUMMARY.md                 # summary+plot generation guidance: narrative patterns, %%BAR:XX%% table format, plot config rules, multi-country table layout (header→text→tables→source note), top-5 default
 │   ├── generate-v1.yaml           # system prompt for generate.js (header + kpi_taxonomy)
 │   └── plot-v3.yaml               # LEGACY — superseded by SUMMARY.md for the slow path
 ├── template/                      # YAML templates (sql + plots + optional filter overrides)

@@ -19,13 +19,15 @@ Default assumption: the data is correct. Only return false when zero rows exist 
 
 ## Summary Writing Rules
 
+- **Header first**: begin with a `##` header describing the metric and time period. Example: `## Top Streaming Services by Daily Reach – Q1 2026`.
 - **Open at the highest level first**: state the Nordic aggregate (or market total) before breaking down by country or service.
 - Sentence 1: time period + geographic scope + metric name. Example: "In Q1 2026, Nordic SVOD household penetration averaged 68%."
 - State units explicitly: %, minutes/day, EUR/month. Never leave the unit implicit.
 - For trends: direction + magnitude ("grew 3pp year-on-year", "declined from 45% to 41%").
 - For rankings: name the leader and the gap to second place.
 - For country breakdowns: Nordic total first, then sorted country highlights (biggest vs smallest, or fastest growing).
-- End with: "If this is not what you intended, let me know."
+- **Text before tables only**: all narrative analysis (including "If this is not what you intended, let me know.") goes before the first table. No text between tables or after tables — only the source note follows.
+- **Top 5 default**: limit ranking tables to 5 rows. Use 10 only when the user explicitly requests top 10.
 - **Never** use "reach" or "penetration" as plain English verbs — use "grew to", "climbed", "achieved", "expanded" instead.
 - `population_segment` is metadata: when non-null values appear (e.g. `viewers`), note what population the numbers represent ("These are minutes per actual viewer, not per capita").
 - **Never** mention technical terms: SQL column names, kpi_type, kpi_dimension, filter conditions, "no rows returned", or any database internals. Speak only in business language.
@@ -51,6 +53,35 @@ Rules:
 - Value column is right-aligned (`------:`).
 - Only include a table for ranking / single-period comparison data. Omit for time-series or single scalar answers.
 - Rows are sorted descending by value.
+- Default to 5 rows. Only show more when user asks for top 10 or higher.
+
+### Multi-country / multi-group tables
+
+When the data contains rankings for multiple countries (or groups), output one table per country. Between sections add a blank line then a bold country name:
+
+```
+## Denmark
+| &nbsp; | Service | Reach | &nbsp; |
+|---|---------|------:|--------|
+| 1 | YouTube | 30.0% | %%BAR:30.0%% |
+...
+
+## Finland
+| &nbsp; | Service | Reach | &nbsp; |
+|---|---------|------:|--------|
+| 1 | YouTube | 39.5% | %%BAR:39.5%% |
+...
+```
+
+### Source note
+
+After all tables, always end the summary with an italic source/explanation line:
+
+```
+*Source: Mediavision [period] · [metric label] = [plain-language definition of the metric]*
+```
+
+Example: `*Source: Mediavision Q1 2026 · Daily reach = % of adults 15–74 who watched on an average day*`
 
 ---
 
@@ -73,6 +104,8 @@ Include `"suggestions"` inside the JSON block.
 
 ### Market ranking with bar table (daily reach, single period)
 
+> ## Top Streaming Services by Daily Reach – Q1 2026
+>
 > In Q1 2026, YouTube achieved the highest daily reach across the Nordic region at 34.8%, followed by Netflix at 27.0% and TikTok at 21.5%. If this is not what you intended, let me know.
 >
 > | &nbsp; | Service | Reach | &nbsp; |
@@ -80,6 +113,34 @@ Include `"suggestions"` inside the JSON block.
 > | 1 | YouTube | 34.8% | %%BAR:34.8%% |
 > | 2 | Netflix | 27.0% | %%BAR:27.0%% |
 > | 3 | TikTok  | 21.5% | %%BAR:21.5%% |
+>
+> *Source: Mediavision Q1 2026 · Daily reach = % of adults 15–74 who watched on an average day*
+
+### Multi-country ranking (top services per country, single period)
+
+> ## Top Streaming Services by Daily Reach per Country – Q1 2026
+>
+> In Q1 2026, YouTube led daily reach across all four Nordic markets. Netflix ranked second everywhere except Finland, where MTV Katsomo placed third. Each country's top 3 includes a strong local broadcaster. If this is not what you intended, let me know.
+>
+> ## Denmark
+> | &nbsp; | Service | Reach | &nbsp; |
+> |---|---------|------:|--------|
+> | 1 | YouTube | 30.0% | %%BAR:30.0%% |
+> | 2 | Netflix | 24.0% | %%BAR:24.0%% |
+> | 3 | TV2 Play (DK) | 16.2% | %%BAR:16.2%% |
+> | 4 | Viaplay | 12.2% | %%BAR:12.2%% |
+> | 5 | Disney+ | 12.2% | %%BAR:12.2%% |
+>
+> ## Finland
+> | &nbsp; | Service | Reach | &nbsp; |
+> |---|---------|------:|--------|
+> | 1 | YouTube | 39.5% | %%BAR:39.5%% |
+> | 2 | Netflix | 19.0% | %%BAR:19.0%% |
+> | 3 | MTV Katsomo | 12.2% | %%BAR:12.2%% |
+> | 4 | Ruutu | 6.9% | %%BAR:6.9%% |
+> | 5 | HBO Max | 5.9% | %%BAR:5.9%% |
+>
+> *Source: Mediavision Q1 2026 · Daily reach = % of adults 15–74 who watched on an average day*
 
 ### Country ranking (penetration, latest period)
 

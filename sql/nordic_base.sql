@@ -1,4 +1,7 @@
+DROP MATERIALIZED VIEW macro.nordic;
+DROP  VIEW macro.nordic_avg;
 DROP MATERIALIZED VIEW macro.nordic_base;
+
 
 -- CREATE OR REPLACE  VIEW macro.nordic AS
 CREATE MATERIALIZED VIEW macro.nordic_base AS
@@ -67,11 +70,5 @@ LEFT JOIN (
         AND country IN ('dk', 'fi', 'no', 'se')
     GROUP BY year
 )                                nordic_ind ON l.year::integer = nordic_ind.year
-WHERE l.year >= '2013';
-
-DROP MATERIALIZED VIEW macro.nordic;
-
-CREATE MATERIALIZED VIEW macro.nordic AS
-SELECT * FROM macro.nordic_base
-UNION 
-SELECT * FROM macro.nordic_avg
+WHERE l.year >= '2013'
+AND NOT (l.category = 'tv' AND l.kpi_type = 'penetration_service' AND l.kpi_dimension = '');
