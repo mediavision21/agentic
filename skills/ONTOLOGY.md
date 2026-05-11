@@ -34,9 +34,10 @@ SUM(value * population_household) / MAX(population_household_nordic)
 |---|---|---|
 | `period_date` | `DATE` | First day of the survey quarter: Jan 1, Apr 1, Jul 1, Oct 1 |
 | `country` | `text` | `'sweden'`, `'norway'`, `'denmark'`, `'finland'` |
-| `service_id` | `text` | Service identifier — `NULL` on market-level rows. service_id is mutually exclusive with kpi_dimension |
+| `category` | `text` | online_viedo as default value. tv, cinema, tvod, dvd_blu_ray only used when user explicitly request so |
 | `kpi_type` | `text` | The KPI being measured — see Section 5 |
-| `kpi_dimension` | `text` | Sub-type of the KPI — `NULL` when not applicable |
+| `kpi_dimension` | `text` | Sub-type of the KPI — `NULL` when not applicable. always NULL in category cinema, tvod, dvd_blu_ray. only penetration or null in category tv  |
+| `service_id` | `text` | Service identifier — `NULL` on market-level rows, on service-level otherwise|
 | `kpi_detail` | `text` | detail only for Genre — `NULL` when not applicable |
 | `age_group` | `text` | Age bracket — always `'15-74'` for total population, never empty |
 | `population_segment` | `text` | Sub-population filter — `NULL` means general population |
@@ -61,7 +62,7 @@ Every user question resolves to **one of two patterns**:
 | Pattern | When to use | Key filter |
 |---|---|---|
 | `kpi_type` + `kpi_dimension` | Market-level — no specific service named | `service_id IS NULL` |
-| `kpi_type` + `service_id` | Service-specific — a named platform or operator | `service_id = '<id>'` |
+| `kpi_type` + `kpi_dimension` + `service_id` | Service-specific — a named platform or operator | `service_id = '<id>'` |
 
 The sql to query shall using either dimension or service not both at the same time. When both are implied, default to the service-level pattern (`kpi_type` + `service_id`) and offer the market-level view as a suggestion.
 
@@ -69,17 +70,23 @@ The sql to query shall using either dimension or service not both at the same ti
 
 ### Defaults when kpi_type is not specified
 
-| Question type | Default `kpi_type` | Default `kpi_dimension` |
-|---|---|---|
-| "top services", service rankings, no metric given | `penetration` | `svod` |
-| "who watches", "how many people watch" | `reach` | *(null — total)* |
-| general overview, no signal | `penetration` | `svod` |
+| Question type | Default `kpi_type` | Default `kpi_dimension` | `service_id` |
+|---|---|---|--|
+|Reach, no service named | reach | online_total | NULL |
+| Reach, named service | reach | NULL | id |
+| top services Penetration/subscription, market level | penetration | svod | NULL |
+| Penetration/subscription, named service | penetration |svod | id | 
+| general overview, no signal | `penetration` | `svod` | NULL |
 
-When country is not specified → include all Nordic countries.
-When time period is not specified → use the latest available period.
-When defaults are used, the summary will offer follow-up suggestions — do not ask the user.
+- When country is not specified → no filter is needed
+- When time period is not specified → use the latest available period.
+- When defaults are used, the summary will offer follow-up suggestions — do not ask the user in front
 
----
+Examples:
+- "How many watch Netflix?" → kpi_type = 'reach', service_id = 'netflix', kpi_dimension IS NULL
+- "What is the total online video reach?" → kpi_type = 'reach', kpi_dimension = 'online_total', service_id IS NULL
+- "How many subscribe to Viaplay?" → kpi_type = 'penetration', kpi_dimension = 'svod', service_id = 'viaplay'
+- "What is the SVOD penetration in Sweden?" → kpi_type = 'penetration', kpi_dimension ='svod', service_id IS NULL
 
 ## 5. KPI Types (`kpi_type`)
 
@@ -90,13 +97,13 @@ When defaults are used, the summary will offer follow-up suggestions — do not 
 | `reach` | Daily reach — % of population who consumed yesterday | Proportion → display as % | `population_1574` |
 | `reach_monthly` | Monthly reach | Proportion → display as % | `population_1574` |
 | `reach_weekly` | Weekly reach (market or per-service; Sweden-heavy) | Proportion → display as % | `population_1574` |
-| `penetration` | % of households with a subscription or access | Proportion → display as % | `population_household` |
-| `gross_access` | Gross access incl. account sharing (service), or intent to subscribe (market) | Proportion → display as % | `population_household` |
+| `penetration` | % of households with a subscription | Proportion → display as % | `population_household` |
+| `gross_access` | Gross access incl. account sharing (service)| Proportion → display as % | `population_household` |
 | `viewing_time` | Average minutes per day | Minutes | `population_1574` |
 | `spend` | Average monthly household spend in local currency | Currency | `population_household` |
 | `stacking` | Average number of SVOD services per household | Decimal | `population_household` |
 | `churn_intention` | % of subscribers intending to cancel | Proportion → display as % | `population_household` |
-| `account_sharing` | % sharing or planning to share an account | Proportion → display as % | `population_household` |
+| `account_sharing` | % sharing an account | Proportion → display as % | `population_household` |
 
 ### 5.2 Market-level vs per-service
 
@@ -138,10 +145,10 @@ Narrows what a market-level KPI measures. `NULL` means the full category with no
 |---|---|---|
 | `'svod'` | All SVOD combined (standalone + bundled) | `penetration`, `reach`, `stacking`, `churn_intention`, `account_sharing`, `gross_access` |
 | `'ssvod'` | Standalone/self-paying SVOD — D2C, no operator bundle | `penetration`, `reach`, `viewing_time`, `spend`, `stacking`, `account_sharing` |
-| `'bsvod'` | Bundled SVOD — included via telco or employer | `penetration`, `reach`, `viewing_time` |
+| `'bsvod'` | bundled SVOD, usually included via telco subscription| `penetration`, `reach`, `viewing_time` |
 | `'hvod'` | Hybrid VOD — ad-supported tier within a SVOD service | `penetration`, `reach`, `viewing_time`, `stacking` |
 | `'tve'` | TV Everywhere — operator streaming app, no proprietary content library | `penetration` |
-| `'ott'` | Any OTT service (broadest definition) | `penetration` |
+| `'ott'` | Any OTT service (broadest definition), not considered a main KPI | `penetration` |
 
 ### 6.2 Online video types
 
@@ -150,9 +157,10 @@ Narrows what a market-level KPI measures. `NULL` means the full category with no
 | `'online_total'` | All online video including social media | `reach`, `reach_weekly` |
 | `'online_excluding_social'` | Online video excluding social platforms | `reach`, `viewing_time` |
 | `'social'` | Social media video (TikTok, Instagram, Facebook, Snapchat) | `reach`, `viewing_time` |
-| `'public_service'` | Public service broadcasters (NRK, SVT, DR, YLE) | `reach` |
+| `'public_service'` | Public service broadcasters (NRK, SVT, UR, DR, YLE) | `reach` |
 | `'avod'` | Ad-supported VOD excluding social | `reach`, `viewing_time` |
-| `'ads_ott'` | Ad-supported OTT (AVOD + HVOD combined) | `reach` |
+| `'ads_ott'` | any ad-supported online video, reach across all ad-supported formats (AVOD, HVOD,
+FAST, social video combined) | `reach` |
 | `'fast'` | Free Ad-Supported Streaming TV (Pluto TV, Samsung TV+, etc.) | `reach` |
 | `'old_online_total'` | Legacy metric — historical data only, avoid for current analysis | `viewing_time` |
 
@@ -177,14 +185,14 @@ Only these combinations exist in the data. Do not construct others.
 | `kpi_type` | Valid `kpi_dimension` values |
 |---|---|
 | `account_sharing` | `ssvod`, `svod` |
-| `churn_intention` | `svod` |
+| `churn_intention` | `svod`, NULL |
 | `gross_access` | `svod` |
 | `penetration` | `bsvod`, `fta`, `hvod`, `illegal_iptv`, `ott`, `pay_tv_channel`, `ssvod`, `svod`, `tve` |
 | `reach` | `ads_ott`, `avod`, `bsvod`, `fast`, `genre`, `hvod`, `online_excluding_social`, `online_total`, `public_service`, `social`, `ssvod`, `svod` |
-| `reach_weekly` | `online_total` |
-| `spend` | `ssvod` |
+| `reach_weekly`, NULL (tv only) | `online_total` |
+| `spend` | `ssvod`, NULL |
 | `stacking` | `hvod`, `ssvod`, `svod` |
-| `viewing_time` | `avod`, `bsvod`, `genre`, `hvod`, `old_online_total`, `online_excluding_social`, `social`, `ssvod` |
+| `viewing_time` | `avod`, `bsvod`, `genre`, `hvod`, `old_online_total`, `online_excluding_social`, `social`, `ssvod`, NULL |
 
 ---
 
@@ -239,7 +247,10 @@ WHERE is_fast = true
 `allente_stream`, `apple_tv`, `bbc_nordic`, `britbox`, `cirkus_tv`, `cmore`, `dazn`, `direktesport`, `discovery`, `disney`, `dk4`, `draken_film`, `eurosport`, `f1tv`, `golf_tv`, `hayu`, `hbo_max`, `lionsgate`, `mtv_katsomo`, `netflix`, `nordisk_film`, `other`, `prime`, `ruutu`, `skyshowtime`, `staccs`, `tele2_play`, `tennis_tv`, `tv2_play_dk`, `tv2_play_no`, `tv4_play`, `viaplay`, `yousee_play`, `youtube`
 
 #### `penetration`
-`allente`, `boxer`, `other`, `tele2`, `telenor`, `telia`, `unknown`, `viasat`
+apple_tv, bbc_nordic, britbox, cirkus_tv, cmore, dazn, direktesport, discovery, disney, dk4,
+draken_film, elisa_viihde, eurosport, f1tv, filmfavoriter, golf_tv, hayu, hbo_max,
+mtv_katsomo, netflix, nordisk_film, prime, ruutu, skyshowtime, staccs, tele2_play, telia_liiga,
+tennis_tv, tv2_play_dk, tv2_play_no, tv4_play, viaplay, youtube
 
 #### `reach`
 `aaumalehti_sanomat`, `aftenposten`, `aftonbladet`, `apple_tv`, `bbc_nordic`, `cmore`, `dagbladet`, `dazn`, `direktesport`, `discovery`, `disney`, `dr`, `ekstrabladet`, `eurosport`, `expressen`, `facebook`, `hayu`, `hbo_max`, `helsingin_sanomat`, `ilta_sanomat`, `iltalehti`, `instagram`, `mtv_katsomo`, `netflix`, `nordisk_film`, `nrk`, `pluto_tv`, `prime`, `rakuten_tv`, `ruutu`, `ruutu_netti`, `samsung_tv`, `skyshowtime`, `snapchat`, `svt_play`, `tele2_play`, `tiktok`, `tv2_play_dk`, `tv2_play_no`, `tv4_play`, `twitch`, `ur_play`, `vg`, `viafree`, `viaplay`, `yle_areena`, `youtube`
@@ -493,10 +504,7 @@ Analyst commentary from quarterly reports. Surface alongside numeric results whe
 | "Churn for Netflix / Viaplay" | `churn_intention` | — | named service |
 | "Account sharing" | `account_sharing` | `svod` or `ssvod` | `IS NULL` |
 | "Gross access / access incl. sharing" | `gross_access` | — | named service |
-| "Intent to subscribe" | `gross_access` | `svod` | `IS NULL` |
 | "Weekly reach" | `reach_weekly` | `online_total` or — | `IS NULL` or named service |
-
----
 
 ## 16. SQL Examples
 
@@ -507,7 +515,8 @@ SELECT
   period_date,
   ROUND(value * 100, 1) AS value
 FROM macro.nordic
-WHERE kpi_type           = 'penetration'
+WHERE category = 'online_video' 
+  AND kpi_type           = 'penetration'
   AND kpi_dimension      = 'svod'
   AND service_id         IS NULL
   AND age_group          = '15-74'
@@ -522,7 +531,8 @@ SELECT
   period_date,
   ROUND((SUM(value * population_household) / SUM(population_household) * 100)::numeric, 1) AS value
 FROM macro.nordic
-WHERE kpi_type           = 'penetration'
+WHERE category = 'online_video' 
+  AND kpi_type           = 'penetration'
   AND kpi_dimension      = 'svod'
   AND service_id         IS NULL
   AND age_group          = '15-74'
@@ -538,7 +548,8 @@ SELECT
   period_date,
   SUM(value * population_1574) / SUM(population_1574) AS value
 FROM macro.nordic
-WHERE kpi_type           = 'reach'
+WHERE category = 'online_video' 
+  AND kpi_type           = 'reach'
   AND kpi_dimension      = 'svod'
   AND service_id         IS NULL
   AND age_group          = '15-74'
@@ -555,7 +566,8 @@ SELECT
   country,
   ROUND((value * 100)::numeric, 1) AS value
 FROM macro.nordic
-WHERE kpi_type           = 'penetration'
+WHERE category = 'online_video' 
+  AND kpi_type           = 'penetration'
   AND service_id         IS NOT NULL
   AND age_group          = '15-74'
   AND period_date        = (SELECT MAX(period_date) FROM macro.nordic)
@@ -569,7 +581,8 @@ SELECT
   canonical_name,
   ROUND((value * 100)::numeric, 1) AS value
 FROM macro.nordic
-WHERE kpi_type           = 'reach'
+WHERE category = 'online_video' 
+  AND kpi_type           = 'reach'
   AND is_streaming_service = true
   AND age_group          = '15-74'
   AND period_date        = (SELECT MAX(period_date) FROM macro.nordic)
@@ -584,7 +597,8 @@ SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, pop
        canonical_name,
        ROUND((value * 100)::numeric, 1) AS value
 FROM macro.nordic
-WHERE kpi_type      = 'reach'
+WHERE category = 'online_video' 
+  AND kpi_type      = 'reach'
   AND service_id    = 'netflix'
   AND country       IN ('sweden', 'norway', 'denmark', 'finland', 'nordic')
   AND age_group     = '15-74'
@@ -601,7 +615,8 @@ SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, pop
        canonical_name,
        ROUND((value * 100)::numeric, 1) AS value
 FROM macro.nordic
-WHERE kpi_type      = 'reach'
+WHERE category = 'online_video' 
+  AND kpi_type      = 'reach'
   AND service_id    IN ('netflix', 'disney')
   AND country       = 'nordic'
   AND age_group     = '15-74'
@@ -618,7 +633,8 @@ ORDER BY value DESC;
 SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, population_segment,
        ROUND((value * 100)::numeric, 1) AS value
 FROM macro.nordic
-WHERE kpi_type      = 'penetration'
+WHERE category = 'online_video' 
+  AND kpi_type      = 'penetration'
   AND kpi_dimension = 'svod'
   AND service_id    IS NULL
   AND age_group     = '15-74'
@@ -635,7 +651,8 @@ ORDER BY country;
 SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, population_segment,
        ROUND((value * 100)::numeric, 1) AS value
 FROM macro.nordic
-WHERE kpi_type      = 'penetration'
+WHERE category = 'online_video' 
+  AND kpi_type      = 'penetration'
   AND kpi_dimension IN ('svod', 'ssvod', 'bsvod', 'hvod')
   AND service_id    IS NULL
   AND age_group     = '15-74'
@@ -655,7 +672,8 @@ ORDER BY value DESC;
 SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, population_segment,
        ROUND(value::numeric, 2) AS value
 FROM macro.nordic
-WHERE country       = 'sweden'
+WHERE category = 'online_video' 
+  AND country       = 'sweden'
   AND age_group     = '15-74'
   AND service_id    IS NULL
   AND (
@@ -680,7 +698,8 @@ SELECT period_date, country, kpi_type, kpi_dimension, service_id, age_group, pop
            ELSE ROUND(value::numeric, 2)
        END AS value
 FROM macro.nordic
-WHERE country    = 'norway'
+WHERE category = 'online_video' 
+  AND country    = 'norway'
   AND age_group  = '15-74'
   AND service_id IS NULL
   AND (
@@ -759,7 +778,7 @@ The model must always include `answer_type` in its JSON response so the frontend
 
 ## Thinking Steps
 
-- Whether the question is market level question or service level question. For **service-level** questions (a named service is specified via `service_id`): always add `kpi_dimension IS NULL` in WHERE — service rows never have a dimension. For **market-level** questions: pick exactly one `kpi_dimension` value and filter to it explicitly (e.g. `kpi_dimension = 'svod'`). Never leave `kpi_dimension` unfiltered.
+- Whether the question is market level question or service level question. for service-level questions where no business model is specified, default to kpi_dimension IS NULL. When a business model is specified (e.g. bsvod, ssvod), filter to that dimension explicitly alongside service_id. For **market-level** questions: pick exactly one `kpi_dimension` value and filter to it explicitly (e.g. `kpi_dimension = 'svod'`). Never leave `kpi_dimension` unfiltered.
 - Which kpi_type is the user in refer to, pick one is most relevant. then say so in the summary.
 - Which country is the user is asking. If they say "full nordic" or "nordic total", then do not exclude any country, nordic take the same role as a country as well. For top-N per country, always use `ROW_NUMBER() OVER (PARTITION BY country ORDER BY value DESC)` — never replace with `LIMIT`.
 - Which quarters is the user is asking, if it the country is sweden only, then we can use all 4 quarters, otherwise, add `EXTRACT(MONTH FROM period_date) IN (1, 7)`
@@ -774,6 +793,6 @@ The model must always include `answer_type` in its JSON response so the frontend
   - Must include exactly ONE numeric column, named `value`
   - The result value shall be either absolute value or relative value, but not present at the same time to avoid confusion. e.g. YoY reach shall NOT together with absolute reach.
   - All categorical dimensions as separate key columns (e.g. `period_date`, `country`, `service`, `age_group`)
-  - t
+  
   **Never pivot to wide form.** No `CASE WHEN ... END` per-category columns — Observable Plot handles grouping and faceting client-side from the key columns.
 
