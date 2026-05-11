@@ -108,10 +108,10 @@ Return ONLY the final executable SQL query. No explanation, no markdown fences.`
 
 export async function generateSqlFromTemplate(options) {
 	const {
-		prompt,
-		template_sql: templateSql,
+		userPrompt,
+		templateSql,
 		placeholders = [],
-		choices_map: choicesMap = {},
+		choicesMap = {},
 		history = [],
 		description = '',
 		probe = null,
@@ -139,7 +139,7 @@ export async function generateSqlFromTemplate(options) {
 			lines.push(`  kpi_type=${c.kpi_type} kpi_dimension=${c.kpi_dimension ?? 'null'} service_id=${c.service_id ?? 'null'} (${c.row_count} rows)`)
 		}
 	}
-	lines.push(`\nUser question: ${prompt}`)
+	lines.push(`\nUser question: ${userPrompt}`)
 	lines.push('\nReturn ONLY the concrete executable SQL.')
 
 	const messages = [{ role: 'user', content: lines.join('\n') }]
@@ -165,12 +165,12 @@ export async function generateSqlFromTemplate(options) {
 
 export async function* runMatchedTemplate(options) {
 	const {
-		prompt,
+		userPrompt,
 		match,
 		template,
-		msg_id: msgId,
+		msgId,
 		user,
-		conversation_id: conversationId,
+		conversationId,
 		history = [],
 		probe = null,
 	} = options
@@ -189,10 +189,10 @@ export async function* runMatchedTemplate(options) {
 	}
 
 	const [sql, genDebug] = await generateSqlFromTemplate({
-		prompt,
-		template_sql: templateSql,
+		userPrompt,
+		templateSql,
 		placeholders,
-		choices_map: choicesMap,
+		choicesMap,
 		history,
 		description,
 		probe,
@@ -206,16 +206,16 @@ export async function* runMatchedTemplate(options) {
 		return
 	}
 
-	yield { type: 'sql', sql, plot_config: null, explanation: description }
+	yield { type: 'sql', sql, plotConfig: null, explanation: description }
 
 	try {
 		const data = await executeQuery(sql)
 		yield { type: 'rows', columns: data.columns, rows: data.rows }
-		saveLog(msgId, prompt, `[template] ${matchedFile}`, [], sql, 'template', {},
-			user, conversationId, { columns: data.columns, rows: data.rows, plot_config: null })
+		saveLog(msgId, userPrompt, `[template] ${matchedFile}`, [], sql, 'template', {},
+			user, conversationId, { columns: data.columns, rows: data.rows, plotConfig: null })
 	} catch (e) {
 		console.log('[template_router] query error:', e.message)
 		yield { type: 'error', error: `SQL error: ${e.message}` }
-		saveLog(msgId, prompt, `[template] ${matchedFile}`, [], sql, 'template', {}, user, conversationId)
+		saveLog(msgId, userPrompt, `[template] ${matchedFile}`, [], sql, 'template', {}, user, conversationId)
 	}
 }

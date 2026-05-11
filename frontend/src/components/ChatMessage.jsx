@@ -72,7 +72,7 @@ function EvalBar(options) {
 			await fetch("/api/evaluate", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ msg_id: msgId, rating: r, user: user || "" }),
+				body: JSON.stringify({ msgId, rating: r, user: user || "" }),
 				credentials: "include",
 			})
 			setSaved(true)
@@ -85,7 +85,7 @@ function EvalBar(options) {
 		await fetch("/api/evaluate", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ msg_id: msgId, rating: "bad", comment, user: user || "" }),
+			body: JSON.stringify({ msgId, rating: "bad", comment, user: user || "" }),
 			credentials: "include",
 		})
 		setShowComment(false)
@@ -178,7 +178,7 @@ function ChatMessage(options) {
 	const enableNormalPlot = localStorage.getItem('enableNormalPlot')
 	
 	// assistant
-	const { loading, error, sql, explanation, text, columns, rows, summary, key_takeaways, plot_config, no_plot, streaming_text, suggestions, msg_id, template_plots, rounds } = message.content
+	const { loading, error, sql, explanation, text, columns, rows, summary, keyTakeaways, plotConfig, noPlot, streamingText, suggestions, msgId, templatePlots, rounds } = message.content
 	const rawRows = localRows || rows || []
 	const rawColumns = localColumns || columns || []
 	// filter out rows where every value is empty
@@ -256,11 +256,11 @@ function ChatMessage(options) {
 				{!summary && !text && (
 					<div>
 						<span className="loading-dots">Thinking</span>
-						{loading && streaming_text && <pre className="streaming-text">{streaming_text}</pre>}
+						{loading && streamingText && <pre className="streaming-text">{streamingText}</pre>}
 					</div>
 				)}
-				{enableDebug && !loading && streaming_text && sql && (
-					<details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streaming_text}</pre></details>
+				{enableDebug && !loading && streamingText && sql && (
+					<details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streamingText}</pre></details>
 				)}
 
 				{/* {error && <p className="no-data-msg">No data returned</p>} */}
@@ -272,9 +272,9 @@ function ChatMessage(options) {
 					<SqlDisplay label="SQL" code={sql} explanation={explanation} onRerun={handleRerunSQL} />
 				)}
 
-				{key_takeaways && key_takeaways.length > 0 && (
+				{keyTakeaways && keyTakeaways.length > 0 && (
 					<ul className="key-takeaways">
-						{key_takeaways.map(function (t, i) {
+						{keyTakeaways.map(function (t, i) {
 							return <li key={i}>{t}</li>
 						})}
 					</ul>
@@ -282,8 +282,8 @@ function ChatMessage(options) {
 
 				{summary && <Markdown text={summary} />}
 
-				{enableNormalPlot && plot_config && !template_plots && (
-					<ResultChart columns={displayColumns} rows={displayRows} plot_config={plot_config} msg_id={msg_id} />
+				{enableNormalPlot && plotConfig && !templatePlots && (
+					<ResultChart columns={displayColumns} rows={displayRows} plotConfig={plotConfig} msgId={msgId} />
 				)}
 
 				{enableDebug && displayRows && displayRows.length > 0 && (
@@ -293,8 +293,8 @@ function ChatMessage(options) {
 					</details>
 				)}
 
-				{template_plots && template_plots.length > 0 && rows && rows.length > 0 && (
-					<TemplatePlots plots={template_plots} rows={rows} columns={displayColumns} />
+				{templatePlots && templatePlots.length > 0 && rows && rows.length > 0 && (
+					<TemplatePlots plots={templatePlots} rows={rows} columns={displayColumns} />
 				)}
 
 				{!evalMode && suggestions && suggestions.length > 0 && (
@@ -314,7 +314,7 @@ function ChatMessage(options) {
 				)}
 
 				{/* eval buttons for live chat */}
-				{!evalMode && !loading && msg_id && (summary || text) && <EvalBar msgId={msg_id} user={user} />}
+				{!evalMode && !loading && msgId && (summary || text) && <EvalBar msgId={msgId} user={user} />}
 
 				{/* read-only evals at same position */}
 				{evalInfo && evalInfo.length > 0 && (

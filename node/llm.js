@@ -38,18 +38,17 @@ export async function* complete(options) {
         messages,
         model: modelKey = 'sonnet',
         tools,
-        tool_handler: toolHandler,
-        max_iterations,
+        toolHandler,
         label = 'llm',
-        log_id: logId,
+        msgId,
         user = '',
-        conversation_id: conversationId = '',
+        conversationId = '',
         prefill,
-        stop_sequences: stopSequences,
+        stopSequences,
     } = options
 
-    const maxIterations = max_iterations !== undefined ? max_iterations : (tools ? 5 : 1)
-    const maxTokens = options.max_tokens !== undefined ? options.max_tokens : (modelKey === 'haiku' ? 100 : 4096)
+    const maxIterations = options.maxIterations !== undefined ? options.maxIterations : (tools ? 5 : 1)
+    const maxTokens = options.maxTokens !== undefined ? options.maxTokens : (modelKey === 'haiku' ? 100 : 4096)
     const model = MODELS[modelKey] || modelKey
     const conv = messages.map(m => ({ ...m }))
     let totalInput = 0
@@ -76,7 +75,7 @@ export async function* complete(options) {
             messages: callConv,
         }
         if (tools) streamParams.tools = tools
-        if (stopSequences) streamParams.stop_sequences = stopSequences
+        if (stopSequences) streamParams.stop_sequences = stopSequences  // Anthropic API key
 
         const stream = client.messages.stream(streamParams)
         for await (const event of stream) {
@@ -116,7 +115,7 @@ export async function* complete(options) {
         } catch (_) {
             // ignore log write errors
         }
-        _writeDbLog(logId, systemPrompt, conv, iterText, { model: final.model, usage }, iterLabel, user, conversationId)
+        _writeDbLog(msgId, systemPrompt, conv, iterText, { model: final.model, usage }, iterLabel, user, conversationId)
 
         if (tools) {
             if (final.stop_reason !== 'tool_use') break

@@ -93,14 +93,14 @@ export function saveTemplateFromContent(content, dir = NEW_TEMPLATE_DIR) {
     const sql = content.sql || ''
     if (!sql) return null
 
-    const desc = content.user_prompt || content.summary || ''
+    const desc = content.userPrompt || content.summary || ''
     let safeName = desc.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '_').slice(0, 60).trim().replace(/\s+/g, '_').toLowerCase()
-    if (!safeName) safeName = (content.msg_id || 'unknown').replace(/[^a-zA-Z0-9_\-]/g, '_')
+    if (!safeName) safeName = (content.msgId || 'unknown').replace(/[^a-zA-Z0-9_\-]/g, '_')
 
     const tpl = { description: desc, sql }
 
-    const templatePlots = content.template_plots
-    const plotConfig = content.plot_config
+    const templatePlots = content.templatePlots
+    const plotConfig = content.plotConfig
 
     if (templatePlots && templatePlots.length > 0) {
         tpl.plots = templatePlots.map(p => ({ ...p }))

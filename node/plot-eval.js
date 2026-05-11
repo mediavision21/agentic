@@ -112,15 +112,15 @@ async function main() {
             const name = fname.replace(/\//g, '_').replace(/\.yaml$/, '')
             try {
                 const [plotConfig] = await generatePlotAndSummary({
-                    user_prompt: tdata.description || fname,
+                    userPrompt: tdata.description || fname,
                     columns,
                     rows,
                     label: `eval-${version}-${name}`,
-                    prompt_data: promptByVersion[version],
+                    promptData: promptByVersion[version],
                 })
 
                 if (!plotConfig) {
-                    console.log(`[fail] ${fname} [${version}] — no plot_config from LLM`)
+                    console.log(`[fail] ${fname} [${version}] — no plotConfig from LLM`)
                     continue
                 }
 

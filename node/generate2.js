@@ -94,16 +94,16 @@ export async function buildSystemPrompt(options) {
 
 export async function verifyAndGenerate(options) {
 	const {
-		user_prompt: userPrompt,
+		userPrompt,
 		columns,
 		rows,
 		sql,
-		log_id: logId,
+		msgId,
 		user = '',
-		conversation_id: conversationId = '',
-		prior_plot_config: priorPlotConfig,
-		no_plot: noPlot = false,
-		sql_gen_messages: sqlGenMessages = null,
+		conversationId = '',
+		priorPlotConfig,
+		noPlot = false,
+		sqlHistory = null,
 		force = false,
 	} = options
 
@@ -136,9 +136,8 @@ export async function verifyAndGenerate(options) {
 	const dataMsg = dataParts.join('')
 
 	let messages
-	if (sqlGenMessages) {
-		// Reuse SQL generation conversation history — LLM already knows the question and SQL
-		messages = [...sqlGenMessages, { role: 'user', content: dataMsg }]
+	if (sqlHistory) {
+		messages = [...sqlHistory, { role: 'user', content: dataMsg }]
 	} else {
 		// Standalone call — include full context
 		const userMsgParts = [`User question: ${userPrompt}\n\n${dataMsg}`]
@@ -153,9 +152,9 @@ export async function verifyAndGenerate(options) {
 			messages,
 			model: 'sonnet',
 			label: 'verify-and-generate',
-			log_id: logId,
+			msgId,
 			user,
-			conversation_id: conversationId,
+			conversationId,
 		})
 		debug.response = text
 		const m = text.match(/```json\s*(.*?)\s*```/s)
@@ -167,9 +166,9 @@ export async function verifyAndGenerate(options) {
 				}
 				return {
 					ok: true,
-					plot_config: obj.plot || null,
+					plotConfig: obj.plot || null,
 					summary: obj.summary || null,
-					key_takeaways: obj.key_takeaways || [],
+					keyTakeaways: obj.key_takeaways || [],
 					suggestions: obj.suggestions || [],
 					debug,
 				}
@@ -182,12 +181,12 @@ export async function verifyAndGenerate(options) {
 			if (!obj.ok) {
 				return { ok: false, reason: obj.reason || "Data doesn't answer question", debug }
 			}
-			return { ok: true, plot_config: obj.plot || null, summary: obj.summary || null, key_takeaways: obj.key_takeaways || [], suggestions: obj.suggestions || [], debug }
+			return { ok: true, plotConfig: obj.plot || null, summary: obj.summary || null, keyTakeaways: obj.key_takeaways || [], suggestions: obj.suggestions || [], debug }
 		} catch (_) { }
-		return { ok: true, plot_config: null, summary: text.slice(0, 500) || null, key_takeaways: [], debug }
+		return { ok: true, plotConfig: null, summary: text.slice(0, 500) || null, keyTakeaways: [], debug }
 	} catch (e) {
 		console.log('[generate2] verifyAndGenerate error:', e.message)
-		return { ok: true, plot_config: null, summary: null, key_takeaways: [], debug }
+		return { ok: true, plotConfig: null, summary: null, keyTakeaways: [], debug }
 	}
 }
 
@@ -196,9 +195,9 @@ export async function* openGeneration(options) {
 		system,
 		messages,
 		label = 'Generation',
-		log_id: logId,
+		msgId,
 		user = '',
-		conversation_id: conversationId = '',
+		conversationId = '',
 	} = options
 
 	const textChunks = []
@@ -207,9 +206,9 @@ export async function* openGeneration(options) {
 		messages,
 		model: 'sonnet',
 		label,
-		log_id: logId,
+		msgId,
 		user,
-		conversation_id: conversationId,
+		conversationId,
 	})) {
 		if (chunk.type === 'token') {
 			textChunks.push(chunk.text)

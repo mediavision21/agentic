@@ -6,7 +6,7 @@
 // resultData: {columns, rows, plot_config, summary} from stored result_data
 function parseRawResponse(rawText, resultData) {
     if (!rawText) {
-        return { loading: false, text: "", raw_text: "" }
+        return { loading: false, text: "", rawText: "" }
     }
 
     const sqlMatch = rawText.match(/```sql\s*([\s\S]*?)\s*```/)
@@ -15,9 +15,9 @@ function parseRawResponse(rawText, resultData) {
     // SQL path — structured response
     if (sqlMatch) {
         const sql = sqlMatch[1].trim()
-        let plot_config = null
+        let plotConfigFromText = null
         if (jsonMatch) {
-            try { plot_config = JSON.parse(jsonMatch[1].trim()) }
+            try { plotConfigFromText = JSON.parse(jsonMatch[1].trim()) }
             catch (e) { /* ignore parse errors */ }
         }
 
@@ -29,11 +29,11 @@ function parseRawResponse(rawText, resultData) {
 
         const content = {
             loading: false,
-            streaming_text: rawText,
+            streamingText: rawText,
             sql,
             explanation,
-            plot_config: (resultData && resultData.plot_config) || plot_config,
-            raw_text: rawText,
+            plotConfig: (resultData && resultData.plotConfig) || plotConfigFromText,
+            rawText: rawText,
         }
 
         if (resultData) {
@@ -56,7 +56,7 @@ function parseRawResponse(rawText, resultData) {
     return {
         loading: false,
         text: displayText,
-        raw_text: rawText,
+        rawText: rawText,
         suggestions: suggestions.length > 0 ? suggestions : undefined,
     }
 }

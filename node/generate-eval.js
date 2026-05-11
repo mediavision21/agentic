@@ -70,7 +70,7 @@ async function runPrompt(prompt) {
 		return { prompt, sql, ok: false, reason: 'no rows returned', confidence: 0.0, row_count: 0 }
 	}
 
-	const verdict = await generate.verifyAndGenerate({ user_prompt: prompt, columns, rows })
+	const verdict = await generate.verifyAndGenerate({ userPrompt: prompt, columns, rows })
 	return {
 		prompt,
 		sql,

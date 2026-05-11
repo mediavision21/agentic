@@ -3,21 +3,21 @@ import { highlightJSON } from "../highlight.js"
 import { buildFromConfig, appendResponsiveSVG } from "../plotUtils.js"
 
 function ResultChart(options) {
-    const { columns, rows, plot_config, msg_id } = options
+    const { columns, rows, plotConfig, msgId } = options
     const $container = useRef(null)
-    const [activeConfig, setActiveConfig] = useState(plot_config)
+    const [activeConfig, setActiveConfig] = useState(plotConfig)
     const [editing, setEditing] = useState(false)
-    const [draft, setDraft] = useState(() => plot_config ? JSON.stringify(plot_config, null, 2) : "")
+    const [draft, setDraft] = useState(() => plotConfig ? JSON.stringify(plotConfig, null, 2) : "")
     const [configError, setConfigError] = useState("")
     const [renderError, setRenderError] = useState("")
     const [saving, setSaving] = useState(false)
 
     useEffect(function () {
-        setActiveConfig(plot_config)
-        setDraft(plot_config ? JSON.stringify(plot_config, null, 2) : "")
+        setActiveConfig(plotConfig)
+        setDraft(plotConfig ? JSON.stringify(plotConfig, null, 2) : "")
         setConfigError("")
         setEditing(false)
-    }, [plot_config])
+    }, [plotConfig])
 
     useEffect(function () {
         if (!$container.current || !activeConfig) return
@@ -32,7 +32,7 @@ function ResultChart(options) {
             const chart = buildFromConfig({ config: activeConfig, rows, columns, width: w })
             if (chart) appendResponsiveSVG($container.current, chart)
         } catch (e) {
-            console.error("[ResultChart] plot_config render failed", e)
+            console.error("[ResultChart] plotConfig render failed", e)
             setRenderError(e.message)
         }
     }, [columns, rows, activeConfig])
@@ -49,7 +49,7 @@ function ResultChart(options) {
     }
 
     function handleSave() {
-        if (!msg_id) return
+        if (!msgId) return
         let parsed = activeConfig
         if (editing) {
             try {
@@ -97,7 +97,7 @@ function ResultChart(options) {
                                 {configError && <div className="code-error">{configError}</div>}
                                 <div className="code-edit-actions">
                                     <button className="code-run-btn" onClick={handleReplot}>Replot</button>
-                                    {msg_id && <button className="code-run-btn" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save"}</button>}
+                                    {msgId && <button className="code-run-btn" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save"}</button>}
                                     <button className="code-cancel-btn" onClick={cancelEdit}>Cancel</button>
                                 </div>
                             </div>
@@ -108,7 +108,7 @@ function ResultChart(options) {
                                 </div>
                                 <div className="code-edit-actions">
                                     <button className="code-inline-btn" onClick={openEdit}>edit</button>
-                                    {msg_id && <button className="code-inline-btn" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "save"}</button>}
+                                    {msgId && <button className="code-inline-btn" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "save"}</button>}
                                 </div>
                             </div>
                         )}

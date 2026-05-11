@@ -141,16 +141,16 @@ function App() {
 				if (row.result_data) {
 					try { rd = JSON.parse(row.result_data) } catch (e) { /* ignore */ }
 				}
-				msgs.push({ role: "user", text: (rd && rd.user_prompt) || row.prompt })
+				msgs.push({ role: "user", text: (rd && (rd.userPrompt || rd.user_prompt)) || row.prompt })
 				// new shape: result_data IS the full content object (same shape that
-				// live streaming assembles in handleSubmit). detected by msg_id
-				// presence — legacy rows lack it and fall back to parseRawResponse.
+				// live streaming assembles in handleSubmit). detected by msgId (new)
+				// or msg_id (legacy) presence — older rows fall back to parseRawResponse.
 				let content
-				if (rd && rd.msg_id) {
+				if (rd && (rd.msgId || rd.msg_id)) {
 					content = { ...rd, loading: false }
 				} else {
 					content = parseRawResponse(row.response, rd)
-					content.msg_id = row.id
+					content.msgId = row.id
 				}
 				msgs.push({
 					role: "assistant",
@@ -274,10 +274,10 @@ function App() {
 			if (msg.role === "user") {
 				all.push({ role: "user", text: msg.text })
 			} else if (msg.role === "assistant" && msg.content && !msg.content.loading) {
-				const text = msg.content.distilled_summary
+				const text = msg.content.distilledSummary
 					|| msg.content.summary
-					|| msg.content.raw_text
-					|| msg.content.streaming_text
+					|| msg.content.rawText
+					|| msg.content.streamingText
 					|| ""
 				const entry = { role: "assistant", text: text }
 				// carry structured prior-turn context for follow-up continuation
@@ -287,8 +287,8 @@ function App() {
 				if (msg.content.intent) {
 					entry.intent = msg.content.intent
 				}
-				if (msg.content.plot_config) {
-					entry.plot_config = msg.content.plot_config
+				if (msg.content.plotConfig) {
+					entry.plotConfig = msg.content.plotConfig
 				}
 				if (msg.content.columns) {
 					entry.columns = msg.content.columns
@@ -316,7 +316,7 @@ function App() {
 		const history = buildHistory(currentMessages)
 
 		const userMsg = { role: "user", text: prompt }
-		const assistantMsg = { role: "assistant", content: { loading: true, streaming_text: "" } }
+		const assistantMsg = { role: "assistant", content: { loading: true, streamingText: "" } }
 
 		setSessions(function (prev) {
 			const updated = prev.map(function (s) {
@@ -354,7 +354,7 @@ function App() {
 						error: data.error || "",
 						sql: data.sql || "",
 						explanation: "",
-						plot_config: null,
+						plotConfig: null,
 						columns: data.columns || [],
 						rows: data.rows || [],
 						summary: "",
@@ -364,7 +364,7 @@ function App() {
 				const resp = await fetch("/api/ask", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ prompt, history, session_id: currentSession_?.serverId || "" }),
+					body: JSON.stringify({ prompt, history, sessionId: currentSession_?.serverId || "" }),
 					credentials: "include",
 				})
 				const reader = resp.body.getReader()
@@ -383,30 +383,30 @@ function App() {
 						const event = JSON.parse(line.slice(6))
 						console.log("[sse]", event.type, event)
 
-						if (event.type === "conversation_id") {
+						if (event.type === "conversationId") {
 							setSessions(function (prev) {
 								return prev.map(function (s) {
 									if (s.id !== sessionId) return s
 									return { ...s, serverId: event.id }
 								})
 							})
-						} else if (event.type === "msg_id") {
-							patchLastMsg(sessionId, function (c) { return { ...c, msg_id: event.id } })
-						} else if (event.type === "user_prompt") {
+						} else if (event.type === "msgId") {
+							patchLastMsg(sessionId, function (c) { return { ...c, msgId: event.id } })
+						} else if (event.type === "userPrompt") {
 							// stored in content for history reload; no UI change needed live
 						} else if (event.type === "preamble") {
 							patchLastMsg(sessionId, function (c) { return { ...c, preamble: event.text } })
 						} else if (event.type === "intent") {
 							patchLastMsg(sessionId, function (c) { return { ...c, intent: event.intent } })
 						} else if (event.type === "token") {
-							patchLastMsg(sessionId, function (c) { return { ...c, streaming_text: (c.streaming_text || "") + event.text } })
+							patchLastMsg(sessionId, function (c) { return { ...c, streamingText: (c.streamingText || "") + event.text } })
 						} else if (event.type === "text") {
-							patchLastMsg(sessionId, function (c) { return { ...c, loading: false, text: event.text, raw_text: event.text } })
+							patchLastMsg(sessionId, function (c) { return { ...c, loading: false, text: event.text, rawText: event.text } })
 						} else if (event.type === "sql") {
 							patchLastMsg(sessionId, function (c) {
 								const rounds = c.rounds ? c.rounds.slice() : []
 								if (rounds.length > 0) rounds[rounds.length - 1] = { ...rounds[rounds.length - 1], sql: event.sql }
-								return { ...c, sql: event.sql, plot_config: event.plot_config, explanation: event.explanation, raw_text: c.streaming_text, rounds }
+								return { ...c, sql: event.sql, plotConfig: event.plotConfig, explanation: event.explanation, rawText: c.streamingText, rounds }
 							})
 						} else if (event.type === "rows") {
 							patchLastMsg(sessionId, function (c) {
@@ -416,18 +416,18 @@ function App() {
 							})
 						} else if (event.type === "summary") {
 							patchLastMsg(sessionId, function (c) { return { ...c, summary: event.text } })
-						} else if (event.type === "key_takeaways") {
-							patchLastMsg(sessionId, function (c) { return { ...c, key_takeaways: event.items } })
+						} else if (event.type === "keyTakeaways") {
+							patchLastMsg(sessionId, function (c) { return { ...c, keyTakeaways: event.items } })
 						} else if (event.type === "suggestions") {
 							patchLastMsg(sessionId, function (c) { return { ...c, suggestions: event.items } })
-						} else if (event.type === "plot_config") {
-							patchLastMsg(sessionId, function (c) { return { ...c, plot_config: event.plot_config } })
-						} else if (event.type === "no_plot") {
-							patchLastMsg(sessionId, function (c) { return { ...c, no_plot: true } })
-						} else if (event.type === "template_plots") {
-							patchLastMsg(sessionId, function (c) { return { ...c, template_plots: event.plots } })
-						} else if (event.type === "distilled_summary") {
-							patchLastMsg(sessionId, function (c) { return { ...c, distilled_summary: event.text } })
+						} else if (event.type === "plotConfig") {
+							patchLastMsg(sessionId, function (c) { return { ...c, plotConfig: event.plotConfig } })
+						} else if (event.type === "noPlot") {
+							patchLastMsg(sessionId, function (c) { return { ...c, noPlot: true } })
+						} else if (event.type === "templatePlots") {
+							patchLastMsg(sessionId, function (c) { return { ...c, templatePlots: event.plots } })
+						} else if (event.type === "distilledSummary") {
+							patchLastMsg(sessionId, function (c) { return { ...c, distilledSummary: event.text } })
 						} else if (event.type === "round") {
 							// flat round: each round has prompt/messages/response; sql+plot distilled separately
 							patchLastMsg(sessionId, function (c) {

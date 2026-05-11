@@ -134,7 +134,7 @@ async function handleLogin(req, res, body) {
 async function handleAsk(req, res, body, params, username) {
 	const prompt = (body.prompt || '').slice(0, 4000)
 	const history = (body.history || []).slice(0, 50)
-	const sessionId = (body.session_id || '').slice(0, 64)
+	const sessionId = (body.sessionId || '').slice(0, 64)
 	console.log(`[ask] user=${username} session=${sessionId} prompt="${prompt.slice(0, 80)}"`)
 
 	res.writeHead(200, {
@@ -196,7 +196,7 @@ async function handleAdminConversations(req, res, body, params, username) {
 
 
 async function handleEvaluate(req, res, body, params, username) {
-	const msgId = (body.msg_id || '').slice(0, 64)
+	const msgId = (body.msgId || '').slice(0, 64)
 	const rating = body.rating
 	const user = username || (body.user || '').slice(0, 64)
 	const comment = (body.comment || '').slice(0, 2000)
@@ -212,13 +212,13 @@ async function handleEvaluate(req, res, body, params, username) {
 		const rd = getResultData(msgId)
 		const sql = rd.sql || ''
 		if (sql) {
-			const desc = comment || rd.user_prompt || msgId
+			const desc = comment || rd.userPrompt || msgId
 			let safeName = desc.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '_').slice(0, 60).trim().replace(/\s+/g, '_').toLowerCase()
 			if (!safeName) safeName = msgId.replace(/[^a-zA-Z0-9_\-]/g, '_')
 
 			const tpl = { description: desc, sql }
-			const templatePlots = rd.template_plots
-			const plotConfig = rd.plot_config
+			const templatePlots = rd.templatePlots
+			const plotConfig = rd.plotConfig
 
 			if (templatePlots && templatePlots.length > 0) {
 				tpl.plots = templatePlots.map(p => ({ ...p }))

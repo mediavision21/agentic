@@ -26,19 +26,18 @@ function _buildSystemPrompt(promptData) {
 
 export async function generatePlotAndSummary(options) {
     const {
-        user_prompt: userPrompt,
+        userPrompt,
         columns,
         rows,
         sql,
         label = 'plot',
-        log_id: logId,
+        msgId,
         user = '',
-        conversation_id: conversationId = '',
-        prior_plot_config: priorPlotConfig,
-        prompt_data: promptDataOverride,
+        conversationId = '',
+        priorPlotConfig,
     } = options
 
-    const promptData = promptDataOverride || getPlotPrompt()
+    const promptData = options.promptData || getPlotPrompt()
     const sample = rows.slice(0, 50)
     const header = columns.join(', ')
     const lines = [header, ...sample.map(row => columns.map(c => row[c] === null || row[c] === undefined ? '' : String(row[c])).join(', '))]
@@ -66,9 +65,9 @@ export async function generatePlotAndSummary(options) {
         messages,
         model: 'sonnet',
         label,
-        log_id: logId,
+        msgId,
         user,
-        conversation_id: conversationId,
+        conversationId,
     })
     const [plot, summary, keyTakeaways] = extractPlotAndSummary(text)
     const debug = { prompt: systemPrompt, messages, response: text }

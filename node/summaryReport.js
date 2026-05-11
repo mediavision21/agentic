@@ -14,32 +14,32 @@ export function needsPlot(prompt, columns, rows) {
 
 export async function* summaryReport(options) {
 	const {
-		prompt,
+		userPrompt,
 		columns,
 		rows,
 		sql,
-		prior_plot_config: priorPlotConfig,
-		log_id: logId,
+		priorPlotConfig,
+		msgId,
 		user = '',
-		conversation_id: conversationId = '',
-		sql_gen_messages: sqlGenMessages = null,
+		conversationId = '',
+		sqlHistory = null,
 		force = false,
 	} = options
 
-	const wantPlot = needsPlot(prompt, columns, rows)
+	const wantPlot = needsPlot(userPrompt, columns, rows)
 	yield { type: 'round', label: wantPlot ? 'Plot & Summary' : 'Summary' }
 
 	const result = await verifyAndGenerate({
-		user_prompt: prompt,
+		userPrompt,
 		columns,
 		rows,
 		sql,
-		log_id: logId,
+		msgId,
 		user,
-		conversation_id: conversationId,
-		prior_plot_config: wantPlot ? priorPlotConfig : null,
-		no_plot: !wantPlot,
-		sql_gen_messages: sqlGenMessages,
+		conversationId,
+		priorPlotConfig: wantPlot ? priorPlotConfig : null,
+		noPlot: !wantPlot,
+		sqlHistory,
 		force,
 	})
 
@@ -49,17 +49,17 @@ export async function* summaryReport(options) {
 	if (debug.response) yield { type: 'response', text: debug.response }
 
 	if (result.ok) {
-		const plotConfig = result.plot_config
+		const plotConfig = result.plotConfig
 		if (plotConfig && wantPlot) {
-			yield { type: 'plot_config', plot_config: plotConfig }
+			yield { type: 'plotConfig', plotConfig }
 		} else {
-			yield { type: 'no_plot' }
+			yield { type: 'noPlot' }
 		}
-		if ((result.key_takeaways || []).length > 0) yield { type: 'key_takeaways', items: result.key_takeaways }
+		if ((result.keyTakeaways || []).length > 0) yield { type: 'keyTakeaways', items: result.keyTakeaways }
 		if (result.summary) yield { type: 'summary', text: result.summary }
 		if ((result.suggestions || []).length > 0) yield { type: 'suggestions', items: result.suggestions }
 	} else {
-		yield { type: 'no_plot' }
+		yield { type: 'noPlot' }
 	}
 
 	yield { type: '_summary_status', ok: result.ok, reason: result.reason }

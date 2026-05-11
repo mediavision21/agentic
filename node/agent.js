@@ -21,22 +21,22 @@ function _makeTimestampId() {
 // assembles live in App.jsx handleSubmit. persisted at stream end for history replay.
 export function _collect(event, content) {
 	const t = event.type
-	if (t === 'msg_id') {
-		content.msg_id = event.id
+	if (t === 'msgId') {
+		content.msgId = event.id
 	} else if (t === 'preamble') {
 		content.preamble = event.text
 	} else if (t === 'intent') {
 		content.intent = event.intent
 	} else if (t === 'token') {
-		content.streaming_text = (content.streaming_text || '') + event.text
+		content.streamingText = (content.streamingText || '') + event.text
 	} else if (t === 'text') {
 		content.text = event.text
-		content.raw_text = event.text
+		content.rawText = event.text
 	} else if (t === 'sql') {
 		content.sql = event.sql
 		if (event.explanation) content.explanation = event.explanation
-		if (event.plot_config !== undefined && event.plot_config !== null) content.plot_config = event.plot_config
-		if (content.streaming_text) content.raw_text = content.streaming_text
+		if (event.plotConfig !== undefined && event.plotConfig !== null) content.plotConfig = event.plotConfig
+		if (content.streamingText) content.rawText = content.streamingText
 		if (content.rounds.length > 0) content.rounds[content.rounds.length - 1].sql = event.sql
 	} else if (t === 'rows') {
 		content.columns = event.columns
@@ -51,16 +51,16 @@ export function _collect(event, content) {
 		content.summary = event.text
 	} else if (t === 'suggestions') {
 		content.suggestions = event.items
-	} else if (t === 'key_takeaways') {
-		content.key_takeaways = event.items
-	} else if (t === 'plot_config') {
-		content.plot_config = event.plot_config
-	} else if (t === 'no_plot') {
-		content.no_plot = true
-	} else if (t === 'template_plots') {
-		content.template_plots = event.plots
-	} else if (t === 'distilled_summary') {
-		content.distilled_summary = event.text
+	} else if (t === 'keyTakeaways') {
+		content.keyTakeaways = event.items
+	} else if (t === 'plotConfig') {
+		content.plotConfig = event.plotConfig
+	} else if (t === 'noPlot') {
+		content.noPlot = true
+	} else if (t === 'templatePlots') {
+		content.templatePlots = event.plots
+	} else if (t === 'distilledSummary') {
+		content.distilledSummary = event.text
 	} else if (t === 'round') {
 		content.rounds.push({ label: event.label })
 	} else if (t === 'prompt') {
@@ -86,8 +86,8 @@ export function _collect(event, content) {
 			const tc = (content.rounds[content.rounds.length - 1].tool_calls || []).find(c => c.id === event.id)
 			if (tc) tc.rows = event.rows
 		}
-	} else if (t === 'user_prompt') {
-		content.user_prompt = event.text
+	} else if (t === 'userPrompt') {
+		content.userPrompt = event.text
 	} else if (t === 'error') {
 		content.error = event.error
 	}
@@ -103,14 +103,14 @@ export async function* generateAgentStream(prompt, history, options) {
 			yield event
 		}
 	} finally {
-		const msgId = content.msg_id
+		const msgId = content.msgId
 		if (msgId) {
 			try {
 				updateResultData(msgId, content)
 			} catch (e) {
 				console.log('[agent] persist content failed:', e.message)
 			}
-			if (content.sql && (content.plot_config || content.template_plots) && !content.error) {
+			if (content.sql && (content.plotConfig || content.templatePlots) && !content.error) {
 				try {
 					const path = saveTemplateFromContent(content)
 					if (path) console.log('[agent] auto-saved template', path)
@@ -122,15 +122,15 @@ export async function* generateAgentStream(prompt, history, options) {
 	}
 }
 
-async function* _generateAgentStreamInner(prompt, history, user, conversationId) {
+async function* _generateAgentStreamInner(userPrompt, history, user, conversationId) {
 	const hist = history || []
-	const convId = conversationId || _makeTimestampId()
-	console.log(`[agent] start user=${user} convId=${convId} histLen=${hist.length}`)
-	yield { type: 'conversation_id', id: convId }
+	conversationId = conversationId || _makeTimestampId()
+	console.log(`[agent] start user=${user} conversationId=${conversationId} histLen=${hist.length}`)
+	yield { type: 'conversationId', id: conversationId }
 
 	const msgId = _makeTimestampId()
-	yield { type: 'msg_id', id: msgId }
-	yield { type: 'user_prompt', text: prompt }
+	yield { type: 'msgId', id: msgId }
+	yield { type: 'userPrompt', text: userPrompt }
 
 	let priorSql = null
 	let priorPlotConfig = null
@@ -138,7 +138,7 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 		const h = hist[i]
 		if (h.role === 'assistant' && h.sql) {
 			priorSql = h.sql
-			priorPlotConfig = h.plot_config || null
+			priorPlotConfig = h.plotConfig || null
 			break
 		}
 	}
@@ -147,8 +147,8 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 	const hasTemplates = Object.keys(templates).length > 0
 
 	const [probeResult, matchResult] = await Promise.all([
-		metricProbe(prompt),
-		hasTemplates ? matchTopTemplates(prompt, templates) : Promise.resolve([[], null]),
+		metricProbe(userPrompt),
+		hasTemplates ? matchTopTemplates(userPrompt, templates) : Promise.resolve([[], null]),
 	])
 	console.log(`[agent] probe: answer_type=${probeResult.answer_type} answer_confidence=${probeResult.answer_confidence} candidates=${probeResult.candidates.length}`)
 
@@ -171,12 +171,12 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 		let gotError = false
 
 		for await (const event of runMatchedTemplate({
-			prompt,
+			userPrompt,
 			match: matches[0],
 			template: templates[matches[0].file],
-			msg_id: msgId,
+			msgId,
 			user,
-			conversation_id: convId,
+			conversationId,
 			history: hist,
 			probe: probeResult,
 		})) {
@@ -189,8 +189,8 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 		if (!gotError && templateRows && templateRows.length > 0) {
 			let summaryOk = false
 			for await (const e of summaryReport({
-				prompt, columns: templateCols, rows: templateRows, sql: templateSql,
-				prior_plot_config: priorPlotConfig, log_id: msgId, user, conversation_id: convId,
+				userPrompt, columns: templateCols, rows: templateRows, sql: templateSql,
+				priorPlotConfig, msgId, user, conversationId,
 			})) {
 				if (e.type === '_summary_status') { summaryOk = e.ok; continue }
 				yield e
@@ -199,24 +199,25 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 		}
 	}
 
-	// median path: high-confidence probe candidate — rows already fetched
-	const bestCandidate = probeResult.candidates
+	// median path: try all high-confidence probe candidates in confidence order
+	const bestCandidates = probeResult.candidates
 		.filter(c => c.answer_confidence >= 0.8 && c.row_count > 0 && c.row_count < MAX_ROWS)
-		.sort((a, b) => b.answer_confidence - a.answer_confidence)[0]
+		.sort((a, b) => b.answer_confidence - a.answer_confidence)
 
-	if (bestCandidate) {
-		console.log(`[agent] median path: answer_confidence=${bestCandidate.answer_confidence} kpi_type=${bestCandidate.kpi_type}`)
+	const probeCols = ['period_date', 'country', 'kpi_type', 'kpi_dimension', 'service_id', 'age_group', 'value']
+	for (let i = 0; i < bestCandidates.length; i++) {
+		const candidate = bestCandidates[i]
+		console.log(`[agent] median path [${i + 1}/${bestCandidates.length}]: answer_confidence=${candidate.answer_confidence} kpi_type=${candidate.kpi_type}`)
 		yield { type: 'round', label: 'Probe Answer' }
-		if (probeResult.llm_prompt) yield { type: 'prompt', text: probeResult.llm_prompt }
-		if (probeResult.llm_response) yield { type: 'response', text: probeResult.llm_response }
-		yield { type: 'sql', sql: bestCandidate.sql }
-		const probeCols = ['period_date', 'country', 'kpi_type', 'kpi_dimension', 'service_id', 'age_group', 'value']
-		yield { type: 'rows', columns: probeCols, rows: bestCandidate.rows }
+		if (i === 0 && probeResult.llm_prompt) yield { type: 'prompt', text: probeResult.llm_prompt }
+		if (i === 0 && probeResult.llm_response) yield { type: 'response', text: probeResult.llm_response }
+		yield { type: 'sql', sql: candidate.sql }
+		yield { type: 'rows', columns: probeCols, rows: candidate.rows }
 
 		let summaryOk = false
 		for await (const e of summaryReport({
-			prompt, columns: probeCols, rows: bestCandidate.rows, sql: bestCandidate.sql,
-			prior_plot_config: priorPlotConfig, log_id: msgId, user, conversation_id: convId,
+			userPrompt, columns: probeCols, rows: candidate.rows, sql: candidate.sql,
+			priorPlotConfig, msgId, user, conversationId,
 		})) {
 			if (e.type === '_summary_status') { summaryOk = e.ok; continue }
 			yield e
@@ -229,7 +230,7 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 	console.log(`[agent] slow path label=${slowLabel} matches=${matches.length}`)
 
 	const systemPrompt = await buildSystemPrompt({ matches, templates, priorSql, probe: probeResult })
-	const messages = buildMessages(hist, prompt)
+	const messages = buildMessages(hist, userPrompt)
 	let lastSql = null, lastColumns = null, lastRows = null, lastFailReason = null
 
 	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -237,7 +238,7 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 		let genResult = null
 		for await (const e of openGeneration({
 			system: systemPrompt, messages, label: roundLabel,
-			log_id: msgId, user, conversation_id: convId,
+			msgId, user, conversationId,
 		})) {
 			if (e.type === '_gen_result') { genResult = e; continue }
 			yield e
@@ -252,7 +253,7 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 			columns = result.columns
 			rows = result.rows
 
-			yield { type: 'sql', sql, plot_config: null, explanation: '' }
+			yield { type: 'sql', sql, plotConfig: null, explanation: '' }
 			yield { type: 'rows', columns, rows }
 
 			if (rows.length === 0) {
@@ -299,9 +300,9 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 		const sqlHistory = [...messages, { role: 'assistant', content: fullText }]
 		let summaryOk = false
 		for await (const e of summaryReport({
-			prompt, columns, rows, sql,
-			prior_plot_config: priorPlotConfig, log_id: msgId, user, conversation_id: convId,
-			sql_gen_messages: sqlHistory,
+			userPrompt, columns, rows, sql,
+			priorPlotConfig, msgId, user, conversationId,
+			sqlHistory,
 		})) {
 			if (e.type === '_summary_status') { summaryOk = e.ok; continue }
 			yield e
@@ -320,8 +321,8 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 	// best effort after exhausting retries
 	if (lastColumns && lastRows) {
 		for await (const e of summaryReport({
-			prompt, columns: lastColumns, rows: lastRows, sql: lastSql,
-			prior_plot_config: priorPlotConfig, log_id: msgId, user, conversation_id: convId,
+			userPrompt, columns: lastColumns, rows: lastRows, sql: lastSql,
+			priorPlotConfig, msgId, user, conversationId,
 			force: true,
 		})) {
 			if (e.type === '_summary_status') continue
