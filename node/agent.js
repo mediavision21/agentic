@@ -1,9 +1,15 @@
 import { updateResultData } from './sqlite.js'
 import { loadTemplates, matchTopTemplates, runMatchedTemplate } from './template_router.js'
-import { generatePlotAndSummary } from './plot.js'
-import { needsPlot, run as generateRun } from './generate2.js'
-import { saveTemplateFromContent } from './template_save.js'
+import { buildSystemPrompt, openGeneration, getServiceIdToCanonical } from './generate2.js'
+import {validateColumnCardinality} from "./Cardinality.js"
 
+import { saveTemplateFromContent } from './template_save.js'
+import { metricProbe, MAX_ROWS } from './metricProbe.js'
+import { summaryReport } from './summaryReport.js'
+import { executeQuery } from './db.js'
+import { buildMessages } from './sql_utils.js'
+
+const MAX_ATTEMPTS = 4
 function _makeTimestampId() {
 	const now = new Date()
 	const ts = now.toISOString().replace('T', ' ').slice(0, 19)
@@ -126,7 +132,6 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 	yield { type: 'msg_id', id: msgId }
 	yield { type: 'user_prompt', text: prompt }
 
-	// extract prior SQL from history for slow path context
 	let priorSql = null
 	let priorPlotConfig = null
 	for (let i = hist.length - 1; i >= 0; i--) {
@@ -138,20 +143,27 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 		}
 	}
 
-	// template matching
 	const templates = loadTemplates()
+	const hasTemplates = Object.keys(templates).length > 0
+
+	const [probeResult, matchResult] = await Promise.all([
+		metricProbe(prompt),
+		hasTemplates ? matchTopTemplates(prompt, templates) : Promise.resolve([[], null]),
+	])
+	console.log(`[agent] probe: answer_type=${probeResult.answer_type} answer_confidence=${probeResult.answer_confidence} candidates=${probeResult.candidates.length}`)
+
 	let matches = []
-	if (Object.keys(templates).length > 0) {
-		let matchDebug
-		;[matches, matchDebug] = await matchTopTemplates(prompt, templates)
+	if (matchResult[1]) {
+		matches = matchResult[0]
+		const matchDebug = matchResult[1]
 		yield { type: 'round', label: 'Routing' }
 		yield { type: 'prompt', text: matchDebug.prompt }
 		yield { type: 'messages', messages: matchDebug.messages }
 		yield { type: 'response', text: matchDebug.response || '(no response)' }
 	}
 
+	// fast path: template with high confidence score
 	if (matches.length > 0 && matches[0].score >= 0.95) {
-		// fast path: template has high confidence score, just run query and generate summary
 		yield { type: 'round', label: 'Template Execution' }
 		let templateCols = null
 		let templateRows = null
@@ -166,73 +178,161 @@ async function* _generateAgentStreamInner(prompt, history, user, conversationId)
 			user,
 			conversation_id: convId,
 			history: hist,
+			probe: probeResult,
 		})) {
-			if (event.type === 'rows') {
-				templateCols = event.columns
-				templateRows = event.rows
-			} else if (event.type === 'sql') {
-				templateSql = event.sql
-			} else if (event.type === 'error') {
-				gotError = true
-			}
+			if (event.type === 'rows') { templateCols = event.columns; templateRows = event.rows }
+			else if (event.type === 'sql') { templateSql = event.sql }
+			else if (event.type === 'error') { gotError = true }
 			yield event
 		}
 
 		if (!gotError && templateRows && templateRows.length > 0) {
-			const wantPlot = needsPlot(prompt, templateCols, templateRows)
-			yield { type: 'round', label: wantPlot ? 'Plot & Summary' : 'Summary' }
-			if (wantPlot) {
-				try {
-					const [plotConfig, summary, kt, plotDebug] = await generatePlotAndSummary({
-						user_prompt: prompt,
-						columns: templateCols,
-						rows: templateRows,
-						sql: templateSql,
-						label: 'template-plot',
-						log_id: msgId,
-						user,
-						conversation_id: convId,
-					})
-					yield { type: 'prompt', text: plotDebug.prompt }
-					yield { type: 'messages', messages: plotDebug.messages }
-					yield { type: 'response', text: plotDebug.response }
-					if (plotConfig) {
-						yield { type: 'plot_config', plot_config: plotConfig }
-					} else {
-						yield { type: 'no_plot' }
-					}
-					if (kt && kt.length > 0) yield { type: 'key_takeaways', items: kt }
-					if (summary) yield { type: 'summary', text: summary }
-				} catch (e) {
-					console.log('[agent] template plot error:', e.message)
-					yield { type: 'no_plot' }
-				}
-			} else {
-				yield { type: 'no_plot' }
+			let summaryOk = false
+			for await (const e of summaryReport({
+				prompt, columns: templateCols, rows: templateRows, sql: templateSql,
+				prior_plot_config: priorPlotConfig, log_id: msgId, user, conversation_id: convId,
+			})) {
+				if (e.type === '_summary_status') { summaryOk = e.ok; continue }
+				yield e
 			}
-			return
+			if (summaryOk) return
 		}
 	}
 
-	// slow path
-	const slowLabel = matches.length > 0 ? 'Guided Generation' : 'Open Generation'
+	// median path: high-confidence probe candidate — rows already fetched
+	const bestCandidate = probeResult.candidates
+		.filter(c => c.answer_confidence >= 0.8 && c.row_count > 0 && c.row_count < MAX_ROWS)
+		.sort((a, b) => b.answer_confidence - a.answer_confidence)[0]
 
-	console.log(`[agent] slow path label=${slowLabel} matches=${matches.length}`)
-	for await (const event of generateRun({
-		prompt,
-		matches,
-		templates,
-		history: hist,
-		msg_id: msgId,
-		user,
-		conversation_id: convId,
-		intent_block: '',
-		prior_sql: priorSql,
-		prior_plot_config: priorPlotConfig,
-		label: slowLabel,
-		template_fallback_feedback: null,
-	})) {
-		yield event
+	if (bestCandidate) {
+		console.log(`[agent] median path: answer_confidence=${bestCandidate.answer_confidence} kpi_type=${bestCandidate.kpi_type}`)
+		yield { type: 'round', label: 'Probe Answer' }
+		if (probeResult.llm_prompt) yield { type: 'prompt', text: probeResult.llm_prompt }
+		if (probeResult.llm_response) yield { type: 'response', text: probeResult.llm_response }
+		yield { type: 'sql', sql: bestCandidate.sql }
+		const probeCols = ['period_date', 'country', 'kpi_type', 'kpi_dimension', 'service_id', 'age_group', 'value']
+		yield { type: 'rows', columns: probeCols, rows: bestCandidate.rows }
+
+		let summaryOk = false
+		for await (const e of summaryReport({
+			prompt, columns: probeCols, rows: bestCandidate.rows, sql: bestCandidate.sql,
+			prior_plot_config: priorPlotConfig, log_id: msgId, user, conversation_id: convId,
+		})) {
+			if (e.type === '_summary_status') { summaryOk = e.ok; continue }
+			yield e
+		}
+		if (summaryOk) return
 	}
+
+	// slow path: retry loop with SQL generation
+	const slowLabel = matches.length > 0 ? 'Guided Generation' : 'Open Generation'
+	console.log(`[agent] slow path label=${slowLabel} matches=${matches.length}`)
+
+	const systemPrompt = await buildSystemPrompt({ matches, templates, priorSql, probe: probeResult })
+	const messages = buildMessages(hist, prompt)
+	let lastSql = null, lastColumns = null, lastRows = null, lastFailReason = null
+
+	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+		const roundLabel = attempt === 0 ? slowLabel : `Retry ${attempt}`
+		let genResult = null
+		for await (const e of openGeneration({
+			system: systemPrompt, messages, label: roundLabel,
+			log_id: msgId, user, conversation_id: convId,
+		})) {
+			if (e.type === '_gen_result') { genResult = e; continue }
+			yield e
+		}
+
+		if (genResult.kind === 'text') return
+
+		const { sql, fullText } = genResult
+		let columns, rows
+		try {
+			const result = await executeQuery(sql)
+			columns = result.columns
+			rows = result.rows
+
+			yield { type: 'sql', sql, plot_config: null, explanation: '' }
+			yield { type: 'rows', columns, rows }
+
+			if (rows.length === 0) {
+				lastFailReason = 'Query returned no rows'
+				console.log('[agent] query returned 0 rows')
+				yield { type: 'error', error: 'Query returned no rows' }
+				messages.push(
+					{ role: 'assistant', content: fullText },
+					{ role: 'user', content: `## Revision Feedback\nThe query returned 0 rows. The data may not exist for these filter criteria. Try different filters, a different time period, or a different metric.\n\nWrite a new SQL query.` }
+				)
+				continue
+			}
+
+			const cardinalityCheck = validateColumnCardinality(columns, rows)
+			rows = rows.map(r => Object.fromEntries(columns.map(col => [col, r[col]])))
+
+			if (cardinalityCheck.ok) {
+				if (columns.includes('service_id')) {
+					const map = await getServiceIdToCanonical()
+					columns = [...columns, 'canonical_name']
+					rows = rows.map(r => ({ ...r, canonical_name: map[r.service_id] || null }))
+				}
+			} else {
+				lastFailReason = cardinalityCheck.reason
+				console.log('[agent] cardinality check failed:', cardinalityCheck.reason)
+				yield { type: 'error', error: cardinalityCheck.reason }
+				messages.push(
+					{ role: 'assistant', content: fullText },
+					{ role: 'user', content: `## Revision Feedback\n${cardinalityCheck.reason}\n\nRewrite the SQL to fix this.` }
+				)
+				continue
+			}
+		} catch (e) {
+			console.log('[agent] query error:', e.message)
+			lastFailReason = e.message
+			yield { type: 'error', error: `SQL error: ${e.message}` }
+			messages.push(
+				{ role: 'assistant', content: fullText },
+				{ role: 'user', content: `## Revision Feedback\nSQL error: ${e.message}\n\nFix the SQL and try again.` }
+			)
+			continue
+		}
+
+		const sqlHistory = [...messages, { role: 'assistant', content: fullText }]
+		let summaryOk = false
+		for await (const e of summaryReport({
+			prompt, columns, rows, sql,
+			prior_plot_config: priorPlotConfig, log_id: msgId, user, conversation_id: convId,
+			sql_gen_messages: sqlHistory,
+		})) {
+			if (e.type === '_summary_status') { summaryOk = e.ok; continue }
+			yield e
+		}
+		if (summaryOk) return
+
+		console.log(`[agent] attempt ${attempt + 1} verify failed`)
+		lastSql = sql; lastColumns = columns; lastRows = rows
+		lastFailReason = "Data doesn't answer the question"
+		messages.push(
+			{ role: 'assistant', content: fullText },
+			{ role: 'user', content: `## Revision Feedback\nThe data does not answer the question.\n\nWrite a new SQL query.` }
+		)
+	}
+
+	// best effort after exhausting retries
+	if (lastColumns && lastRows) {
+		for await (const e of summaryReport({
+			prompt, columns: lastColumns, rows: lastRows, sql: lastSql,
+			prior_plot_config: priorPlotConfig, log_id: msgId, user, conversation_id: convId,
+			force: true,
+		})) {
+			if (e.type === '_summary_status') continue
+			yield e
+		}
+	} else {
+		const text = lastFailReason
+			? `I was unable to find data that answers your question. ${lastFailReason}`
+			: `I was unable to find data that answers your question after several attempts.`
+		yield { type: 'summary', text }
+	}
+
 	console.log(`[agent] _generateAgentStreamInner done`)
 }

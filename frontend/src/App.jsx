@@ -59,7 +59,7 @@ function App() {
 					return { id: c.id, serverId: c.id, title: c.title, messages: [], loaded: false }
 				})
 				const fresh = { id: makeSessionId(), title: "New chat", messages: [] }
-				setSessions([...history, fresh])
+				setSessions([fresh, ...[...history].reverse()])
 				setActiveId(fresh.id)
 			}
 			loadUser()
@@ -105,10 +105,18 @@ function App() {
 	}
 
 	function newChat() {
-		const id = makeSessionId()
-		setSessions(function (prev) { return [...prev, { id, title: "New chat", messages: [] }] })
-		setActiveId(id)
+		const first = sessions[0]
+		if (first && first.title === "New chat" && first.messages.length === 0) {
+			setActiveId(first.id)
+		} else {
+			const id = makeSessionId()
+			setSessions(function (prev) { return [{ id, title: "New chat", messages: [] }, ...prev] })
+			setActiveId(id)
+		}
 		setEvalView(null)
+		setTemplateView(null)
+		setPlotEvalView(null)
+		setAdminViewSession(null)
 	}
 
 	async function loadConversation(id) {
@@ -509,17 +517,6 @@ function App() {
 					<button className="new-chat-btn" onClick={newChat}>+ New chat</button>
 				</div>
 				<div className="sidebar-recents">
-					{sessions.map(function (s) {
-						return (
-							<div
-								key={s.id}
-								className={"session-item" + (s.id === activeId && !adminViewSession && !evalView ? " active" : "")}
-								onClick={function () { selectSession(s.id) }}
-							>
-								{s.title}
-							</div>
-						)
-					})}
 					{adminGroups.length > 0 && (
 						<div className="admin-users-section">
 							<div className="admin-users-divider">Users</div>
@@ -548,6 +545,19 @@ function App() {
 							})}
 						</div>
 					)}
+					<div className="admin-users-divider">Recent</div>
+					{sessions.slice(0, 20).map(function (s) {
+						return (
+							<div
+								key={s.id}
+								className={"session-item" + (s.id === activeId && !adminViewSession && !evalView ? " active" : "")}
+								onClick={function () { selectSession(s.id) }}
+							>
+								{s.title}
+							</div>
+						)
+					})}
+					
 				</div>
 				<div className="sidebar-bottom">
 					<div className="account-row">

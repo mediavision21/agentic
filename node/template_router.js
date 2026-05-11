@@ -114,6 +114,7 @@ export async function generateSqlFromTemplate(options) {
 		choices_map: choicesMap = {},
 		history = [],
 		description = '',
+		probe = null,
 	} = options
 
 	const lines = []
@@ -130,6 +131,12 @@ export async function generateSqlFromTemplate(options) {
 		if (h.role === 'assistant' && h.sql) {
 			lines.push(`\nPrevious SQL for context:\n${h.sql}`)
 			break
+		}
+	}
+	if (probe && probe.candidates && probe.candidates.length > 0) {
+		lines.push('\nMetric candidates with confirmed data (prefer these filters):')
+		for (const c of probe.candidates) {
+			lines.push(`  kpi_type=${c.kpi_type} kpi_dimension=${c.kpi_dimension ?? 'null'} service_id=${c.service_id ?? 'null'} (${c.row_count} rows)`)
 		}
 	}
 	lines.push(`\nUser question: ${prompt}`)
@@ -165,6 +172,7 @@ export async function* runMatchedTemplate(options) {
 		user,
 		conversation_id: conversationId,
 		history = [],
+		probe = null,
 	} = options
 
 	const matchedFile = match.file
@@ -187,6 +195,7 @@ export async function* runMatchedTemplate(options) {
 		choices_map: choicesMap,
 		history,
 		description,
+		probe,
 	})
 	yield { type: 'prompt', text: genDebug.prompt }
 	yield { type: 'messages', messages: genDebug.messages }

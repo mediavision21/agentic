@@ -49,25 +49,26 @@ export function plotConfigToJs(config) {
         markLines.push(`    ${fn}(rows, { ${optsJs} })`)
         if (m.type === 'lineY') {
             const stroke = m.stroke || m.fill
-            let dotJs = `"x": "${m.x}", "y": "${m.y}"`
-            if (stroke) dotJs += `, "fill": "${stroke}"`
-            dotJs += ', "r": 3'
-            markLines.push(`    Plot.dot(rows, { ${dotJs} })`)
+            const dotParts = [`"x": "${m.x}", "y": "${m.y}"`]
+            if (stroke) dotParts.push(`, "fill": "${stroke}"`)
+            dotParts.push(', "r": 3')
+            markLines.push(`    Plot.dot(rows, { ${dotParts.join('')} })`)
         }
         if (m.type === 'barY') {
             markLines.push('    Plot.ruleY([0])')
         }
     }
 
-    let colorExpr = '{ "legend": true'
+    const colorParts = ['{ "legend": true']
     if (needsPeriodSort) {
-        colorExpr += ', domain: _periodOrder'
+        colorParts.push(', domain: _periodOrder')
     } else if (colCfg) {
         for (const [k, v] of Object.entries(colCfg)) {
-            if (k !== 'legend') colorExpr += `, "${k}": ${JSON.stringify(v)}`
+            if (k !== 'legend') colorParts.push(`, "${k}": ${JSON.stringify(v)}`)
         }
     }
-    colorExpr += ' }'
+    colorParts.push(' }')
+    const colorExpr = colorParts.join('')
 
     const plotParts = [`    marks: [\n${markLines.join(',\n')}\n    ]`]
     if (Object.keys(xCfg).length > 0) {

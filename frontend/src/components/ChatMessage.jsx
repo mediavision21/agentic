@@ -214,7 +214,7 @@ function ChatMessage(options) {
 				{enableDebug && rounds && rounds.map(function (r, i) {
 					// infer which model produced this round from its label
 					const label = r.label || ""
-					const isHaiku = label === "Routing" || label === "Filter Resolution"
+					const isHaiku = label === "Routing" || label === "Filter Resolution" || label === "Probe Answer"
 					const modelTag = isHaiku ? "haiku" : "sonnet"
 					return (
 						<details key={i} className="debug-round collapsible">

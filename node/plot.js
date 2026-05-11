@@ -42,25 +42,25 @@ export async function generatePlotAndSummary(options) {
     const sample = rows.slice(0, 50)
     const header = columns.join(', ')
     const lines = [header, ...sample.map(row => columns.map(c => row[c] === null || row[c] === undefined ? '' : String(row[c])).join(', '))]
-    let userMsg = `User question: ${userPrompt}\n\nQuery result: \n${lines.join('\n')}`
-    if (sql) userMsg += `\n\nSQL used to produce this data:\n\`\`\`sql\n${sql}\n\`\`\``
+    const userMsgParts = [`User question: ${userPrompt}\n\nQuery result: \n${lines.join('\n')}`]
+    if (sql) userMsgParts.push(`\n\nSQL used to produce this data:\n\`\`\`sql\n${sql}\n\`\`\``)
 
     for (const kpiCol of ['kpi_dimension', 'kpi_type', 'kpi_service']) {
         if (columns.includes(kpiCol)) {
             const vals = [...new Set(rows.filter(r => r[kpiCol]).map(r => String(r[kpiCol])))]
             if (vals.length > 0) {
-                userMsg += `\n${kpiCol} values: ${vals.join(', ')}`
+                userMsgParts.push(`\n${kpiCol} values: ${vals.join(', ')}`)
             }
         }
     }
 
     if (priorPlotConfig) {
         const priorJson = JSON.stringify(priorPlotConfig, null, 2)
-        userMsg += '\n\nPrevious plot config (extend this — keep the same mark type and structure, just add/adjust fields for the new data):\n```json\n' + priorJson + '\n```'
+        userMsgParts.push('\n\nPrevious plot config (extend this — keep the same mark type and structure, just add/adjust fields for the new data):\n```json\n' + priorJson + '\n```')
     }
 
     const systemPrompt = _buildSystemPrompt(promptData)
-    const messages = [{ role: 'user', content: userMsg }]
+    const messages = [{ role: 'user', content: userMsgParts.join('') }]
     const text = await completeText({
         system: systemPrompt,
         messages,

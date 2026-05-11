@@ -62,7 +62,7 @@ export async function* complete(options) {
         yield { type: 'prompt', text: systemPrompt }
         yield { type: 'messages', messages: conv.map(m => ({ ...m })) }
 
-        let iterText = ''
+        const iterChunks = []
         let callConv = conv
         if (prefill && iteration === 0) {
             callConv = [...conv, { role: 'assistant', content: prefill }]
@@ -82,10 +82,11 @@ export async function* complete(options) {
         for await (const event of stream) {
             if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
                 const text = event.delta.text
-                iterText += text
+                iterChunks.push(text)
                 yield { type: 'token', text }
             }
         }
+        const iterText = iterChunks.join('')
         const final = await stream.finalMessage()
         finalModel = final.model
         const usage = { input_tokens: final.usage.input_tokens, output_tokens: final.usage.output_tokens }
@@ -156,11 +157,11 @@ export async function* complete(options) {
 }
 
 export async function completeText(options) {
-    let full = ''
+    const chunks = []
     for await (const ev of complete(options)) {
         if (ev.type === 'token') {
-            full += ev.text
+            chunks.push(ev.text)
         }
     }
-    return full.trim()
+    return chunks.join('').trim()
 }
