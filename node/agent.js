@@ -50,6 +50,9 @@ export function _collect(event, content) {
 		content.explanation = event.text
 	} else if (t === 'summary') {
 		content.summary = event.text
+	} else if (t === 'report') {
+		content.report = event.text
+		if (event.answerType) content.answerType = event.answerType
 	} else if (t === 'suggestions') {
 		content.suggestions = event.items
 	} else if (t === 'keyTakeaways') {
@@ -228,26 +231,26 @@ async function* _generateAgentStreamInner(userPrompt, history, user, conversatio
 		.filter(c => c.answer_confidence >= 0.8 && c.row_count > 0 && c.row_count < MAX_ROWS)
 		.sort((a, b) => b.answer_confidence - a.answer_confidence)
 
-	const probeCols = ['period_date', 'country', 'kpi_type', 'kpi_dimension', 'service_id', 'age_group', 'value']
-	for (let i = 0; i < bestCandidates.length; i++) {
-		const candidate = bestCandidates[i]
-		console.log(`[agent] median path [${i + 1}/${bestCandidates.length}]: answer_confidence=${candidate.answer_confidence} kpi_type=${candidate.kpi_type}`)
-		yield { type: 'round', label: 'Probe Answer' }
-		if (i === 0 && probeResult.llm_prompt) yield { type: 'prompt', text: probeResult.llm_prompt }
-		if (i === 0 && probeResult.llm_response) yield { type: 'response', text: probeResult.llm_response }
-		yield { type: 'sql', sql: candidate.sql }
-		yield { type: 'rows', columns: probeCols, rows: candidate.rows }
+	// const probeCols = ['period_date', 'country', 'kpi_type', 'kpi_dimension', 'service_id', 'age_group', 'value']
+	// for (let i = 0; i < bestCandidates.length; i++) {
+	// 	const candidate = bestCandidates[i]
+	// 	console.log(`[agent] median path [${i + 1}/${bestCandidates.length}]: answer_confidence=${candidate.answer_confidence} kpi_type=${candidate.kpi_type}`)
+	// 	yield { type: 'round', label: 'Probe Answer' }
+	// 	if (i === 0 && probeResult.llm_prompt) yield { type: 'prompt', text: probeResult.llm_prompt }
+	// 	if (i === 0 && probeResult.llm_response) yield { type: 'response', text: probeResult.llm_response }
+	// 	yield { type: 'sql', sql: candidate.sql }
+	// 	yield { type: 'rows', columns: probeCols, rows: candidate.rows }
 
-		let summaryOk = false
-		for await (const e of summaryReport({
-			userPrompt, columns: probeCols, rows: candidate.rows, sql: candidate.sql,
-			answerType, priorPlotConfig, msgId, user, conversationId,
-		})) {
-			if (e.type === '_summary_status') { summaryOk = e.ok; continue }
-			yield e
-		}
-		if (summaryOk) return
-	}
+	// 	let summaryOk = false
+	// 	for await (const e of summaryReport({
+	// 		userPrompt, columns: probeCols, rows: candidate.rows, sql: candidate.sql,
+	// 		answerType, priorPlotConfig, msgId, user, conversationId,
+	// 	})) {
+	// 		if (e.type === '_summary_status') { summaryOk = e.ok; continue }
+	// 		yield e
+	// 	}
+	// 	if (summaryOk) return
+	// }
 
 	// slow path: retry loop with SQL generation
 	const slowLabel = matches.length > 0 ? 'Guided Generation' : 'Open Generation'

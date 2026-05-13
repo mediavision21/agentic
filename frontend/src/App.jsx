@@ -59,7 +59,7 @@ function App() {
 					return { id: c.id, serverId: c.id, title: c.title, messages: [], loaded: false }
 				})
 				const fresh = { id: makeSessionId(), title: "New chat", messages: [] }
-				setSessions([fresh, ...[...history].reverse()])
+				setSessions([fresh, ...history])
 				setActiveId(fresh.id)
 			}
 			loadUser()

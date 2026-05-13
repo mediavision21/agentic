@@ -456,23 +456,6 @@ ORDER BY g.rn, p.period_date;
 
 ---
 
-## 14. Qualitative Context: `macro.insight_text`
-
-Analyst commentary from quarterly reports. Surface alongside numeric results when relevant.
-
-| Column | Description |
-|---|---|
-| `report_period` | Period the comment refers to |
-| `country` | Country |
-| `category` | Media category |
-| `kpi_type` | KPI type |
-| `kpi_dimension` | Dimension |
-| `slide_title` | Report slide the comment came from |
-| `comment_text` | Analyst commentary — safe to display to users |
-| `comment_type` | `observation`, `driver`, or `context` |
-
----
-
 ## 15. Intent Resolution Guide
 
 | User says | `kpi_type` | `kpi_dimension` | `service_id` |

@@ -5,6 +5,33 @@ import { executeQuery } from './db.js'
 import { postprocessSql } from './sql_utils.js'
 import { getSummaryPrompt } from './prompts.js'
 
+// Escape bare newlines/carriage-returns inside JSON string values (LLMs often emit them unescaped)
+function fixLLMJson(text) {
+	let out = ''
+	let inStr = false
+	let i = 0
+	while (i < text.length) {
+		const ch = text[i]
+		if (ch === '\\' && inStr) {
+			out += ch + text[i + 1]
+			i += 2
+			continue
+		}
+		if (ch === '"') {
+			inStr = !inStr
+			out += ch
+		} else if (inStr && ch === '\n') {
+			out += '\\n'
+		} else if (inStr && ch === '\r') {
+			out += '\\r'
+		} else {
+			out += ch
+		}
+		i++
+	}
+	return out
+}
+
 const ONTOLOGY_PATH = join(import.meta.dirname, '..', 'skills', 'ONTOLOGY.md')
 let _ontology = null
 let _serviceIdToCanonical = undefined
@@ -158,10 +185,10 @@ export async function verifyAndGenerate(options) {
 			conversationId,
 		})
 		debug.response = text
-		const m = text.match(/```json\s*(.*?)\s*```/s)
+		const m = text.match(/```json\s*([\s\S]*)\s*```/)
 		if (m) {
 			try {
-				const obj = JSON.parse(m[1].trim())
+				const obj = JSON.parse(fixLLMJson(m[1].trim()))
 				if (!obj.ok) {
 					return { ok: false, reason: obj.reason || "Data doesn't answer question", debug }
 				}

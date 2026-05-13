@@ -89,6 +89,12 @@ function applyTickDensity(xOpts, domain) {
 	}
 }
 
+function computeMarginBottom(tickRotate, maxLabelLen) {
+	if (!tickRotate) return undefined
+	const angle = Math.abs(tickRotate) * Math.PI / 180
+	return Math.ceil((maxLabelLen || 8) * 7 * Math.sin(angle)) + 24
+}
+
 function truncLabel(d) {
 	const s = String(d)
 	return s.length > 8 ? s.slice(0, 7) + '…' : s
@@ -168,23 +174,23 @@ export function buildFromConfig(options, shortCut = true) {
 			if (m.sort) opts.sort = m.sort
 			if (m.type === "lineY") opts.curve = m.curve || "catmull-rom"
 			if (m.tip) opts.tip = m.tip
-			if (m.title) opts.title = resolveTitle(m.title)
 			return [fn(data, opts)]
 		})
 		const xCol = config.marks[0] && config.marks[0].x
 		const xOpts = { ...(config.x || {}) }
 		if (xOpts.tickFormat) xOpts.tickFormat = resolveFmt(xOpts.tickFormat)
-		if (xCol === 'period_date' && !xOpts.tickFormat) {
+		if (!xOpts.tickFormat && xCol && rows.length > 0 && isDateLike(rows[0][xCol])) {
 			xOpts.tickFormat = fmtPeriod
-			xOpts.tickRotate = 25
 		}
-		const yOpts = { ...(config.y || {}) }
+		const yOpts = { labelAnchor: "center", ...(config.y || {}) }
 		if (yOpts.tickFormat) yOpts.tickFormat = resolveFmt(yOpts.tickFormat)
 		const colorCfg = normalizeColorConfig(config.color) || {}
 		if (colorCfg.tickFormat) colorCfg.tickFormat = resolveFmt(colorCfg.tickFormat)
 		const fxRotate = config.fx && config.fx.tickRotate
-		const marginBottom = config.marginBottom != null ? config.marginBottom : (fxRotate ? 60 : undefined)
-		result = Plot.plot({ width: width || 600, ...config, marginBottom, x: xOpts, y: yOpts, color: colorCfg, marks })
+		const xLabelLen = xCol === 'period_date' ? 7 : 8
+		const autoMarginBottom = computeMarginBottom(xOpts.tickRotate, xLabelLen) ?? (fxRotate ? computeMarginBottom(fxRotate, 8) : undefined)
+		const marginBottom = config.marginBottom != null ? config.marginBottom : autoMarginBottom
+		result = Plot.plot({ width: width || 600, ...config, title: undefined, marginBottom, x: xOpts, y: yOpts, color: colorCfg, marks })
 	}
 	else {
 		// auto-compute period_label from period_date if config references it
@@ -262,7 +268,6 @@ export function buildFromConfig(options, shortCut = true) {
 			const tipChannels = { x: m.x, y: m.y }
 			if (m.stroke) tipChannels.stroke = m.stroke
 			if (m.fill) tipChannels.fill = m.fill
-			if (m.title) tipChannels.title = resolveTitle(m.title)
 			marks.push(Plot.tip(data, Plot.pointerX(tipChannels)))
 		}
 
@@ -277,7 +282,7 @@ export function buildFromConfig(options, shortCut = true) {
 			applyTickDensity(xOpts, xDomain)
 		}
 		const isCategorical = xCol && filteredRows.length > 0 && !isDateLike(filteredRows[0][xCol]) && !isNumeric(filteredRows[0][xCol])
-		if (xCol === "period_date" && !xOpts.tickFormat) {
+		if (!xOpts.tickFormat && xCol && filteredRows.length > 0 && isDateLike(filteredRows[0][xCol]) && !isBar) {
 			xOpts.tickFormat = fmtPeriod
 		}
 		if (isCategorical && !xOpts.tickFormat && !isPeriodLabelX) {
@@ -302,14 +307,15 @@ export function buildFromConfig(options, shortCut = true) {
 			if (periodDomain) colorCfg.domain = periodDomain
 		}
 
-		const yOptsFull = { grid: false, ...(config.y || {}) }
+		const yOptsFull = { grid: false, labelAnchor: "center", ...(config.y || {}) }
 		if (yOptsFull.tickFormat) yOptsFull.tickFormat = resolveFmt(yOptsFull.tickFormat)
+		const maxXLabelLen = xDomain ? Math.max(...xDomain.map(d => String(d).length)) : 8
 		const plotOpts = {
 			className: "plot",
 			style: ".plot-swatch { white-space: nowrap; }",
 			width: width || 600,
 			height: xOpts.tickRotate ? 340 : 300,
-			marginBottom: xOpts.tickRotate ? 50 : undefined,
+			marginBottom: computeMarginBottom(xOpts.tickRotate, maxXLabelLen),
 			x: xOpts,
 			y: yOptsFull,
 			color: { legend: true, ...colorCfg },
@@ -446,12 +452,13 @@ export function buildFallback(options) {
 		if (uniqueX.size > 6 || hasLongLabel) xOpts.tickRotate = -45
 	}
 
+	const maxXLabelLen = xDomain ? Math.max(...xDomain.map(d => String(d).length)) : 8
 	const plotOpts = {
 		className: "plot",
 		style: ".plot-swatch { white-space: nowrap; }",
 		width: width || 600,
 		height: xOpts.tickRotate ? 340 : 300,
-		marginBottom: xOpts.tickRotate ? 80 : undefined,
+		marginBottom: computeMarginBottom(xOpts.tickRotate, maxXLabelLen),
 		x: xOpts,
 		y: { label: chartInfo.y, grid: false },
 		marks,
