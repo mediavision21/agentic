@@ -167,6 +167,7 @@ export async function verifyAndGenerate(options) {
 				}
 				return {
 					ok: true,
+					title: obj.title || null,
 					type: obj.type || 'card',
 					report: obj.report || null,
 					suggestions: obj.suggestions || [],
@@ -181,7 +182,7 @@ export async function verifyAndGenerate(options) {
 			if (!obj.ok) {
 				return { ok: false, reason: obj.reason || "Data doesn't answer question", debug }
 			}
-			return { ok: true, type: obj.type || 'card', report: obj.report || null, suggestions: obj.suggestions || [], debug }
+			return { ok: true, title: obj.title || null, type: obj.type || 'card', report: obj.report || null, suggestions: obj.suggestions || [], debug }
 		} catch (_) { }
 		return { ok: true, type: 'card', report: text.slice(0, 500) || null, suggestions: [], debug }
 	} catch (e) {

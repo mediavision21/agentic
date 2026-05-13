@@ -337,6 +337,8 @@ function App() {
 		})
 		setLoading(true)
 
+		let modelTitle = null
+
 		try {
 			const sqlMatch = prompt.match(/^\/sql\s+([\s\S]+)/i)
 
@@ -453,6 +455,16 @@ function App() {
 								}
 								return { ...c, rounds: rounds.slice() }
 							})
+						} else if (event.type === "title") {
+							modelTitle = event.text
+							if (isFirstMessage) {
+								setSessions(function (prev) {
+									return prev.map(function (s) {
+										if (s.id !== sessionId) return s
+										return { ...s, title: event.text }
+									})
+								})
+							}
 						} else if (event.type === "error") {
 							patchLastMsg(sessionId, function (c) { return { ...c, loading: false, error: event.error } })
 						}
@@ -472,7 +484,7 @@ function App() {
 						fetch("/api/conversations", {
 							method: "POST",
 							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({ id: sess.serverId, title: prompt.slice(0, 100) }),
+							body: JSON.stringify({ id: sess.serverId, title: (modelTitle || prompt).slice(0, 100) }),
 							credentials: "include",
 						})
 					}

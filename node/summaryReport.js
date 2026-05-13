@@ -39,6 +39,7 @@ export async function* summaryReport(options) {
 	if (debug.response) yield { type: 'response', text: debug.response }
 
 	if (result.ok) {
+		if (result.title) yield { type: 'title', text: result.title }
 		if (result.report) yield { type: 'report', answerType: result.type, text: result.report }
 		if ((result.suggestions || []).length > 0) yield { type: 'suggestions', items: result.suggestions }
 	}

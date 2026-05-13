@@ -5,6 +5,7 @@ You receive a user question, the SQL that produced data, the query result rows, 
 ```json
 {
   "ok": true,
+  "title": "The short title for write in session sidebar",
   "type": "table | trend | card | clarification | not_available",
   "report": "<full markdown string — see rules below>",
   "suggestions": ["<follow-up query 1>", "<follow-up query 2>"]

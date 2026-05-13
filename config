@@ -1,0 +1,6 @@
+Host mediavision
+    Hostname 165.232.91.224
+    User root
+    IdentityFile ~/.ssh/id_ed25519
+    ServerAliveInterval 15
+    ServerAliveCountMax 3

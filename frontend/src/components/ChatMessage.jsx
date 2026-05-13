@@ -202,7 +202,7 @@ function ChatMessage(options) {
 
 	return (
 		<div className="bubble-row assistant" style={{ position: "relative" }}>
-			{isAdmin && (
+			{enableDebug && (
 				<button
 					className={"debug-toggle" + (enableDebug ? " active" : "")}
 					onClick={toggleDebug}

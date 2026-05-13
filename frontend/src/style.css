@@ -679,8 +679,24 @@ h2,h3 {
 	margin-top: 12px;
 }
 
+.md-body  h2,
+.md-body  h3 {
+	margin-bottom: 15px;
+}
+
+.md-body  table {
+	margin-bottom: 20px;
+}
+
+.md-body th:first-child,
+.md-body td:first-child {
+  width: 50px;
+  white-space: nowrap;
+}
+
 .md-body p {
 	margin: 0 0 6px;
+	margin-bottom: 15px;
 }
 
 .md-body p:last-child {
