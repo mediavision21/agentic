@@ -275,6 +275,7 @@ function App() {
 				all.push({ role: "user", text: msg.text })
 			} else if (msg.role === "assistant" && msg.content && !msg.content.loading) {
 				const text = msg.content.distilledSummary
+					|| msg.content.report
 					|| msg.content.summary
 					|| msg.content.rawText
 					|| msg.content.streamingText
@@ -414,16 +415,10 @@ function App() {
 								if (rounds.length > 0) rounds[rounds.length - 1] = { ...rounds[rounds.length - 1], columns: event.columns, rows: event.rows }
 								return { ...c, loading: false, columns: event.columns, rows: event.rows, rounds }
 							})
-						} else if (event.type === "summary") {
-							patchLastMsg(sessionId, function (c) { return { ...c, summary: event.text } })
-						} else if (event.type === "keyTakeaways") {
-							patchLastMsg(sessionId, function (c) { return { ...c, keyTakeaways: event.items } })
+						} else if (event.type === "report") {
+							patchLastMsg(sessionId, function (c) { return { ...c, loading: false, report: event.text, answerType: event.answerType } })
 						} else if (event.type === "suggestions") {
 							patchLastMsg(sessionId, function (c) { return { ...c, suggestions: event.items } })
-						} else if (event.type === "plotConfig") {
-							patchLastMsg(sessionId, function (c) { return { ...c, plotConfig: event.plotConfig } })
-						} else if (event.type === "noPlot") {
-							patchLastMsg(sessionId, function (c) { return { ...c, noPlot: true } })
 						} else if (event.type === "templatePlots") {
 							patchLastMsg(sessionId, function (c) { return { ...c, templatePlots: event.plots } })
 						} else if (event.type === "distilledSummary") {
@@ -504,6 +499,7 @@ function App() {
 	const panelClass = (evalView || templateView || plotEvalView) ? " eval-open" : ""
 
 	const userInitial = user ? user[0].toUpperCase() : "?"
+	const enableSidebar = localStorage.getItem('enableSidebar')
 
 	return (
 		<div className="app-layout">
@@ -611,27 +607,30 @@ function App() {
 				</div>
 			</main>
 
-			{/* right drag handle */}
-			<div
-				className="sidebar-handle right-handle"
-				onMouseDown={function (e) { startDrag({ e, which: "right" }) }}
-			>
-				<div className="handle"></div>
-				<button className="sidebar-chevron" onClick={toggleRight}>
-					{rightWidth > 0 ? "›" : "‹"}
-				</button>
-			</div>
+			{/* right drag handle */
+			enableSidebar && <div
+					className="sidebar-handle right-handle"
+					onMouseDown={function (e) { startDrag({ e, which: "right" }) }}
+				>
+					<div className="handle"></div>
+					<button className="sidebar-chevron" onClick={toggleRight}>
+						{rightWidth > 0 ? "›" : "‹"}
+					</button>
+				</div>
+			}
 
-			<EvalSidebar
-				style={rightStyle}
-				onSelectEval={onSelectEval}
-				activeEvalId={evalView ? evalView.id : null}
-				user={user}
-				onSelectTemplate={onSelectTemplate}
-				activeTemplateName={templateView ? templateView.name : null}
-				onSelectPlotEval={onSelectPlotEval}
-				activePlotEvalName={plotEvalView ? plotEvalView.name : null}
-			/>
+			{
+				enableSidebar &&  <EvalSidebar
+					style={rightStyle}
+					onSelectEval={onSelectEval}
+					activeEvalId={evalView ? evalView.id : null}
+					user={user}
+					onSelectTemplate={onSelectTemplate}
+					activeTemplateName={templateView ? templateView.name : null}
+					onSelectPlotEval={onSelectPlotEval}
+					activePlotEvalName={plotEvalView ? plotEvalView.name : null}
+				/>
+			}
 		</div>
 	)
 }

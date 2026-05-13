@@ -1,23 +1,12 @@
 import { verifyAndGenerate } from './generate2.js'
 
-const _NO_PLOT_KEYWORDS = ['no chart', 'no plot', 'no graph', 'without chart', 'without plot',
-	'no visualization', 'just numbers', 'just the data', 'text only']
-
-
-
-export function needsPlot(prompt, columns, rows) {
-	const p = prompt.toLowerCase()
-	if (_NO_PLOT_KEYWORDS.some(k => p.includes(k))) return false
-	if (!rows || rows.length <= 1) return false
-	return true
-}
-
 export async function* summaryReport(options) {
 	const {
 		userPrompt,
 		columns,
 		rows,
 		sql,
+		answerType = 'text',
 		priorPlotConfig,
 		msgId,
 		user = '',
@@ -26,14 +15,15 @@ export async function* summaryReport(options) {
 		force = false,
 	} = options
 
-	const wantPlot = needsPlot(userPrompt, columns, rows)
-	yield { type: 'round', label: wantPlot ? 'Plot & Summary' : 'Summary' }
+	const wantPlot = answerType === 'trend'
+	yield { type: 'round', label: wantPlot ? 'Trend & Summary' : answerType === 'table' ? 'Table & Summary' : 'Summary' }
 
 	const result = await verifyAndGenerate({
 		userPrompt,
 		columns,
 		rows,
 		sql,
+		answerType,
 		msgId,
 		user,
 		conversationId,
@@ -49,17 +39,8 @@ export async function* summaryReport(options) {
 	if (debug.response) yield { type: 'response', text: debug.response }
 
 	if (result.ok) {
-		const plotConfig = result.plotConfig
-		if (plotConfig && wantPlot) {
-			yield { type: 'plotConfig', plotConfig }
-		} else {
-			yield { type: 'noPlot' }
-		}
-		if ((result.keyTakeaways || []).length > 0) yield { type: 'keyTakeaways', items: result.keyTakeaways }
-		if (result.summary) yield { type: 'summary', text: result.summary }
+		if (result.report) yield { type: 'report', answerType: result.type, text: result.report }
 		if ((result.suggestions || []).length > 0) yield { type: 'suggestions', items: result.suggestions }
-	} else {
-		yield { type: 'noPlot' }
 	}
 
 	yield { type: '_summary_status', ok: result.ok, reason: result.reason }

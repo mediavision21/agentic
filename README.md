@@ -17,9 +17,9 @@ LLM_BACKEND=claude
 ### 2. Install dependencies
 
 ```bash
-# Backend
-cd backend
-pip install -r requirements.txt
+# Node backend
+cd node
+npm install
 
 # Frontend
 cd frontend
@@ -31,24 +31,35 @@ npm install
 Before starting, create at least one user account:
 
 ```bash
-cd backend
-python add_user.py <username> <password>
+node node/addUser.js <username> <password>
 ```
 
 Example:
 
 ```bash
-python add_user.py alice secret123
+node node/addUser.js alice secret123
 ```
 
 ### 4. Start
 
 ```bash
 # Backend (from project root)
-cd backend && uvicorn main:app --reload
+cd node && npm run dev
 
 # Frontend (from project root)
 cd frontend && npm run dev
 ```
 
 Open http://localhost:5173 and sign in with the credentials you created.
+
+## Browser Settings (localStorage)
+
+Some features are hidden by default and controlled via browser storage. To toggle them, open the browser console (`F12` → Console tab) and run the commands below, then **refresh the page**.
+
+| Feature        | Enable                                          | Disable                                          |
+| -------------- | ----------------------------------------------- | ------------------------------------------------ |
+| Eval sidebar   | `localStorage.setItem('enableSidebar', '1')`    | `localStorage.removeItem('enableSidebar')`       |
+| Admin mode     | `localStorage.setItem('isAdmin', '1')`          | `localStorage.removeItem('isAdmin')`             |
+| Debug panel    | `localStorage.setItem('enableDebug', '1')`      | `localStorage.removeItem('enableDebug')`         |
+
+> **Note:** The debug toggle is also available as a button inside each chat message when `isAdmin` is set.

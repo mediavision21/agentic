@@ -60,6 +60,17 @@ function _verifyPassword(password, stored) {
     return _hashPassword(password, salt) === stored
 }
 
+export function createUser(username, passwordHash) {
+    const stored = _hashPassword(passwordHash)
+    try {
+        run(db(), 'INSERT INTO users (username, password_hash, created_at) VALUES (?,?,?)',
+            [username, stored, new Date().toISOString()])
+        return true
+    } catch (_) {
+        return false
+    }
+}
+
 export function verifyUser(username, password) {
     const rows = query(db(), 'SELECT password_hash FROM users WHERE username=?', [username])
     if (rows.length > 0) {

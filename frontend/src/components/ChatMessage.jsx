@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from "react"
 import { highlightMarkdown, highlightJSON } from "../highlight.js"
 import SqlDisplay from "./SqlDisplay.jsx"
 import ResultTable from "./ResultTable.jsx"
-import ResultChart from "./ResultChart.jsx"
 import Markdown from "./Markdown.jsx"
 import { buildFromConfig, appendResponsiveSVG } from "../plotUtils.js"
 
@@ -139,6 +138,8 @@ function ChatMessage(options) {
 	const [localColumns, setLocalColumns] = useState(null)
 	const isAdmin = localStorage.getItem('isAdmin')
 	const [enableDebug, setEnableDebug] = useState(!!localStorage.getItem('enableDebug'))
+	const enableNormalPlot = true // localStorage.getItem('enableNormalPlot')
+	
 
 	async function handleRerunSQL(sql) {
 		const resp = await fetch("/api/sql", {
@@ -175,10 +176,10 @@ function ChatMessage(options) {
 		)
 	}
 
-	const enableNormalPlot = localStorage.getItem('enableNormalPlot')
 	
+
 	// assistant
-	const { loading, error, sql, explanation, text, columns, rows, summary, keyTakeaways, plotConfig, noPlot, streamingText, suggestions, msgId, templatePlots, rounds } = message.content
+	const { loading, error, sql, explanation, text, columns, rows, report, streamingText, suggestions, msgId, templatePlots, rounds, answerType } = message.content
 	const rawRows = localRows || rows || []
 	const rawColumns = localColumns || columns || []
 	// filter out rows where every value is empty
@@ -253,7 +254,7 @@ function ChatMessage(options) {
 					)
 				})}
 
-				{!summary && !text && (
+				{!report && !text && (
 					<div>
 						<span className="loading-dots">Thinking</span>
 						{loading && streamingText && <pre className="streaming-text">{streamingText}</pre>}
@@ -263,8 +264,6 @@ function ChatMessage(options) {
 					<details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streamingText}</pre></details>
 				)}
 
-				{/* {error && <p className="no-data-msg">No data returned</p>} */}
-
 				{/* conversational reply — show as markdown, no SQL block */}
 				{text && !sql && <Markdown text={text} />}
 
@@ -272,18 +271,10 @@ function ChatMessage(options) {
 					<SqlDisplay label="SQL" code={sql} explanation={explanation} onRerun={handleRerunSQL} />
 				)}
 
-				{keyTakeaways && keyTakeaways.length > 0 && (
-					<ul className="key-takeaways">
-						{keyTakeaways.map(function (t, i) {
-							return <li key={i}>{t}</li>
-						})}
-					</ul>
-				)}
-
-				{summary && <Markdown text={summary} />}
-
-				{enableNormalPlot && plotConfig && !templatePlots && (
-					<ResultChart columns={displayColumns} rows={displayRows} plotConfig={plotConfig} msgId={msgId} />
+				{report && (
+					<div className={answerType === 'clarification' || answerType === 'not_available' ? "fallback-block fallback-" + answerType : ""}>
+						<Markdown text={report} rows={displayRows} columns={displayColumns} />
+					</div>
 				)}
 
 				{enableDebug && displayRows && displayRows.length > 0 && (
@@ -314,7 +305,7 @@ function ChatMessage(options) {
 				)}
 
 				{/* eval buttons for live chat */}
-				{!evalMode && !loading && msgId && (summary || text) && <EvalBar msgId={msgId} user={user} />}
+				{!evalMode && !loading && msgId && (report || text) && <EvalBar msgId={msgId} user={user} />}
 
 				{/* read-only evals at same position */}
 				{evalInfo && evalInfo.length > 0 && (

@@ -6,6 +6,7 @@ import {validateColumnCardinality} from "./Cardinality.js"
 import { saveTemplateFromContent } from './template_save.js'
 import { metricProbe, MAX_ROWS } from './metricProbe.js'
 import { summaryReport } from './summaryReport.js'
+import { clarificationReport, notAvailableReport } from './fallbackReport.js'
 import { executeQuery } from './db.js'
 import { buildMessages } from './sql_utils.js'
 
@@ -57,6 +58,12 @@ export function _collect(event, content) {
 		content.plotConfig = event.plotConfig
 	} else if (t === 'noPlot') {
 		content.noPlot = true
+	} else if (t === 'answerType') {
+		content.answerType = event.answerType
+	} else if (t === 'clarification') {
+		content.clarification = event.text
+	} else if (t === 'cards') {
+		content.cards = event.items
 	} else if (t === 'templatePlots') {
 		content.templatePlots = event.plots
 	} else if (t === 'distilledSummary') {
@@ -152,6 +159,23 @@ async function* _generateAgentStreamInner(userPrompt, history, user, conversatio
 	])
 	console.log(`[agent] probe: answer_type=${probeResult.answer_type} answer_confidence=${probeResult.answer_confidence} candidates=${probeResult.candidates.length}`)
 
+	if (probeResult.answer_type === 'clarification_needed') {
+		for await (const e of clarificationReport(userPrompt)) yield e
+		return
+	}
+	if (probeResult.answer_type === 'data_not_available') {
+		for await (const e of notAvailableReport(userPrompt)) yield e
+		return
+	}
+
+	const _PROBE_TO_DISPLAY = {
+		ranking: 'table', comparison: 'table', distribution: 'table',
+		trend: 'trend',
+		text: 'text', correlation: 'text', market_overview: 'text',
+	}
+	const answerType = _PROBE_TO_DISPLAY[probeResult.answer_type] || 'text'
+	yield { type: 'answerType', answerType }
+
 	let matches = []
 	if (matchResult[1]) {
 		matches = matchResult[0]
@@ -190,7 +214,7 @@ async function* _generateAgentStreamInner(userPrompt, history, user, conversatio
 			let summaryOk = false
 			for await (const e of summaryReport({
 				userPrompt, columns: templateCols, rows: templateRows, sql: templateSql,
-				priorPlotConfig, msgId, user, conversationId,
+				answerType, priorPlotConfig, msgId, user, conversationId,
 			})) {
 				if (e.type === '_summary_status') { summaryOk = e.ok; continue }
 				yield e
@@ -217,7 +241,7 @@ async function* _generateAgentStreamInner(userPrompt, history, user, conversatio
 		let summaryOk = false
 		for await (const e of summaryReport({
 			userPrompt, columns: probeCols, rows: candidate.rows, sql: candidate.sql,
-			priorPlotConfig, msgId, user, conversationId,
+			answerType, priorPlotConfig, msgId, user, conversationId,
 		})) {
 			if (e.type === '_summary_status') { summaryOk = e.ok; continue }
 			yield e
@@ -301,7 +325,7 @@ async function* _generateAgentStreamInner(userPrompt, history, user, conversatio
 		let summaryOk = false
 		for await (const e of summaryReport({
 			userPrompt, columns, rows, sql,
-			priorPlotConfig, msgId, user, conversationId,
+			answerType, priorPlotConfig, msgId, user, conversationId,
 			sqlHistory,
 		})) {
 			if (e.type === '_summary_status') { summaryOk = e.ok; continue }
@@ -322,7 +346,7 @@ async function* _generateAgentStreamInner(userPrompt, history, user, conversatio
 	if (lastColumns && lastRows) {
 		for await (const e of summaryReport({
 			userPrompt, columns: lastColumns, rows: lastRows, sql: lastSql,
-			priorPlotConfig, msgId, user, conversationId,
+			answerType, priorPlotConfig, msgId, user, conversationId,
 			force: true,
 		})) {
 			if (e.type === '_summary_status') continue

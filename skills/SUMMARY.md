@@ -1,12 +1,12 @@
 # Summary & Visualization Generation
 
-You receive a user question, the SQL that produced data, and the query result rows. Generate ONLY a ```json ... ``` block with this structure:
+You receive a user question, the SQL that produced data, the query result rows, and an **Answer type** field. Generate ONLY a ```json ... ``` block with this structure:
 
 ```json
 {
   "ok": true,
-  "plot": { <Observable Plot config, or null> },
-  "summary": "<narrative summary, optionally followed by a markdown table>",
+  "type": "table | trend | card | clarification | not_available",
+  "report": "<full markdown string — see rules below>",
   "suggestions": ["<follow-up query 1>", "<follow-up query 2>"]
 }
 ```
@@ -17,237 +17,196 @@ Default assumption: the data is correct. Only return false when zero rows exist 
 
 ---
 
-## Summary Writing Rules
+## Type field — mutually exclusive
 
-- **Header first**: begin with a `##` header describing the metric and time period. Example: `## Top Streaming Services by Daily Reach – Q1 2026`.
-- **Open at the highest level first**: state the Nordic aggregate (or market total) before breaking down by country or service.
-- Sentence 1: time period + geographic scope + metric name. Example: "In Q1 2026, Nordic SVOD household penetration averaged 68%."
-- State units explicitly: %, minutes/day, EUR/month. Never leave the unit implicit.
-- For trends: direction + magnitude ("grew 3pp year-on-year", "declined from 45% to 41%").
-- For rankings: name the leader and the gap to second place.
-- For country breakdowns: Nordic total first, then sorted country highlights (biggest vs smallest, or fastest growing).
-- **Text before tables only**: all narrative analysis (including "If this is not what you intended, let me know.") goes before the first table. No text between tables or after tables — only the source note follows.
-- **Top 5 default**: limit ranking tables to 5 rows. Use 10 only when the user explicitly requests top 10.
-- **Never** use "reach" or "penetration" as plain English verbs — use "grew to", "climbed", "achieved", "expanded" instead.
-- `population_segment` is metadata: when non-null values appear (e.g. `viewers`), note what population the numbers represent ("These are minutes per actual viewer, not per capita").
-- **Never** mention technical terms: SQL column names, kpi_type, kpi_dimension, filter conditions, "no rows returned", or any database internals. Speak only in business language.
-- **Partial data**: when data covers only a subset of the requested markets or periods, confidently report what is available ("Sweden data is available for Q1 2026") and briefly note what is missing ("Coverage for Norway, Denmark, and Finland is not yet available for this metric"). Do not speculate about why data is missing.
+| type             | when to use                                                   |
+|------------------|---------------------------------------------------------------|
+| `table`          | ranked list of services or countries for a single period      |
+| `trend`          | time-series data with period_date column                      |
+| `card`           | single scalar or text analysis — no ranking, no time-series   |
+| `clarification`  | question is too vague to answer reliably                      |
+| `not_available`  | question is clear but data does not exist in the dataset      |
+
+Pick exactly one. Never mix table + trend or include a chart with a table.
 
 ---
 
-## Table Format for Rankings
+## report field — structure
 
-When the data is a ranked list of services or countries (single period, multiple entities), append a markdown table to the summary text:
+### Title (always required)
+
+Start with a `###` heading that states the key takeaway insight — what actually happened or who leads. Not a description of the table.
+
+Good: `### YouTube leads Nordic daily reach at 34.8% in Q1 2026`
+Bad: `### Top Streaming Services by Daily Reach – Q1 2026`
+
+### Intro paragraph
+
+1–2 sentences. Gentle phrasing of the phenomenon. Few or no numbers. Sets context before the data.
+
+### Body (type-dependent — see below)
+
+### Source line (always required at the bottom)
+
+```
+*Source: Mediavision [period] · [metric] = [plain-language definition]*
+```
+
+---
+
+## Body rules by type
+
+### type: table
+
+Append a markdown ranking table after the intro. No plot. No %%CARDS%% block.
 
 ```
 | &nbsp; | Service | Reach | &nbsp; |
 |---|---------|------:|--------|
 | 1 | YouTube | 34.8% | %%BAR:34.8%% |
 | 2 | Netflix | 27.0% | %%BAR:27.0%% |
-| 3 | TikTok  | 21.5% | %%BAR:21.5%% |
 ```
 
-Rules:
-- `%%BAR:XX%%` — XX is the numeric value already multiplied × 100 (no % sign inside the marker).
-- Bar column header is `&nbsp;` (HTML non-breaking space).
+- `%%BAR:XX%%` — XX is the numeric value (no % sign inside the marker). Bars scale relative to the max value.
+- Bar column header is `&nbsp;`.
 - Value column is right-aligned (`------:`).
-- Only include a table for ranking / single-period comparison data. Omit for time-series or single scalar answers.
-- Rows are sorted descending by value.
-- Default to 5 rows. Only show more when user asks for top 10 or higher.
+- Rows sorted descending by value. Default 5 rows; show 10 only when user asks.
+- For multi-country data: one table per country with a bold country name between them.
+- All narrative goes before the first table. No text between tables or after tables except the source line.
 
-### Multi-country / multi-group tables
+### type: trend
 
-When the data contains rankings for multiple countries (or groups), output one table per country. Between sections add a blank line then a bold country name:
+Embed an Observable Plot config as a code fence. No table. No %%CARDS%% block.
+
+````
+```plot
+{"title":"...","marks":[...],"x":{...},"y":{...},"color":{"legend":true}}
+```
+````
+
+Plot config rules:
+- Source rows are long/tidy: one row per observation, numeric column `value`.
+- `period_date` is x-axis. ALL proportion values (0.0–1.0) must be × 100 before charting.
+- Line with spline (`"curve": "catmull-rom"`) is the default mark. Always add `"tip": true`.
+- Y-axis starts from 0 (`"zero": true`). Include `%` in label when applicable.
+- `color.legend: true` with `"scheme": "tableau10"`.
+- Time labels expressed as Q1 23, Q2 23, etc.
+- Series legends centered at the bottom (handled by renderer).
+- If data does not benefit from visualization (single value), use `type: card` instead.
+
+### type: card
+
+Text narrative with numbers woven in. Optionally add a `%%CARDS%%` block at the end — only when 2–4 key numbers strongly reinforce the narrative and are not already clear from the text.
 
 ```
-## Denmark
-| &nbsp; | Service | Reach | &nbsp; |
-|---|---------|------:|--------|
-| 1 | YouTube | 30.0% | %%BAR:30.0%% |
-...
-
-## Finland
-| &nbsp; | Service | Reach | &nbsp; |
-|---|---------|------:|--------|
-| 1 | YouTube | 39.5% | %%BAR:39.5%% |
-...
+%%CARDS%%
+Output decline since 2022 | -50%
+Local broadcaster drop | -71%
+Global streamer share 2025 | 31%
+%%/CARDS%%
 ```
 
-### Source note
+Each line: `label | value`. Max 4 cards. Omit the block entirely when numbers are already clear from the prose.
 
-After all tables, always end the summary with an italic source/explanation line:
+### type: clarification
 
-```
-*Source: Mediavision [period] · [metric label] = [plain-language definition of the metric]*
-```
+Ask exactly ONE specific follow-up question to resolve the ambiguity (missing market, time period, metric, or service). No table, no plot, no cards.
 
-Example: `*Source: Mediavision Q1 2026 · Daily reach = % of adults 15–74 who watched on an average day*`
+### type: not_available
+
+One sentence explaining what data is missing. One sentence suggesting the closest available alternative. No table, no plot, no cards.
 
 ---
 
-## Suggestions 
+## Writing rules (all types)
 
-Include `"suggestions"` inside the JSON block.
+- **Never** use "reach" or "penetration" as plain English verbs — use "grew to", "climbed", "achieved", "expanded" instead.
+- **Never** mention technical terms: SQL column names, kpi_type, kpi_dimension, "no rows returned", or database internals.
+- State units explicitly: %, minutes/day, EUR/month.
+- For rankings: name the leader and the gap to second place.
+- For country breakdowns: Nordic total first, then sorted country highlights.
+- **Partial data**: confidently report what is available and briefly note what is missing.
+- `population_segment` is metadata: when non-null values appear, note what population the numbers represent.
 
-**suggestions**: 2–4 short, clickable follow-up query strings. Always include when:
-- Data is partial (some markets/periods missing) — suggest querying each missing market
+---
+
+## Suggestions
+
+Include 2–4 short, clickable follow-up query strings. Always include when:
 - A ranking is shown — suggest "Show trend over time for [top service]"
 - A single market is shown — suggest "Compare across all Nordic countries"
+- Data is partial — suggest querying each missing market
 
 ---
 
-## Example Outputs
+## Examples
 
-### Nordic total → country breakdown (penetration trend)
-
-> In Q1 2026, Nordic SVOD household penetration averaged 68%, up 3pp from a year ago. Sweden led at 74%, with the strongest growth coming from Finland (+5pp to 65%). Denmark and Norway trailed at 63% and 65% respectively. If this is not what you intended, let me know.
-
-### Market ranking with bar table (daily reach, single period)
-
-> ## Top Streaming Services by Daily Reach – Q1 2026
->
-> In Q1 2026, YouTube achieved the highest daily reach across the Nordic region at 34.8%, followed by Netflix at 27.0% and TikTok at 21.5%. If this is not what you intended, let me know.
->
-> | &nbsp; | Service | Reach | &nbsp; |
-> |---|---------|------:|--------|
-> | 1 | YouTube | 34.8% | %%BAR:34.8%% |
-> | 2 | Netflix | 27.0% | %%BAR:27.0%% |
-> | 3 | TikTok  | 21.5% | %%BAR:21.5%% |
->
-> *Source: Mediavision Q1 2026 · Daily reach = % of adults 15–74 who watched on an average day*
-
-### Multi-country ranking (top services per country, single period)
-
-> ## Top Streaming Services by Daily Reach per Country – Q1 2026
->
-> In Q1 2026, YouTube led daily reach across all four Nordic markets. Netflix ranked second everywhere except Finland, where MTV Katsomo placed third. Each country's top 3 includes a strong local broadcaster. If this is not what you intended, let me know.
->
-> ## Denmark
-> | &nbsp; | Service | Reach | &nbsp; |
-> |---|---------|------:|--------|
-> | 1 | YouTube | 30.0% | %%BAR:30.0%% |
-> | 2 | Netflix | 24.0% | %%BAR:24.0%% |
-> | 3 | TV2 Play (DK) | 16.2% | %%BAR:16.2%% |
-> | 4 | Viaplay | 12.2% | %%BAR:12.2%% |
-> | 5 | Disney+ | 12.2% | %%BAR:12.2%% |
->
-> ## Finland
-> | &nbsp; | Service | Reach | &nbsp; |
-> |---|---------|------:|--------|
-> | 1 | YouTube | 39.5% | %%BAR:39.5%% |
-> | 2 | Netflix | 19.0% | %%BAR:19.0%% |
-> | 3 | MTV Katsomo | 12.2% | %%BAR:12.2%% |
-> | 4 | Ruutu | 6.9% | %%BAR:6.9%% |
-> | 5 | HBO Max | 5.9% | %%BAR:5.9%% |
->
-> *Source: Mediavision Q1 2026 · Daily reach = % of adults 15–74 who watched on an average day*
-
-### Country ranking (penetration, latest period)
-
-> In Q1 2026, SVOD penetration varied significantly across Nordic markets. Sweden led at 74%, followed by Norway at 65%, Finland at 65%, and Denmark at 63%. The 11pp gap between Sweden and Denmark reflects Sweden's earlier adoption curve. If this is not what you intended, let me know.
->
-> | &nbsp; | Country | Penetration | &nbsp; |
-> |---|---------|------------:|--------|
-> | 1 | Sweden  | 74.0% | %%BAR:74.0%% |
-> | 2 | Norway  | 65.2% | %%BAR:65.2%% |
-> | 3 | Finland | 64.8% | %%BAR:64.8%% |
-> | 4 | Denmark | 63.1% | %%BAR:63.1%% |
-
----
-
-## Pivot
-
-Do NOT pivot the table unless it can render the table nices and there is no different field after pivoting
-
-## Plot Config Rules (Observable Plot)
-
-### source rows
-
-- Always in long/tidy form: one row per observation, a single numeric column `value`.
-- Categorical keys (service, country, …) map to Observable Plot channels `stroke`, `fill`, or `fx` facets — NEVER map to y channel.
-- `period_date` is the x-axis when present (first day of each quarter).
-- ALL proportion values (0.0–1.0) must be multiplied × 100 before charting. Never output raw decimals on y-axis.
-
-### marks
-
-- Line with spline (`"curve": "catmull-rom"`) is the default mark.
-- Always add `"tip": true` to every mark for hover tooltips.
-- Use bar only for clear side-by-side comparison (≤ 3 categories) or single-period ranking.
-- For ranking charts: `barY`, x = category column, y = `"value"`, `"sort": {"x": "-y"}`.
-- For ALL `barY` marks with a categorical x-column: always add `"sort": {"x": "-y"}`.
-- NEVER use `barX`.
-- When the number of points > 30, do not use bar mark.
-
-### axis
-
-- Y-axis starts from 0 by default (`"zero": true`).
-- `value` column always maps to `y: "value"` — never to x-axis.
-- Percentage y-axes must include `%` in the label.
-- `tickFormat "pct"` when SQL already multiplied by 100; `".0%"` when values are raw 0–1 proportions.
-- Chart title says "Daily Reach" unless explicitly weekly reach.
-
-### faceted top-N bar charts (fx by country)
-
-When generating a faceted `barY` with `fx: "country"` showing top-N services per facet:
-
-- **Shared y-axis domain**: compute the max value across all rows and set `y: { domain: [0, <max>] }`. Without this each facet auto-scales independently.
-- **Sort by value**: use `sort: { x: { value: "-y" } }`. Do NOT use `sort: { x: "-y" }` shorthand — it causes position jumps when facets have different x domains.
+### type: table — Nordic ranking
 
 ```json
 {
-  "y": { "domain": [0, <max_value_from_data>], "label": "...", "grid": true },
-  "sort": { "x": { "value": "-y" } }
+  "ok": true,
+  "type": "table",
+  "report": "### YouTube leads Nordic daily reach by a wide margin in Q1 2026\n\nYouTube reaches more adults across the Nordics than any other service, with Netflix and Instagram consistently occupying the second and third positions.\n\n| &nbsp; | Service   | Reach | &nbsp; |\n|---|-----------|------:|--------|\n| 1 | YouTube   | 34.8% | %%BAR:34.8%% |\n| 2 | Netflix   | 27.0% | %%BAR:27.0%% |\n| 3 | Instagram | 25.7% | %%BAR:25.7%% |\n| 4 | Facebook  | 24.0% | %%BAR:24.0%% |\n| 5 | TikTok    | 21.5% | %%BAR:21.5%% |\n\n*Source: Mediavision Q1 2026 · Daily reach = % of adults 15–74 who watched on an average day*",
+  "suggestions": ["Show trend for YouTube reach in the Nordics", "Compare top services per country in Q1 2026", "How has Netflix reach changed since 2023?"]
 }
 ```
 
-### intent inference
+### type: table — multi-country ranking
 
-- Always infer intent from question wording and data shape; state it in `"description"`.
-- Common signals: "ranking" / "top N" / no period_date → ranking bar; "trend" / period_date → line; "compare" two periods → grouped/faceted bar.
-- If data does not benefit from visualization (single value, lookup), return `"plot": null`.
+```json
+{
+  "ok": true,
+  "type": "table",
+  "report": "### YouTube leads daily reach across all four Nordic markets in Q1 2026\n\nYouTube consistently ranks first in every Nordic country, though the margin over local broadcasters varies significantly by market.\n\n**Denmark**\n| &nbsp; | Service       | Reach | &nbsp; |\n|---|---------------|------:|--------|\n| 1 | YouTube       | 30.0% | %%BAR:30.0%% |\n| 2 | Netflix       | 24.0% | %%BAR:24.0%% |\n| 3 | TV2 Play (DK) | 16.2% | %%BAR:16.2%% |\n\n**Finland**\n| &nbsp; | Service     | Reach | &nbsp; |\n|---|-------------|------:|--------|\n| 1 | YouTube     | 39.5% | %%BAR:39.5%% |\n| 2 | Netflix     | 19.0% | %%BAR:19.0%% |\n| 3 | MTV Katsomo | 12.2% | %%BAR:12.2%% |\n\n*Source: Mediavision Q1 2026 · Daily reach = % of adults 15–74 who watched on an average day*",
+  "suggestions": ["Show trend for YouTube reach per country", "Top services in Sweden Q1 2026", "How does Netflix rank in Norway?"]
+}
+```
 
-### naming and summary (plot)
+### type: trend
 
-- Avoid "reach" / "penetration" as plain English — see Summary Writing Rules.
-- Always state units explicitly and name the geographic scope.
-- If result was truncated to top 8 or top 15, state this in the summary.
+```json
+{
+  "ok": true,
+  "type": "trend",
+  "report": "### YouTube leads reach throughout the period — but Instagram and TikTok are closing the gap\n\nYouTube has maintained the highest daily reach across the Nordics, though momentum has flattened since mid-2023. Instagram and TikTok show the strongest upward trajectory.\n\n```plot\n{\"title\":\"Daily Reach by Service\",\"marks\":[{\"type\":\"lineY\",\"x\":\"period_date\",\"y\":\"value\",\"stroke\":\"service\",\"curve\":\"catmull-rom\",\"tip\":true}],\"x\":{\"label\":null},\"y\":{\"label\":\"Daily reach (%)\",\"grid\":true,\"zero\":true},\"color\":{\"legend\":true,\"scheme\":\"tableau10\"}}\n```\n\n*Source: Mediavision Q1 2023 – Q4 2024 · Daily reach = % of adults 15–74 who watched on an average day*",
+  "suggestions": ["Show reach trend per country for YouTube", "Compare Instagram vs TikTok trend in Sweden", "What is the current ranking in Q1 2026?"]
+}
+```
+
+### type: card
+
+```json
+{
+  "ok": true,
+  "type": "card",
+  "report": "### The decline in Nordic drama output is structural, not cyclical\n\nThe 50% contraction in output since 2022 is not a temporary correction — it reflects a fundamental rebalancing of commissioning power. Local broadcasters, facing pressure on both audience share and revenue, have pulled back sharply, while public service broadcasters have proven more resilient.\n\n%%CARDS%%\nOutput decline since 2022 | -50%\nLocal broadcaster drop | -71%\nGlobal streamer share 2025 | 31%\n%%/CARDS%%\n\n*Source: Mediavision 2025*",
+  "suggestions": ["Show drama output trend since 2020", "Compare output by broadcaster type", "Which genres are growing?"]
+}
+```
+
+### type: clarification
+
+```json
+{
+  "ok": true,
+  "type": "clarification",
+  "report": "### Which market are you asking about?\n\nThe question could apply to several Nordic markets — could you specify whether you mean Sweden, Norway, Denmark, or Finland, or the full Nordic aggregate?",
+  "suggestions": ["Show reach data for Sweden", "Show reach data for Norway", "Show reach data for the full Nordic region"]
+}
+```
+
+### type: not_available
+
+```json
+{
+  "ok": true,
+  "type": "not_available",
+  "report": "### Per-platform revenue data is not available in this dataset\n\nNetflix's content spend is not tracked — the dataset covers output volumes by commissioner rather than revenue or budget. The closest available data is the number of titles commissioned by each streamer per market.",
+  "suggestions": ["Show number of titles commissioned by Netflix in the Nordics", "Compare commissioning output by global vs local streamers"]
+}
+```
 
 ---
-
-## Plot Examples
-
-<rows>
-period_date, country, value
-2011-01-01, denmark, 2.67
-2011-01-01, finland, 5.33
-2011-07-01, denmark, 3.10
-2011-07-01, finland, 6.28
-</rows>
-```json
-{"ok":true,"plot":{"title":"Daily Reach by Country","marks":[{"type":"lineY","x":"period_date","y":"value","stroke":"country","curve":"catmull-rom","tip":true}],"x":{"label":null},"y":{"label":"Reach (%)","grid":true},"color":{"legend":true,"scheme":"tableau10"}},"summary":"In Q1–Q3 2011, Finland consistently led Denmark in daily reach, ending at 6.3% vs 3.1%. If this is not what you intended, let me know."}
-```
-
-<rows>
-period_date, service, value
-2025-01-01, netflix, 42
-2025-01-01, disney, 18
-2026-01-01, netflix, 45
-2026-01-01, disney, 21
-</rows>
-```json
-{"ok":true,"plot":{"title":"SVOD Penetration by Service","marks":[{"type":"barY","fx":"service","x":"period_date","y":"value","fill":"period_date","tip":true}],"fx":{"label":null},"x":{"axis":null},"y":{"label":"Penetration (%)","grid":true,"tickFormat":"pct","zero":true},"color":{"legend":true,"scheme":"tableau10"}},"summary":"In Q1 2025–Q1 2026, Nordic SVOD household penetration. Netflix climbed from 42% to 45%; Disney+ rose from 18% to 21%. If this is not what you intended, let me know."}
-```
-
-<rows>
-service, service_rank, value
-TV2 Play (NO), 1, 48.03
-Netflix, 2, 46.17
-TV2 Play (DK), 3, 38.60
-HBO Max, 4, 29.53
-Disney+, 5, 27.94
-</rows>
-```json
-{"ok":true,"plot":{"title":"SVOD Household Penetration Ranking","marks":[{"type":"barY","x":"service","y":"value","fill":"service","sort":{"x":"-y"},"tip":true}],"x":{"label":null},"y":{"label":"Household Penetration (%)","grid":true,"tickFormat":"pct","zero":true},"color":{"legend":false,"scheme":"tableau10"}},"summary":"TV2 Play (NO) achieved the highest SVOD penetration at 48%, narrowly ahead of Netflix at 46%.\n\n| # | Service | Penetration | &nbsp; |\n|---|---------|------------:|--------|\n| 1 | TV2 Play (NO) | 48.0% | %%BAR:48.03%% |\n| 2 | Netflix | 46.2% | %%BAR:46.17%% |\n| 3 | TV2 Play (DK) | 38.6% | %%BAR:38.60%% |\n| 4 | HBO Max | 29.5% | %%BAR:29.53%% |\n| 5 | Disney+ | 27.9% | %%BAR:27.94%% |\n\nIf this is not what you intended, let me know."}
-```
 
 Respond with ONLY the ```json ... ``` block. No other text or commentary outside it.

@@ -98,6 +98,7 @@ export async function verifyAndGenerate(options) {
 		columns,
 		rows,
 		sql,
+		answerType = 'text',
 		msgId,
 		user = '',
 		conversationId = '',
@@ -121,7 +122,7 @@ export async function verifyAndGenerate(options) {
 	const header = columns.join(', ')
 	const dataLines = [header, ...sample.map(row => columns.map(c => row[c] === null || row[c] === undefined ? '' : String(row[c])).join(', '))]
 
-	const dataParts = [`Query result:\n${dataLines.join('\n')}`]
+	const dataParts = [`Answer type: ${answerType}\n\nQuery result:\n${dataLines.join('\n')}`]
 
 	if (columns.includes('population_segment')) {
 		const segMap = { viewers: 'actual viewers (not per-capita)', subscribers: 'subscribers only', users: 'active users', genre_viewers: 'genre-specific viewers' }
@@ -166,9 +167,8 @@ export async function verifyAndGenerate(options) {
 				}
 				return {
 					ok: true,
-					plotConfig: obj.plot || null,
-					summary: obj.summary || null,
-					keyTakeaways: obj.key_takeaways || [],
+					type: obj.type || 'card',
+					report: obj.report || null,
 					suggestions: obj.suggestions || [],
 					debug,
 				}
@@ -181,9 +181,9 @@ export async function verifyAndGenerate(options) {
 			if (!obj.ok) {
 				return { ok: false, reason: obj.reason || "Data doesn't answer question", debug }
 			}
-			return { ok: true, plotConfig: obj.plot || null, summary: obj.summary || null, keyTakeaways: obj.key_takeaways || [], suggestions: obj.suggestions || [], debug }
+			return { ok: true, type: obj.type || 'card', report: obj.report || null, suggestions: obj.suggestions || [], debug }
 		} catch (_) { }
-		return { ok: true, plotConfig: null, summary: text.slice(0, 500) || null, keyTakeaways: [], debug }
+		return { ok: true, type: 'card', report: text.slice(0, 500) || null, suggestions: [], debug }
 	} catch (e) {
 		console.log('[generate2] verifyAndGenerate error:', e.message)
 		return { ok: true, plotConfig: null, summary: null, keyTakeaways: [], debug }
