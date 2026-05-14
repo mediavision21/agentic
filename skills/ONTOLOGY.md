@@ -8,7 +8,7 @@ Read this before generating any SQL.
 
 ## 1. The Query Target: `macro.nordic`
 
-**Always query `macro.nordic`.** It is a materialized view that is the single source of truth for all KPI data. The underlying raw table is `nordic_long_v2` — the agent does not need to know its structure and must never query it directly.
+**Always query `macro.nordic`.** It is a materialized view that is the single source of truth for all KPI data.
 
 Values are **never additive across rows**. Never `SUM()` penetration, reach, churn, or similar figures across services or dimensions. The only valid multi-row aggregation is population-weighted averaging across countries.
 

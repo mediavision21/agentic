@@ -30,7 +30,7 @@ aggregated AS (
         MAX(population_household_nordic)                                    AS population_household_nordic,
         MAX(population_1574_nordic)                                         AS population_1574_nordic
     FROM macro.nordic_base
-    WHERE EXTRACT(MONTH FROM period_date) IN (1, 10)
+    WHERE EXTRACT(MONTH FROM period_date) IN (1, 7)
     GROUP BY
         period_date, kpi_type, kpi_dimension, kpi_detail,
         age_group, population_segment, service_id, category, canonical_name
