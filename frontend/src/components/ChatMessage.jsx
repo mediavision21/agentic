@@ -160,7 +160,7 @@ function ChatMessage(options) {
 		if (next) {
 			localStorage.setItem('enableDebug', '1')
 		} else {
-			localStorage.removeItem('enableDebug')
+			localStorage.setItem('enableDebug', 0)
 		}
 		setEnableDebug(next)
 	}

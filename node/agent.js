@@ -162,14 +162,14 @@ async function* _generateAgentStreamInner(userPrompt, history, user, conversatio
 	])
 	console.log(`[agent] probe: answer_type=${probeResult.answer_type} answer_confidence=${probeResult.answer_confidence} candidates=${probeResult.candidates.length}`)
 
-	if (probeResult.answer_type === 'clarification_needed') {
-		for await (const e of clarificationReport(userPrompt)) yield e
-		return
-	}
-	if (probeResult.answer_type === 'data_not_available') {
-		for await (const e of notAvailableReport(userPrompt)) yield e
-		return
-	}
+	// if (probeResult.answer_type === 'clarification_needed') {
+	// 	for await (const e of clarificationReport(userPrompt)) yield e
+	// 	return
+	// }
+	// if (probeResult.answer_type === 'data_not_available') {
+	// 	for await (const e of notAvailableReport(userPrompt)) yield e
+	// 	return
+	// }
 
 	const _PROBE_TO_DISPLAY = {
 		ranking: 'table', comparison: 'table', distribution: 'table',

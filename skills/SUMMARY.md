@@ -20,15 +20,27 @@ Default assumption: the data is correct. Only return false when zero rows exist 
 
 ## Type field — mutually exclusive
 
-| type             | when to use                                                   |
-|------------------|---------------------------------------------------------------|
-| `table`          | ranked list of services or countries for a single period      |
-| `trend`          | time-series data with period_date column                      |
-| `card`           | single scalar or text analysis — no ranking, no time-series   |
-| `clarification`  | question is too vague to answer reliably                      |
-| `not_available`  | question is clear but data does not exist in the dataset      |
+| type             | when to use                                                                        |
+|------------------|------------------------------------------------------------------------------------|
+| `table`          | ranked list or membership list of services/countries **for 1–3 distinct periods** |
+| `trend`          | one or more entities tracked across **4+ distinct time periods**                   |
+| `card`           | single scalar, single entity, or narrative analysis — no service list              |
+| `clarification`  | question is too vague to answer reliably                                           |
+| `not_available`  | question is clear but data does not exist in the dataset                           |
 
 Pick exactly one. Never mix table + trend or include a chart with a table.
+
+**table vs trend decision rule**: count the distinct `period_date` values in the result.
+- 1–3 periods → `table` (snapshot or membership list)
+- 4+ periods → `trend` (time series — even for a single service or country)
+
+A question like "what is the reach of HBO Max in Denmark?" returning data across 10 quarters **must** use `trend`, not `table`. Never sort periods by metric value and present as a ranked table.
+
+**table vs card decision rule**: count the distinct services or countries in the result.
+- 3+ distinct services or countries → `table` (ranked or listed), even when Answer type hint says `text`
+- 1–2 distinct entities → `card` is appropriate if the question is analytical/narrative
+
+**"which services have X" questions always use `table`**: when the user asks which services offer a feature, have a tier, or are in a category, list them in a ranked table. Never use `card` with %%CARDS%% for this — cards are for scalar highlights, not service listings.
 
 ---
 
@@ -183,6 +195,17 @@ Include 2–4 short, clickable follow-up query strings. Always include when:
   "type": "card",
   "report": "## The decline in Nordic drama output is structural, not cyclical\n\nThe 50% contraction in output since 2022 is not a temporary correction — it reflects a fundamental rebalancing of commissioning power. Local broadcasters, facing pressure on both audience share and revenue, have pulled back sharply, while public service broadcasters have proven more resilient.\n\n%%CARDS%%\nOutput decline since 2022 | -50%\nLocal broadcaster drop | -71%\nGlobal streamer share 2025 | 31%\n%%/CARDS%%\n\n*Source: Mediavision 2025*",
   "suggestions": ["Show drama output trend since 2020", "Compare output by broadcaster type", "Which genres are growing?"]
+}
+```
+
+### type: table — service membership list ("which services have X")
+
+```json
+{
+  "ok": true,
+  "type": "table",
+  "report": "## Eleven services in the Nordics offer an SVOD-with-ads (HVOD) tier in Q1 2026\n\nHVOD adoption spans both local broadcasters and global streamers. TV2 Play Norway leads with 31% household penetration, followed by TV2 Play Denmark at 25%.\n\n| &nbsp; | Service          | HVOD Penetration | &nbsp; |\n|---|------------------|------:|--------|\n| 1 | TV2 Play (NO)    | 31.0% | %%BAR:31.0%% |\n| 2 | TV2 Play (DK)    | 25.0% | %%BAR:25.0%% |\n| 3 | HBO Max          | 21.4% | %%BAR:21.4%% |\n| 4 | TV4 Play         | 19.0% | %%BAR:19.0%% |\n| 5 | Prime Video      | 19.3% | %%BAR:19.3%% |\n\n*Source: Mediavision Q1 2026 · HVOD penetration = % of households 15–74 subscribing to a hybrid SVOD-with-ads tier, Nordic weighted average*",
+  "suggestions": ["Show HVOD penetration trend for TV2 Play Norway", "Compare HVOD vs standard SVOD penetration", "Which countries have the highest HVOD adoption?"]
 }
 ```
 

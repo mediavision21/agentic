@@ -182,7 +182,7 @@ export function buildFromConfig(options, shortCut = true) {
 		if (!xOpts.tickFormat && xCol && rows.length > 0 && isDateLike(rows[0][xCol])) {
 			xOpts.tickFormat = fmtPeriod
 		}
-		const yOpts = { labelAnchor: "center", ...(config.y || {}) }
+		const yOpts = { /*labelAnchor: "center", */labelOffset: 40, ...(config.y || {}) }
 		if (yOpts.tickFormat) yOpts.tickFormat = resolveFmt(yOpts.tickFormat)
 		const colorCfg = normalizeColorConfig(config.color) || {}
 		if (colorCfg.tickFormat) colorCfg.tickFormat = resolveFmt(colorCfg.tickFormat)
@@ -307,7 +307,7 @@ export function buildFromConfig(options, shortCut = true) {
 			if (periodDomain) colorCfg.domain = periodDomain
 		}
 
-		const yOptsFull = { grid: false, labelAnchor: "center", ...(config.y || {}) }
+		const yOptsFull = { grid: false, /*labelAnchor: "center", */labelOffset: 40, ...(config.y || {}) }
 		if (yOptsFull.tickFormat) yOptsFull.tickFormat = resolveFmt(yOptsFull.tickFormat)
 		const maxXLabelLen = xDomain ? Math.max(...xDomain.map(d => String(d).length)) : 8
 		const plotOpts = {

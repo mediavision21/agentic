@@ -145,7 +145,12 @@ export async function verifyAndGenerate(options) {
 	}
 	const system = systemParts.join('')
 
-	const sample = rows.slice(0, 50)
+	const sorted = [...rows].sort((a, b) => {
+		const da = a.period_date ? new Date(a.period_date) : new Date(0)
+		const db = b.period_date ? new Date(b.period_date) : new Date(0)
+		return db - da
+	})
+	const sample = sorted.slice(0, 100)
 	const header = columns.join(', ')
 	const dataLines = [header, ...sample.map(row => columns.map(c => row[c] === null || row[c] === undefined ? '' : String(row[c])).join(', '))]
 

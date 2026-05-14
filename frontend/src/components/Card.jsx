@@ -2,7 +2,7 @@ function Cards(options) {
 	const { items } = options
 	if (!items || items.length === 0) return null
 	return (
-		<div className="mv-cards">
+		<div className={"mv-cards mv-cards-" + items.length}>
 			{items.map(function (card, i) {
 				return (
 					<div key={i} className="mv-card">

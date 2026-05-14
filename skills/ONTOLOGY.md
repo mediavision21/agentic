@@ -68,6 +68,8 @@ The sql to query shall using either dimension or service not both at the same ti
 
 **Never ask clarifying questions.** Always resolve ambiguity using defaults below and generate SQL.
 
+**Critical synonym rule:** "SVOD with ads", "ad-supported SVOD", "HVOD", and "hybrid VOD" are all the same concept — always resolve to `kpi_dimension = 'hvod'` without asking for clarification. Never treat this as ambiguous.
+
 ### Defaults when kpi_type is not specified
 
 | Question type | Default `kpi_type` | Default `kpi_dimension` | `service_id` |
@@ -146,7 +148,7 @@ Narrows what a market-level KPI measures. `NULL` means the full category with no
 | `'svod'` | All SVOD combined (standalone + bundled) | `penetration`, `reach`, `stacking`, `churn_intention`, `account_sharing`, `gross_access` |
 | `'ssvod'` | Standalone/self-paying SVOD — D2C, no operator bundle | `penetration`, `reach`, `viewing_time`, `spend`, `stacking`, `account_sharing` |
 | `'bsvod'` | bundled SVOD, usually included via telco subscription| `penetration`, `reach`, `viewing_time` |
-| `'hvod'` | Hybrid VOD — ad-supported tier within a SVOD service | `penetration`, `reach`, `viewing_time`, `stacking` |
+| `'hvod'` | Hybrid VOD — ad-supported subscription tier within a SVOD service. Also called "SVOD with ads", "ad-supported streaming", or "freemium SVOD". When users ask about ad-supported SVOD tiers or services that have both paid and ad-funded plans, resolve to `hvod`. | `penetration`, `reach`, `viewing_time`, `stacking` |
 | `'tve'` | TV Everywhere — operator streaming app, no proprietary content library | `penetration` |
 | `'ott'` | Any OTT service (broadest definition), not considered a main KPI | `penetration` |
 
@@ -463,6 +465,8 @@ ORDER BY g.rn, p.period_date;
 | "SVOD penetration / subscription rate" | `penetration` | `svod` | `IS NULL` |
 | "Standalone streaming penetration" | `penetration` | `ssvod` | `IS NULL` |
 | "Bundled streaming penetration" | `penetration` | `bsvod` | `IS NULL` |
+| "SVOD with ads / ad-supported streaming / HVOD penetration (market)" | `penetration` | `hvod` | `IS NULL` |
+| "Which services have SVOD with ads / HVOD tier" | `penetration` | `hvod` | `IS NOT NULL` (ranking by service, `kpi_dimension = 'hvod'` is valid at service level for HVOD-capable services) |
 | "How many subscribe to Netflix / Disney+ / etc." | `penetration` | — | named service |
 | "Pay TV / operator home penetration" | `penetration` | `pay_tv_channel` | `IS NULL` |
 | "Illegal streaming / piracy" | `penetration` | `illegal_iptv` | `IS NULL` |

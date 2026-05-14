@@ -11,7 +11,8 @@ function PromptInput(options) {
 	// const [prompt, setPrompt] = useState("What is the development for FAST in the nordics?")
 	// const [prompt, setPrompt] = useState("what is the viewing time of social video per country?")
 	// const [prompt, setPrompt] = useState("What are the top 5 largest svod services in the nordics?")
-	const [prompt, setPrompt] = useState("What is the reach trend for Social video in nordic?")
+	// const [prompt, setPrompt] = useState("What is the reach trend for Social video in nordic?")
+	const [prompt, setPrompt] = useState("What services in the nordic have svod with ads?")
 	
 
 	const [backend, setBackend] = useState("claude")
