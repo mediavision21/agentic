@@ -254,20 +254,20 @@ function ChatMessage(options) {
 					)
 				})}
 
-				{/* {!report && !text && ( */}
-				<div>
-					<svg className="loading-dots" viewBox="0 0 230 109" fill="none" xmlns="http://www.w3.org/2000/svg" height="24px">
-						<g className="loading-circle-left">
-							<circle cx="54.163" cy="54.163" r="54.163" fill="black" />
-						</g>
-						<g className="loading-circle-right">
-							<circle cx="160" cy="54.163" r="48" fill="none" stroke="black" strokeWidth="12" />
-							<circle cx="160" cy="54.163" r="60" fill="none" stroke="white" strokeWidth="12" />
-						</g>
-					</svg>
-					{loading && streamingText && <pre className="streaming-text">{streamingText}</pre>}
-				</div>
-				{/* )} */}
+				{!report && !text && (
+					<div>
+						<svg className="loading-dots" viewBox="0 0 230 109" fill="none" xmlns="http://www.w3.org/2000/svg" height="24px">
+							<g className="loading-circle-left">
+								<circle cx="54.163" cy="54.163" r="54.163" fill="black" />
+							</g>
+							<g className="loading-circle-right">
+								<circle cx="160" cy="54.163" r="48" fill="none" stroke="black" strokeWidth="12" />
+								<circle cx="160" cy="54.163" r="60" fill="none" stroke="white" strokeWidth="12" />
+							</g>
+						</svg>
+						{loading && streamingText && <pre className="streaming-text">{streamingText}</pre>}
+					</div>
+				)}
 				{enableDebug && !loading && streamingText && sql && (
 					<details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streamingText}</pre></details>
 				)}
