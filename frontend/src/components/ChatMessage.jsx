@@ -139,7 +139,7 @@ function ChatMessage(options) {
 	const isAdmin = localStorage.getItem('isAdmin')
 	const [enableDebug, setEnableDebug] = useState(!!localStorage.getItem('enableDebug'))
 	const enableNormalPlot = true // localStorage.getItem('enableNormalPlot')
-	
+
 
 	async function handleRerunSQL(sql) {
 		const resp = await fetch("/api/sql", {
@@ -176,7 +176,7 @@ function ChatMessage(options) {
 		)
 	}
 
-	
+
 
 	// assistant
 	const { loading, error, sql, explanation, text, columns, rows, report, streamingText, suggestions, msgId, templatePlots, rounds, answerType } = message.content
@@ -198,7 +198,7 @@ function ChatMessage(options) {
 	})
 	const displayRows = nonEmptyRows
 	// const showDebug = location.hostname === "localhost" || localStorage.getItem("debug") === "1"
-	
+
 
 	return (
 		<div className="bubble-row assistant" style={{ position: "relative" }}>
@@ -254,12 +254,20 @@ function ChatMessage(options) {
 					)
 				})}
 
-				{!report && !text && (
-					<div>
-						<span className="loading-dots">Thinking</span>
-						{loading && streamingText && <pre className="streaming-text">{streamingText}</pre>}
-					</div>
-				)}
+				{/* {!report && !text && ( */}
+				<div>
+					<svg className="loading-dots" viewBox="0 0 230 109" fill="none" xmlns="http://www.w3.org/2000/svg" height="24px">
+						<g className="loading-circle-left">
+							<circle cx="54.163" cy="54.163" r="54.163" fill="black" />
+						</g>
+						<g className="loading-circle-right">
+							<circle cx="160" cy="54.163" r="48" fill="none" stroke="black" strokeWidth="12" />
+							<circle cx="160" cy="54.163" r="60" fill="none" stroke="white" strokeWidth="12" />
+						</g>
+					</svg>
+					{loading && streamingText && <pre className="streaming-text">{streamingText}</pre>}
+				</div>
+				{/* )} */}
 				{enableDebug && !loading && streamingText && sql && (
 					<details className="collapsible"><summary>Thinking</summary><pre className="streaming-text streaming-text-done">{streamingText}</pre></details>
 				)}

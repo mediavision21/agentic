@@ -30,6 +30,13 @@ npm install
 
 Before starting, create at least one user account:
 
+login to the server first. We have setup for Rasmus. 
+
+```bash
+ssh mediavision
+```
+
+Now create user with following command
 ```bash
 node node/addUser.js <username> <password>
 ```
