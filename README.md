@@ -47,17 +47,20 @@ Example:
 node node/addUser.js alice secret123
 ```
 
-### 4. Start
+### 4. Change Skill
+
+First log on the the server using ssh
 
 ```bash
-# Backend (from project root)
-cd node && npm run dev
-
-# Frontend (from project root)
-cd frontend && npm run dev
+ssh mediavision
 ```
 
-Open http://localhost:5173 and sign in with the credentials you created.
+then change files using ssh on the server in folder /opt/rock/skills/ONTOLOGY.md or /opt/rock/skills/SUMMARY.md
+and restart the server with command. 
+
+```bash
+systemctl restart rock
+```
 
 ## Browser Settings (localStorage)
 
