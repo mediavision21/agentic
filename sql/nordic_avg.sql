@@ -6,6 +6,7 @@ WITH nordic_existing AS (
         age_group, population_segment, service_id, category, canonical_name
     FROM macro.nordic_base
     WHERE country = 'nordic'
+	AND EXTRACT(MONTH FROM period_date) IN (1, 7)
 ),
 aggregated AS (
     SELECT
